@@ -115,7 +115,7 @@ export function blendProbabilities({
   taRawUp,
   binanceLeadSignal = null,
   orderbookImbalance = null,
-  weights = { vol: 0.7, ta: 0.3 }
+  weights = { vol: 0.5, ta: 0.5 } // Changed from 0.7/0.3 to 0.5/0.5 per backtest
 }: {
   volImpliedUp: number | null;
   taRawUp: number;
@@ -128,16 +128,15 @@ export function blendProbabilities({
   }
 
   const w = weights;
-  const totalWeight = (w.vol ?? 0.7) + (w.ta ?? 0.3);
-  let blendedUp = ((w.vol ?? 0.7) * volImpliedUp + (w.ta ?? 0.3) * taRawUp) / totalWeight;
+  const totalWeight = (w.vol ?? 0.5) + (w.ta ?? 0.5);
+  let blendedUp = ((w.vol ?? 0.5) * volImpliedUp + (w.ta ?? 0.5) * taRawUp) / totalWeight;
 
   if (binanceLeadSignal !== null && Math.abs(binanceLeadSignal) > 0.001) {
-    const leadAdjustment = clamp(binanceLeadSignal * 5, -0.05, 0.05);
+    const leadAdjustment = clamp(binanceLeadSignal * 2, -0.02, 0.02);
     blendedUp += leadAdjustment;
   }
-
   if (orderbookImbalance !== null && Math.abs(orderbookImbalance) > 0.2) {
-    const obAdjustment = clamp(orderbookImbalance * 0.05, -0.03, 0.03);
+    const obAdjustment = clamp(orderbookImbalance * 0.03, -0.02, 0.02);
     blendedUp += obAdjustment;
   }
 

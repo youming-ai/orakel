@@ -35,7 +35,7 @@ export function detectRegime({
   }
 
   if (vwapCrossCount !== null && vwapCrossCount >= 3) {
-    return { regime: "RANGE", reason: "frequent_vwap_cross" };
+    return { regime: "CHOP", reason: "frequent_vwap_cross" };
   }
 
   return { regime: "RANGE", reason: "default" };
