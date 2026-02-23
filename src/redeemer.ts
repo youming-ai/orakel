@@ -1,0 +1,182 @@
+import type { Wallet } from "ethers";
+import { Contract, constants } from "ethers";
+import type { RedeemResult } from "./types.ts";
+
+interface RedeemablePosition {
+	conditionId: string;
+	redeemable?: boolean;
+	currentValue?: number;
+	title?: string;
+}
+
+function isRedeemablePosition(value: unknown): value is RedeemablePosition {
+	if (!value || typeof value !== "object") return false;
+	const row = value as Record<string, unknown>;
+	return typeof row.conditionId === "string";
+}
+
+function toPositions(value: unknown): RedeemablePosition[] {
+	if (!Array.isArray(value)) return [];
+	return value.filter(isRedeemablePosition);
+}
+
+const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
+const USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+const DATA_API = "https://data-api.polymarket.com";
+
+const CTF_ABI = [
+	"function redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets)",
+	"function payoutDenominator(bytes32 conditionId) view returns (uint256)",
+];
+
+const GAS_OVERRIDES = {
+	maxPriorityFeePerGas: 30_000_000_000,
+	maxFeePerGas: 200_000_000_000,
+};
+
+const redeemed = new Set<string>();
+
+export async function fetchRedeemablePositions(
+	walletAddress: string,
+): Promise<RedeemablePosition[]> {
+	try {
+		const res = await fetch(
+			`${DATA_API}/positions?user=${walletAddress.toLowerCase()}`,
+		);
+		if (!res.ok) return [];
+		const positions = toPositions(await res.json());
+		return positions.filter((p) => p.redeemable && Number(p.currentValue ?? 0) > 0);
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		console.error("[redeemer] Failed to fetch positions:", msg);
+		return [];
+	}
+}
+
+export async function redeemAll(wallet: Wallet): Promise<RedeemResult[]> {
+	const positions = await fetchRedeemablePositions(wallet.address);
+	if (!positions.length) return [];
+
+	const conditionIds: string[] = [
+		...new Set(positions.map((p) => String(p.conditionId))),
+	];
+	const results: RedeemResult[] = [];
+
+	for (const conditionId of conditionIds) {
+		const key = conditionId.toLowerCase();
+		if (redeemed.has(key)) continue;
+
+		try {
+			const ctf = new Contract(CTF_ADDRESS, CTF_ABI, wallet);
+
+			const denominator = await ctf.payoutDenominator(conditionId);
+			if (denominator.isZero()) {
+				continue;
+			}
+
+			const tx = await ctf.redeemPositions(
+				USDC_E,
+				constants.HashZero,
+				conditionId,
+				[1, 2],
+				GAS_OVERRIDES,
+			);
+			console.log(
+				`[redeemer] Redeem tx sent: ${tx.hash} (condition: ${conditionId.slice(0, 10)}...)`,
+			);
+			const receipt = await Promise.race([
+				tx.wait(),
+				new Promise((_, reject) =>
+					setTimeout(() => reject(new Error("tx.wait timeout 60s")), 60_000),
+				),
+			]);
+			if (receipt.status !== 1) {
+				console.error(`[redeemer] Tx reverted: ${tx.hash}`);
+				results.push({ conditionId, txHash: tx.hash, error: "tx_reverted" });
+				continue;
+			}
+			redeemed.add(key);
+
+			const matched = positions.filter((p) => p.conditionId === conditionId);
+			const value = matched.reduce(
+				(sum, p) => sum + Number(p.currentValue ?? 0),
+				0,
+			);
+			console.log(
+				`[redeemer] Redeemed $${value.toFixed(2)} from ${matched[0]?.title || conditionId}`,
+			);
+			results.push({
+				conditionId,
+				txHash: tx.hash,
+				value,
+				status: receipt.status,
+			});
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			console.error(
+				`[redeemer] Failed to redeem ${conditionId.slice(0, 10)}:`,
+				msg,
+			);
+			results.push({ conditionId, error: msg });
+		}
+	}
+
+	return results;
+}
+
+export async function redeemAllPositions(
+	wallet: Wallet,
+): Promise<RedeemResult[]> {
+	try {
+		const allPositions = await fetchAllRedeemable(wallet.address);
+		if (!allPositions.length) return [];
+
+		const conditionIds: string[] = [
+			...new Set(allPositions.map((p) => String(p.conditionId))),
+		];
+		const results: RedeemResult[] = [];
+
+		for (const conditionId of conditionIds) {
+			const key = conditionId.toLowerCase();
+			if (redeemed.has(key)) continue;
+
+			try {
+				const ctf = new Contract(CTF_ADDRESS, CTF_ABI, wallet);
+				const denominator = await ctf.payoutDenominator(conditionId);
+				if (denominator.isZero()) continue;
+
+				const tx = await ctf.redeemPositions(
+					USDC_E,
+					constants.HashZero,
+					conditionId,
+					[1, 2],
+					GAS_OVERRIDES,
+				);
+				await tx.wait();
+				redeemed.add(key);
+				results.push({ conditionId, txHash: tx.hash });
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : String(err);
+				results.push({ conditionId, error: msg });
+			}
+		}
+		return results;
+	} catch {
+		return [];
+	}
+}
+
+export async function fetchAllRedeemable(
+	walletAddress: string,
+): Promise<RedeemablePosition[]> {
+	try {
+		const res = await fetch(
+			`${DATA_API}/positions?user=${walletAddress.toLowerCase()}`,
+		);
+		if (!res.ok) return [];
+		const positions = toPositions(await res.json());
+		return positions.filter((p) => p.redeemable);
+	} catch {
+		return [];
+	}
+}

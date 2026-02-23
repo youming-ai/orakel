@@ -1,0 +1,122 @@
+import type { ClobClient } from '@polymarket/clob-client';
+
+export interface TrackedOrder {
+  orderId: string;
+  marketId: string;
+  windowSlug: string;
+  side: string;
+  price: number;
+  size: number;
+  placedAt: number;
+  status: 'placed' | 'live' | 'matched' | 'filled' | 'cancelled' | 'expired';
+  sizeMatched: number;
+  lastChecked: number;
+}
+
+export class OrderManager {
+  private orders: Map<string, TrackedOrder> = new Map();
+  private client: ClobClient | null = null;
+  private pollIntervalMs: number = 5_000;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  setClient(client: ClobClient): void {
+    this.client = client;
+  }
+
+  addOrder(order: Omit<TrackedOrder, 'status' | 'sizeMatched' | 'lastChecked'>): void {
+    this.orders.set(order.orderId, {
+      ...order,
+      status: 'placed',
+      sizeMatched: 0,
+      lastChecked: Date.now(),
+    });
+  }
+
+  getOrder(orderId: string): TrackedOrder | undefined {
+    return this.orders.get(orderId);
+  }
+
+  getActiveOrders(): TrackedOrder[] {
+    return [...this.orders.values()].filter((o) => o.status === 'placed' || o.status === 'live');
+  }
+
+  getFilledOrders(): TrackedOrder[] {
+    return [...this.orders.values()].filter((o) => o.status === 'filled' || o.status === 'matched');
+  }
+
+  async pollOrders(): Promise<void> {
+    if (!this.client) return;
+
+    const active = this.getActiveOrders();
+    for (const order of active) {
+      try {
+        const result: unknown = await this.client.getOrder(order.orderId);
+        if (!result || typeof result !== 'object') continue;
+        const orderResult = result as Record<string, unknown>;
+
+        const status = String(orderResult.status ?? '').toLowerCase();
+        const sizeMatched = Number(orderResult.size_matched ?? orderResult.sizeMatched ?? 0);
+
+        if (status === 'matched' || (sizeMatched > 0 && sizeMatched >= order.size * 0.99)) {
+          order.status = 'filled';
+          order.sizeMatched = sizeMatched;
+          console.log(`[orderManager] Order ${order.orderId.slice(0, 8)} FILLED: ${sizeMatched} / ${order.size}`);
+        } else if (status === 'live') {
+          order.status = 'live';
+          order.sizeMatched = sizeMatched;
+        } else if (status === 'unmatched' || status === 'cancelled') {
+          order.status = 'cancelled';
+          console.log(`[orderManager] Order ${order.orderId.slice(0, 8)} CANCELLED`);
+        }
+
+        order.lastChecked = Date.now();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[orderManager] Poll error for ${order.orderId.slice(0, 8)}:`, msg);
+      }
+    }
+  }
+
+  prune(): void {
+    const cutoff = Date.now() - 20 * 60_000;
+    for (const [id, order] of this.orders) {
+      if (order.placedAt < cutoff && (order.status === 'filled' || order.status === 'cancelled' || order.status === 'expired')) {
+        this.orders.delete(id);
+      }
+    }
+  }
+
+  startPolling(intervalMs?: number): void {
+    if (this.pollTimer) return;
+    this.pollIntervalMs = intervalMs ?? this.pollIntervalMs;
+    this.pollTimer = setInterval(() => {
+      this.pollOrders().catch((err: unknown) => {
+        console.error('[orderManager] Poll cycle error:', err);
+      });
+    }, this.pollIntervalMs);
+  }
+
+  stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  hasOrderForWindow(marketId: string, windowSlug: string): boolean {
+    for (const order of this.orders.values()) {
+      if (
+        order.marketId === marketId &&
+        order.windowSlug === windowSlug &&
+        (order.status === 'placed' || order.status === 'live' || order.status === 'filled' || order.status === 'matched')
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  totalActive(): number {
+    return this.getActiveOrders().length + this.getFilledOrders().length;
+  }
+}
