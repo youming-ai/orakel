@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { MarketCard } from "./MarketCard";
+import { TradeTable } from "./TradeTable";
 import {
   Area,
   AreaChart,
@@ -84,12 +86,32 @@ interface RiskConfig {
   dailyMaxLossUsdc: number;
 }
 
+interface MarketSnapshot {
+  id: string; label: string; ok: boolean; error?: string;
+  spotPrice: number | null; currentPrice: number | null; priceToBeat: number | null;
+  marketUp: number | null; marketDown: number | null; rawSum: number | null; arbitrage: boolean;
+  predictLong: number | null; predictShort: number | null; predictDirection: "LONG" | "SHORT" | "NEUTRAL";
+  haColor: string | null; haConsecutive: number; rsi: number | null;
+  macd: { macd: number; signal: number; hist: number; histDelta: number | null } | null;
+  vwapSlope: number | null; timeLeftMin: number | null; phase: string | null;
+  action: string; side: string | null; edge: number | null; strength: string | null; reason: string | null;
+  volatility15m: number | null; blendSource: string | null; volImpliedUp: number | null;
+  binanceChainlinkDelta: number | null; orderbookImbalance: number | null;
+}
+
+interface TradeRecord {
+  timestamp: string; market: string; side: string; amount: string;
+  price: string; orderId: string; status: string;
+}
 interface AnalyticsTabsProps {
   stats: PaperStats | null;
   trades: PaperTradeEntry[];
   byMarket?: Record<string, MarketBreakdown>;
   config: { strategy: Record<string, unknown>; paperRisk: Record<string, unknown>; liveRisk: Record<string, unknown> };
   onConfigSaved?: () => Promise<void> | void;
+  markets: MarketSnapshot[];
+  liveTrades: TradeRecord[];
+  viewMode: "paper" | "live";
 }
 
 interface StrategyFormValues {
@@ -226,7 +248,7 @@ function buildMarketFromTrades(trades: PaperTradeEntry[]): Record<string, Market
   return result;
 }
 
-export function AnalyticsTabs({ stats, trades, byMarket, config, onConfigSaved }: AnalyticsTabsProps) {
+export function AnalyticsTabs({ stats, trades, byMarket, config, onConfigSaved, markets, liveTrades, viewMode }: AnalyticsTabsProps) {
   const [form, setForm] = useState<StrategyFormValues>(() =>
     toStrategyFormValues(config.strategy, config.paperRisk)
   );
@@ -394,6 +416,7 @@ export function AnalyticsTabs({ stats, trades, byMarket, config, onConfigSaved }
         <TabsTrigger value="overview">Overview</TabsTrigger>
         <TabsTrigger value="markets">Markets</TabsTrigger>
         <TabsTrigger value="timing">Timing</TabsTrigger>
+        <TabsTrigger value="trades">Trades</TabsTrigger>
         <TabsTrigger value="strategy">Strategy</TabsTrigger>
       </TabsList>
 
@@ -479,6 +502,11 @@ export function AnalyticsTabs({ stats, trades, byMarket, config, onConfigSaved }
             )}
           </CardContent>
         </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {markets.map((m) => (
+            <MarketCard key={m.id} market={m} />
+          ))}
+        </div>
       </TabsContent>
 
       <TabsContent value="markets" className="space-y-4">
@@ -720,6 +748,15 @@ export function AnalyticsTabs({ stats, trades, byMarket, config, onConfigSaved }
               )}
             </CardContent>
           </Card>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="trades" className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            {viewMode === "paper" ? "Paper Trades" : "Live Trades"}
+          </h2>
+          <TradeTable trades={liveTrades} paperMode={viewMode === "paper"} />
         </div>
       </TabsContent>
 

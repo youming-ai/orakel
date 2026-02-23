@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Separator } from "@/components/ui/separator";
 import { AnalyticsTabs } from "./AnalyticsTabs";
 import { Header } from "./Header";
-import { MarketCard } from "./MarketCard";
-import { TradeTable } from "./TradeTable";
 import { Web3Provider } from "./Web3Provider";
 
 interface DashboardState {
@@ -123,12 +120,12 @@ export default function Dashboard() {
 
   const fetchTrades = useCallback(async () => {
     try {
-      const res = await fetch("/api/trades");
+      const res = await fetch(`/api/trades?mode=${viewMode}`);
       if (!res.ok) return;
       const data: TradeRecord[] = await res.json();
       setTrades(data);
     } catch {}
-  }, []);
+  }, [viewMode]);
 
   const fetchPaperStats = useCallback(async () => {
     try {
@@ -212,34 +209,19 @@ export default function Dashboard() {
         onPaperToggle={handlePaperToggle}
         onLiveToggle={handleLiveToggle}
       />
-
       <main className="p-6 space-y-6 max-w-7xl mx-auto">
-        {viewMode === "paper" && (
-          <AnalyticsTabs
-            stats={state.paperStats}
-            trades={paperTrades}
-            byMarket={paperByMarket}
-            config={state.config}
-            onConfigSaved={async () => {
-              await Promise.all([fetchState(), fetchPaperStats()]);
-            }}
-          />
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {state.markets.map((m) => (
-            <MarketCard key={m.id} market={m} />
-          ))}
-        </div>
-
-        <Separator />
-
-        <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            {viewMode === "paper" ? "Paper Trades" : "Live Trades"}
-          </h2>
-          <TradeTable trades={trades} paperMode={viewMode === "paper"} />
-        </div>
+        <AnalyticsTabs
+          stats={state.paperStats}
+          trades={paperTrades}
+          byMarket={paperByMarket}
+          config={state.config}
+          onConfigSaved={async () => {
+            await Promise.all([fetchState(), fetchPaperStats()]);
+          }}
+          markets={state.markets}
+          liveTrades={trades}
+          viewMode={viewMode}
+        />
       </main>
     </div>
     </Web3Provider>
