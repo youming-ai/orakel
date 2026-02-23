@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { erc20Abi } from "viem";
+import { erc20Abi, formatUnits } from "viem";
 import {
   useAccount,
   useBalance,
@@ -115,7 +115,7 @@ export function ConnectWallet() {
           : usdcFormatted
             ? `${usdcFormatted} ${usdcSymbol}`
             : balance
-              ? `${Number(balance.formatted).toFixed(4)} POL`
+              ? `${Number(formatUnits(balance.value, balance.decimals)).toFixed(4)} POL`
               : balanceError && usdcError
                 ? "Unavailable"
                 : "--"}
@@ -180,7 +180,7 @@ export function ConnectWallet() {
                   : balanceError
                     ? "Unavailable"
                     : balance
-                      ? `${Number(balance.formatted).toFixed(4)} POL`
+                      ? `${Number(formatUnits(balance.value, balance.decimals)).toFixed(4)} POL`
                       : "0.0000 POL"}
               </div>
             </div>
