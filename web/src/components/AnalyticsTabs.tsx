@@ -216,10 +216,11 @@ export function AnalyticsTabs({
 	}, [config.strategy, config.paperRisk, config.liveRisk, viewMode]);
 
 	const derivedStats = useMemo(() => buildStatsFromTrades(trades), [trades]);
-	const mergedStats = useMemo(
-		() => stats ?? derivedStats,
-		[stats, derivedStats],
-	);
+	const mergedStats = useMemo(() => {
+		if (!stats) return derivedStats;
+		// Override totalTrades with derived value (computed from actual trades array)
+		return { ...stats, totalTrades: derivedStats.totalTrades };
+	}, [stats, derivedStats]);
 
 	const marketStats = useMemo(() => {
 		const client = buildMarketFromTrades(trades);
