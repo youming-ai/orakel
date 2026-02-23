@@ -1,13 +1,13 @@
-import { ProxyAgent, setGlobalDispatcher } from "undici";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
+import { ProxyAgent, setGlobalDispatcher } from "undici";
 
-function readEnv(name) {
+function readEnv(name: string): string {
   const v = process.env[name];
   return v && String(v).trim() ? String(v).trim() : "";
 }
 
-export function getProxyUrlFor(targetUrl) {
+export function getProxyUrlFor(targetUrl: string): string {
   const u = String(targetUrl || "");
   const isHttps = u.startsWith("https://") || u.startsWith("wss://");
   const isHttp = u.startsWith("http://") || u.startsWith("ws://");
@@ -21,7 +21,7 @@ export function getProxyUrlFor(targetUrl) {
   return all || https || http || "";
 }
 
-export function applyGlobalProxyFromEnv() {
+export function applyGlobalProxyFromEnv(): boolean {
   const proxyUrl = getProxyUrlFor("https://example.com");
   if (!proxyUrl) return false;
 
@@ -33,7 +33,7 @@ export function applyGlobalProxyFromEnv() {
   }
 }
 
-export function wsAgentForUrl(wsUrl) {
+export function wsAgentForUrl(wsUrl: string): HttpsProxyAgent<string> | SocksProxyAgent | undefined {
   const proxyUrl = getProxyUrlFor(wsUrl);
   if (!proxyUrl) return undefined;
 
