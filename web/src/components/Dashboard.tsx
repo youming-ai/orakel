@@ -1,231 +1,169 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useDashboardState, useLiveCancel, useLiveToggle, usePaperCancel, usePaperStats, usePaperToggle, useTrades } from "@/lib/queries";
+import type { ViewMode } from "@/lib/types";
 import { AnalyticsTabs } from "./AnalyticsTabs";
 import { Header } from "./Header";
 import { Web3Provider } from "./Web3Provider";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
-interface DashboardState {
-  markets: MarketSnapshot[];
-  updatedAt: string;
-  wallet: { address: string | null; connected: boolean };
-  paperDaily: { pnl: number; trades: number; date: string };
-  liveDaily: { pnl: number; trades: number; date: string };
-  config: { strategy: Record<string, unknown>; paperRisk: Record<string, unknown>; liveRisk: Record<string, unknown> };
-  paperRunning: boolean;
-  liveRunning: boolean;
-  paperStats: {
-    totalTrades: number;
-    wins: number;
-    losses: number;
-    pending: number;
-    winRate: number;
-    totalPnl: number;
-  } | null;
-  paperBalance: { initial: number; current: number; maxDrawdown: number } | null;
-  liveWallet: { address: string | null; connected: boolean; clientReady: boolean };
-}
-
-interface MarketSnapshot {
-  id: string;
-  label: string;
-  ok: boolean;
-  error?: string;
-  spotPrice: number | null;
-  currentPrice: number | null;
-  priceToBeat: number | null;
-  marketUp: number | null;
-  marketDown: number | null;
-  rawSum: number | null;
-  arbitrage: boolean;
-  predictLong: number | null;
-  predictShort: number | null;
-  predictDirection: "LONG" | "SHORT" | "NEUTRAL";
-  haColor: string | null;
-  haConsecutive: number;
-  rsi: number | null;
-  macd: { macd: number; signal: number; hist: number; histDelta: number | null } | null;
-  vwapSlope: number | null;
-  timeLeftMin: number | null;
-  phase: string | null;
-  action: string;
-  side: string | null;
-  edge: number | null;
-  strength: string | null;
-  reason: string | null;
-  volatility15m: number | null;
-  blendSource: string | null;
-  volImpliedUp: number | null;
-  binanceChainlinkDelta: number | null;
-  orderbookImbalance: number | null;
-}
-
-interface TradeRecord {
-  timestamp: string;
-  market: string;
-  side: string;
-  amount: string;
-  price: string;
-  orderId: string;
-  status: string;
-}
-
-interface PaperTrade {
-  id: string;
-  marketId: string;
-  windowStartMs: number;
-  side: "UP" | "DOWN";
-  price: number;
-  size: number;
-  priceToBeat: number;
-  currentPriceAtEntry: number | null;
-  timestamp: string;
-  resolved: boolean;
-  won: boolean | null;
-  pnl: number | null;
-  settlePrice: number | null;
-}
-
-interface MarketBreakdown {
-  wins: number;
-  losses: number;
-  pending: number;
-  winRate: number;
-  totalPnl: number;
-  tradeCount: number;
-}
-
-export default function Dashboard() {
-  const [state, setState] = useState<DashboardState | null>(null);
-  const [trades, setTrades] = useState<TradeRecord[]>([]);
-  const [paperTrades, setPaperTrades] = useState<PaperTrade[]>([]);
-  const [paperByMarket, setPaperByMarket] = useState<Record<string, MarketBreakdown>>({});
-  const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"paper" | "live">(() => {
+function DashboardContent() {
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("viewMode") as "paper" | "live") || "paper";
+      return (localStorage.getItem("viewMode") as ViewMode) || "paper";
     }
     return "paper";
   });
+  const [confirmAction, setConfirmAction] = useState<"start" | "stop" | null>(null);
 
-  const fetchState = useCallback(async () => {
-    try {
-      const res = await fetch("/api/state");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: DashboardState = await res.json();
-      setState(data);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Connection failed");
-    }
-  }, []);
+  const { data: state, error: stateError } = useDashboardState();
+  const { data: trades = [] } = useTrades(viewMode);
+  const { data: paperStatsData } = usePaperStats(viewMode === "paper");
+  const paperToggle = usePaperToggle();
+  const liveToggle = useLiveToggle();
+  const paperCancel = usePaperCancel();
+  const liveCancel = useLiveCancel();
 
-  const fetchTrades = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/trades?mode=${viewMode}`);
-      if (!res.ok) return;
-      const data: TradeRecord[] = await res.json();
-      setTrades(data);
-    } catch {}
-  }, [viewMode]);
+  const paperTrades = paperStatsData?.trades ?? [];
+  const paperByMarket = paperStatsData?.byMarket ?? {};
 
-  const fetchPaperStats = useCallback(async () => {
-    if (viewMode !== "paper") return;
-    try {
-      const res = await fetch("/api/paper-stats");
-      if (!res.ok) return;
-      const data = await res.json() as {
-        stats?: DashboardState["paperStats"];
-        trades?: PaperTrade[];
-        byMarket?: Record<string, MarketBreakdown>;
-        recentTrades?: PaperTrade[];
-      };
-      if (data.stats) {
-        setState((prev) => (prev ? { ...prev, paperStats: data.stats ?? prev.paperStats } : prev));
-      }
-      if (data.trades) setPaperTrades(data.trades);
-      else if (data.recentTrades) setPaperTrades(data.recentTrades);
-      if (data.byMarket) setPaperByMarket(data.byMarket);
-    } catch {}
-  }, [viewMode]);
-
-  const handleViewModeChange = useCallback((mode: "paper" | "live") => {
+  const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
     if (typeof window !== "undefined") {
       localStorage.setItem("viewMode", mode);
     }
   }, []);
 
-  const handlePaperToggle = useCallback(async () => {
-    const endpoint = state?.paperRunning ? "/api/paper/stop" : "/api/paper/start";
-    try {
-      await fetch(endpoint, { method: "POST" });
-      await fetchState();
-    } catch (e) {
-      console.error("Paper toggle error:", e);
-    }
-  }, [state?.paperRunning, fetchState]);
 
-  const handleLiveToggle = useCallback(async () => {
-    const endpoint = state?.liveRunning ? "/api/live/stop" : "/api/live/start";
-    try {
-      await fetch(endpoint, { method: "POST" });
-      await fetchState();
-    } catch (e) {
-      console.error("Live toggle error:", e);
+  const handlePaperToggle = useCallback(() => {
+    if (!state) return;
+    if (state.paperPendingStart || state.paperPendingStop) {
+      paperCancel.mutate();
+      return;
     }
-  }, [state?.liveRunning, fetchState]);
+    setConfirmAction(state.paperRunning ? "stop" : "start");
+  }, [state, paperCancel]);
 
-  useEffect(() => {
-    fetchState();
-    fetchTrades();
-    fetchPaperStats();
-    const stateInterval = setInterval(fetchState, 2000);
-    const tradeInterval = setInterval(fetchTrades, 10000);
-    const paperInterval = setInterval(fetchPaperStats, 10000);
-    return () => {
-      clearInterval(stateInterval);
-      clearInterval(tradeInterval);
-      clearInterval(paperInterval);
-    };
-  }, [fetchState, fetchTrades, fetchPaperStats]);
+  const handleLiveToggle = useCallback(() => {
+    if (!state) return;
+    if (state.livePendingStart || state.livePendingStop) {
+      liveCancel.mutate();
+      return;
+    }
+    if (!state.liveRunning && !state.liveWallet?.clientReady) return;
+    setConfirmAction(state.liveRunning ? "stop" : "start");
+  }, [state, liveCancel]);
+
+
+  const handleConfirm = useCallback(() => {
+    if (!state || !confirmAction) return;
+    if (viewMode === "paper") {
+      paperToggle.mutate(confirmAction === "stop");
+    } else {
+      liveToggle.mutate(confirmAction === "stop");
+    }
+    setConfirmAction(null);
+  }, [state, confirmAction, viewMode, paperToggle, liveToggle]);
 
   if (!state) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center space-y-3">
-          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-          <p className="text-sm text-muted-foreground">{error ? `Error: ${error}` : "Connecting to bot..."}</p>
+          {stateError ? (
+            <>
+              <p className="text-sm text-red-400">
+                Failed to connect: {stateError.message}
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-2 px-4 py-1.5 text-xs font-medium rounded-md bg-muted hover:bg-accent transition-colors"
+              >
+                Retry
+              </button>
+            </>
+          ) : (
+            <>
+              <div
+                className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+                role="status"
+                aria-label="Loading dashboard"
+              />
+              <p className="text-sm text-muted-foreground">Connecting to bot...</p>
+            </>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <Web3Provider>
     <div className="min-h-screen bg-background">
       <Header
         viewMode={viewMode}
         paperRunning={state.paperRunning}
         liveRunning={state.liveRunning}
+        liveWalletReady={state.liveWallet?.clientReady ?? false}
+        paperPendingStart={state.paperPendingStart ?? false}
+        paperPendingStop={state.paperPendingStop ?? false}
+        livePendingStart={state.livePendingStart ?? false}
+        livePendingStop={state.livePendingStop ?? false}
         onViewModeChange={handleViewModeChange}
         onPaperToggle={handlePaperToggle}
         onLiveToggle={handleLiveToggle}
       />
-      <main className="p-6 space-y-6 max-w-7xl mx-auto">
+      <main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
         <AnalyticsTabs
           stats={viewMode === "paper" ? state.paperStats : null}
           trades={viewMode === "paper" ? paperTrades : []}
           byMarket={viewMode === "paper" ? paperByMarket : {}}
           config={state.config}
-          onConfigSaved={async () => {
-            await fetchState();
-            if (viewMode === "paper") await fetchPaperStats();
-          }}
           markets={state.markets}
           liveTrades={trades}
           viewMode={viewMode}
         />
       </main>
+
+
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "start" ? "Start Bot" : "Stop Bot"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "start"
+                ? `Start ${viewMode} trading? The bot will begin at the next 15-minute cycle boundary.`
+                : `Stop ${viewMode} trading? The bot will finish the current cycle and settle before stopping.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirm}
+              variant={confirmAction === "stop" ? "destructive" : "default"}
+            >
+              {confirmAction === "start" ? "Start" : "Stop"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <Web3Provider>
+      <DashboardContent />
     </Web3Provider>
   );
 }

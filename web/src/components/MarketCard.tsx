@@ -1,195 +1,200 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { MarketSnapshot } from "@/lib/api";
+import { fmtCents, fmtMinSec, fmtPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-interface MarketSnapshot {
-  id: string;
-  label: string;
-  ok: boolean;
-  error?: string;
-  spotPrice: number | null;
-  currentPrice: number | null;
-  priceToBeat: number | null;
-  marketUp: number | null;
-  marketDown: number | null;
-  rawSum: number | null;
-  arbitrage: boolean;
-  predictLong: number | null;
-  predictShort: number | null;
-  predictDirection: "LONG" | "SHORT" | "NEUTRAL";
-  haColor: string | null;
-  haConsecutive: number;
-  rsi: number | null;
-  macd: { macd: number; signal: number; hist: number; histDelta: number | null } | null;
-  vwapSlope: number | null;
-  timeLeftMin: number | null;
-  phase: string | null;
-  action: string;
-  side: string | null;
-  edge: number | null;
-  strength: string | null;
-  reason: string | null;
-  volatility15m: number | null;
-  blendSource: string | null;
-  volImpliedUp: number | null;
-  binanceChainlinkDelta: number | null;
-  orderbookImbalance: number | null;
-}
-
 interface MarketCardProps {
-  market: MarketSnapshot;
+	market: MarketSnapshot;
 }
 
-function fmtPrice(id: string, price: number | null): string {
-  if (price === null) return "---";
-  if (id === "BTC") return `$${price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-  if (id === "ETH") return `$${price.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
-  if (id === "SOL") return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return `$${price.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
-}
-
-function fmtCents(v: number | null): string {
-  if (v === null) return "---";
-  return `${(v * 100).toFixed(0)}c`;
-}
-
-function fmtTime(min: number | null): string {
-  if (min === null) return "--:--";
-  const m = Math.floor(min);
-  const s = Math.round((min - m) * 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function macdLabel(macd: MarketSnapshot["macd"]): { text: string; color: string } {
-  if (!macd) return { text: "---", color: "text-muted-foreground" };
-  if (macd.hist > 0 && (macd.histDelta ?? 0) > 0) return { text: "bullish", color: "text-emerald-400" };
-  if (macd.hist > 0) return { text: "green", color: "text-emerald-400/70" };
-  if (macd.hist < 0 && (macd.histDelta ?? 0) < 0) return { text: "bearish", color: "text-red-400" };
-  return { text: "red", color: "text-red-400/70" };
+function macdLabel(macd: MarketSnapshot["macd"]): {
+	text: string;
+	color: string;
+} {
+	if (!macd) return { text: "---", color: "text-muted-foreground" };
+	if (macd.hist > 0 && (macd.histDelta ?? 0) > 0)
+		return { text: "bullish", color: "text-emerald-400" };
+	if (macd.hist > 0) return { text: "green", color: "text-emerald-400/70" };
+	if (macd.hist < 0 && (macd.histDelta ?? 0) < 0)
+		return { text: "bearish", color: "text-red-400" };
+	return { text: "red", color: "text-red-400/70" };
 }
 
 export function MarketCard({ market: m }: MarketCardProps) {
-  if (!m.ok) {
-    return (
-      <Card className="border-red-900/40 bg-red-950/20">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">{m.id}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-red-400">Error: {m.error ?? "Unknown"}</p>
-        </CardContent>
-      </Card>
-    );
-  }
+	if (!m.ok) {
+		return (
+			<Card className="border-red-900/40 bg-red-950/20">
+				<CardHeader className="pb-2">
+					<CardTitle className="text-base">{m.id}</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<p className="text-sm text-red-400">Error: {m.error ?? "Unknown"}</p>
+				</CardContent>
+			</Card>
+		);
+	}
 
-  const isLong = m.predictDirection === "LONG";
-  const isEntry = m.action === "ENTER";
-  const phaseBg = m.phase === "LATE" ? "bg-amber-500/10" : "";
-  const macdInfo = macdLabel(m.macd);
+	const isLong = m.predictDirection === "LONG";
+	const isEntry = m.action === "ENTER";
+	const phaseBg = m.phase === "LATE" ? "bg-amber-500/10" : "";
+	const macdInfo = macdLabel(m.macd);
 
-  return (
-    <Card className={cn("relative overflow-hidden", phaseBg)}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-bold">{m.id}</CardTitle>
-          <div className="flex items-center gap-2">
-            {m.phase && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                {m.phase}
-              </Badge>
-            )}
-            <span className="font-mono text-xs text-muted-foreground">{fmtTime(m.timeLeftMin)}</span>
-          </div>
-        </div>
-        <div className="flex items-baseline gap-2 mt-1">
-          <span className="font-mono text-xl font-bold tracking-tight">{fmtPrice(m.id, m.spotPrice)}</span>
-          {m.priceToBeat !== null && (
-            <span className="font-mono text-xs text-muted-foreground">PTB {fmtPrice(m.id, m.priceToBeat)}</span>
-          )}
-        </div>
-      </CardHeader>
+	return (
+		<Card className={cn("relative overflow-hidden", phaseBg)}>
+			<CardHeader className="pb-3">
+				<div className="flex items-center justify-between">
+					<CardTitle className="text-base font-bold">{m.id}</CardTitle>
+					<div className="flex items-center gap-2">
+						{m.phase && (
+							<Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+								{m.phase}
+							</Badge>
+						)}
+						<span className="font-mono text-xs text-muted-foreground">
+							{fmtMinSec(m.timeLeftMin)}
+						</span>
+					</div>
+				</div>
+				<div className="flex items-baseline gap-2 mt-1">
+					<span className="font-mono text-xl font-bold tracking-tight">
+						{fmtPrice(m.id, m.spotPrice)}
+					</span>
+					{m.priceToBeat !== null && (
+						<span className="font-mono text-xs text-muted-foreground">
+							PTB {fmtPrice(m.id, m.priceToBeat)}
+						</span>
+					)}
+				</div>
+			</CardHeader>
 
-      <CardContent className="space-y-3 pt-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Predict</span>
-            <span className={cn("font-mono text-sm font-semibold", isLong ? "text-emerald-400" : "text-red-400")}>
-              {isLong ? "LONG" : "SHORT"} {isLong ? m.predictLong : m.predictShort}%
-            </span>
-          </div>
-          <div className="flex gap-3 font-mono text-xs">
-            <span className="text-emerald-400/80">UP {fmtCents(m.marketUp)}</span>
-            <span className="text-red-400/80">DN {fmtCents(m.marketDown)}</span>
-          </div>
-        </div>
+			<CardContent className="space-y-3 pt-0">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-1.5">
+						<span className="text-xs text-muted-foreground">Predict</span>
+						<span
+							className={cn(
+								"font-mono text-sm font-semibold",
+								isLong ? "text-emerald-400" : "text-red-400",
+							)}
+						>
+							{isLong ? "LONG" : "SHORT"}{" "}
+							{isLong ? m.predictLong : m.predictShort}%
+						</span>
+					</div>
+					<div className="flex gap-3 font-mono text-xs">
+						<span className="text-emerald-400/80">
+							UP {fmtCents(m.marketUp)}
+						</span>
+						<span className="text-red-400/80">DN {fmtCents(m.marketDown)}</span>
+					</div>
+				</div>
 
-        <div className="grid grid-cols-4 gap-1 text-[11px]">
-          <div className="space-y-0.5">
-            <span className="text-muted-foreground block">HA</span>
-            <span className={cn("font-mono block", m.haColor === "green" ? "text-emerald-400" : "text-red-400")}>
-              {m.haColor ?? "-"} x{m.haConsecutive}
-            </span>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-muted-foreground block">RSI</span>
-            <span className={cn("font-mono block", (m.rsi ?? 50) > 70 ? "text-red-400" : (m.rsi ?? 50) < 30 ? "text-emerald-400" : "text-foreground")}>
-              {m.rsi?.toFixed(1) ?? "-"}
-            </span>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-muted-foreground block">MACD</span>
-            <span className={cn("font-mono block", macdInfo.color)}>
-              {macdInfo.text}
-            </span>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-muted-foreground block">VWAP</span>
-            <span className={cn("font-mono block", (m.vwapSlope ?? 0) > 0 ? "text-emerald-400" : "text-red-400")}>
-              {(m.vwapSlope ?? 0) > 0 ? "up" : "dn"}
-            </span>
-          </div>
-        </div>
+				<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+					<div className="space-y-0.5">
+						<span className="text-muted-foreground block">HA</span>
+						<span
+							className={cn(
+								"font-mono block",
+								m.haColor === "green" ? "text-emerald-300" : "text-red-300",
+							)}
+						>
+							{m.haColor ?? "-"} x{m.haConsecutive}
+						</span>
+					</div>
+					<div className="space-y-0.5">
+						<span className="text-muted-foreground block">RSI</span>
+						<span
+							className={cn(
+								"font-mono block",
+								(m.rsi ?? 50) > 70
+									? "text-red-400"
+									: (m.rsi ?? 50) < 30
+										? "text-emerald-400"
+										: "text-foreground",
+							)}
+						>
+							{m.rsi?.toFixed(1) ?? "-"}
+						</span>
+					</div>
+					<div className="space-y-0.5">
+						<span className="text-muted-foreground block">MACD</span>
+						<span className={cn("font-mono block", macdInfo.color)}>
+							{macdInfo.text}
+						</span>
+					</div>
+					<div className="space-y-0.5">
+						<span className="text-muted-foreground block">VWAP</span>
+						<span
+							className={cn(
+								"font-mono block",
+								(m.vwapSlope ?? 0) > 0 ? "text-emerald-400" : "text-red-400",
+							)}
+						>
+							{(m.vwapSlope ?? 0) > 0 ? "up" : "dn"}
+						</span>
+					</div>
+				</div>
 
-        <div className="grid grid-cols-4 gap-1 text-[11px]">
-          <div className="space-y-0.5">
-            <span className="text-muted-foreground block">Vol</span>
-            <span className="font-mono block">
-              {m.volatility15m !== null ? `${(m.volatility15m * 100).toFixed(2)}%` : "-"}
-            </span>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-muted-foreground block">Blend</span>
-            <span className="font-mono block">
-              {m.blendSource ?? "-"}
-            </span>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-muted-foreground block">OB</span>
-            <span className={cn("font-mono block", m.orderbookImbalance !== null && m.orderbookImbalance > 0 ? "text-emerald-400" : "text-red-400")}>
-              {m.orderbookImbalance !== null ? `${(m.orderbookImbalance * 100).toFixed(0)}%` : "-"}
-            </span>
-          </div>
-          <div className="space-y-0.5">
-            <span className="text-muted-foreground block">Sum</span>
-            <span className={cn("font-mono block", m.arbitrage ? "text-amber-400" : "")}>
-              {m.rawSum !== null ? m.rawSum.toFixed(3) : "-"}
-            </span>
-          </div>
-        </div>
+				<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+					<div className="space-y-0.5">
+						<span className="text-muted-foreground block">Vol</span>
+						<span className="font-mono block">
+							{m.volatility15m !== null
+								? `${(m.volatility15m * 100).toFixed(2)}%`
+								: "-"}
+						</span>
+					</div>
+					<div className="space-y-0.5">
+						<span className="text-muted-foreground block">Blend</span>
+						<span className="font-mono block">{m.blendSource ?? "-"}</span>
+					</div>
+					<div className="space-y-0.5">
+						<span className="text-muted-foreground block">OB</span>
+						<span
+							className={cn(
+								"font-mono block",
+								m.orderbookImbalance !== null && m.orderbookImbalance > 0
+									? "text-emerald-400"
+									: "text-red-400",
+							)}
+						>
+							{m.orderbookImbalance !== null
+								? `${(m.orderbookImbalance * 100).toFixed(0)}%`
+								: "-"}
+						</span>
+					</div>
+					<div className="space-y-0.5">
+						<span className="text-muted-foreground block">Sum</span>
+						<span
+							className={cn(
+								"font-mono block",
+								m.arbitrage ? "text-amber-400" : "",
+							)}
+						>
+							{m.rawSum !== null ? m.rawSum.toFixed(3) : "-"}
+						</span>
+					</div>
+				</div>
 
-        <div className={cn(
-          "rounded-md px-3 py-1.5 text-xs font-medium text-center",
-          isEntry
-            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-            : "bg-muted/50 text-muted-foreground"
-        )}>
-          {isEntry ? (
-            <span>BUY {m.side} | Edge {((m.edge ?? 0) * 100).toFixed(1)}% | {m.strength}</span>
-          ) : (
-            <span>NO TRADE ({m.reason ?? m.phase})</span>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
+				<div
+					className={cn(
+						"rounded-md px-3 py-1.5 text-xs font-medium text-center",
+						isEntry
+							? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+							: "bg-muted/50 text-muted-foreground",
+					)}
+				>
+					{isEntry ? (
+						<span>
+							BUY {m.side} | Edge {((m.edge ?? 0) * 100).toFixed(1)}% |{" "}
+							{m.strength}
+						</span>
+					) : (
+						<span>NO TRADE ({m.reason ?? m.phase})</span>
+					)}
+				</div>
+			</CardContent>
+		</Card>
+	);
 }
