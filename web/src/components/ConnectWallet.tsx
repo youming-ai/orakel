@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { erc20Abi, formatUnits } from "viem";
 import {
   useAccount,
@@ -13,6 +13,7 @@ import { injected } from "wagmi/connectors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Wallet, LogOut, ArrowRightLeft, Coins, Gem } from "lucide-react";
 
 const USDC_E_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174" as const;
 
@@ -23,7 +24,7 @@ function truncateAddress(addr: string): string {
 export function ConnectWallet() {
   const { address, isConnected, chain } = useAccount();
   const { connect, isPending } = useConnect();
-  const { disconnect } = useDisconnect();
+  const { disconnect } = useDisconnect({ mutation: { onSettled: () => setShowMenu(false) } });
   const { switchChain, isPending: isSwitching } = useSwitchChain();
   const {
     data: balance,
@@ -65,6 +66,16 @@ export function ConnectWallet() {
   });
   const [showMenu, setShowMenu] = useState(false);
 
+  // Close menu on Escape key
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowMenu(false);
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [showMenu]);
+
   const usdcBalance = usdcData?.[0]?.result as bigint | undefined;
   const usdcDecimals = (usdcData?.[1]?.result as number | undefined) ?? 6;
   const usdcSymbol = (usdcData?.[2]?.result as string | undefined) ?? "USDC.e";
@@ -83,7 +94,7 @@ export function ConnectWallet() {
         onClick={() => connect({ connector: injected() })}
         disabled={isPending}
       >
-        {isPending ? "Connecting..." : "Connect Wallet"}
+        <Wallet className="size-3.5" /> {isPending ? "Connecting..." : "Connect Wallet"}
       </Button>
     );
   }
@@ -97,7 +108,7 @@ export function ConnectWallet() {
         onClick={() => switchChain({ chainId: polygon.id })}
         disabled={isSwitching}
       >
-        {isSwitching ? "Switching..." : "Switch to Polygon"}
+        <ArrowRightLeft className="size-3.5" /> {isSwitching ? "Switching..." : "Switch to Polygon"}
       </Button>
     );
   }
@@ -106,24 +117,24 @@ export function ConnectWallet() {
     <div className="relative flex items-center gap-2">
       <span
         className={cn(
-          "hidden sm:inline text-xs font-mono",
+          "text-xs font-mono",
           balanceError && usdcError ? "text-red-400" : "text-muted-foreground"
         )}
       >
         {inlineLoading
-          ? "Loading..."
+          ? "..."
           : usdcFormatted
             ? `${usdcFormatted} ${usdcSymbol}`
             : balance
-              ? `${Number(formatUnits(balance.value, balance.decimals)).toFixed(4)} POL`
+              ? `${Number(formatUnits(balance.value, balance.decimals)).toFixed(2)} POL`
               : balanceError && usdcError
-                ? "Unavailable"
+                ? "Err"
                 : "--"}
       </span>
       <button
         type="button"
         onClick={() => setShowMenu((v) => !v)}
-        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        className="flex items-center gap-2 hover:opacity-80 transition-opacity min-h-[44px] sm:min-h-0"
       >
         <span className="font-mono text-xs text-muted-foreground">
           {address ? truncateAddress(address) : ""}
@@ -140,7 +151,6 @@ export function ConnectWallet() {
           {chain?.name ?? "Unknown"}
         </Badge>
       </button>
-
       {showMenu && (
         <>
           <button
@@ -150,13 +160,13 @@ export function ConnectWallet() {
             aria-label="Close menu"
             tabIndex={-1}
           />
-          <div className="absolute right-0 top-full mt-2 z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md">
-            <div className="px-3 py-2 border-b border-border">
-              <div className="text-[10px] text-muted-foreground">Address</div>
+          <div className="fixed sm:absolute bottom-0 sm:bottom-auto left-0 sm:left-auto right-0 sm:right-0 top-auto sm:top-full sm:mt-2 z-50 sm:min-w-[200px] rounded-t-xl sm:rounded-md border-t sm:border border-border bg-popover p-1 shadow-lg" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+            <div className="px-3 py-2.5 border-b border-border">
+              <div className="text-[10px] text-muted-foreground flex items-center gap-1"><Wallet className="size-3" /> Address</div>
               <div className="font-mono text-xs break-all">{address}</div>
             </div>
-            <div className="px-3 py-2 border-b border-border">
-              <div className="text-[10px] text-muted-foreground">USDC.e Balance</div>
+            <div className="px-3 py-2.5 border-b border-border">
+              <div className="text-[10px] text-muted-foreground flex items-center gap-1"><Coins className="size-3" /> USDC.e Balance</div>
               <div
                 className={cn(
                   "font-mono text-xs",
@@ -172,8 +182,8 @@ export function ConnectWallet() {
                       : "0.00 USDC.e"}
               </div>
             </div>
-            <div className="px-3 py-2 border-b border-border">
-              <div className="text-[10px] text-muted-foreground">Native Balance</div>
+            <div className="px-3 py-2.5 border-b border-border">
+              <div className="text-[10px] text-muted-foreground flex items-center gap-1"><Gem className="size-3" /> Native Balance</div>
               <div className={cn("font-mono text-xs", balanceError ? "text-red-400" : "") }>
                 {balanceLoading
                   ? "Loading..."
@@ -186,13 +196,10 @@ export function ConnectWallet() {
             </div>
             <button
               type="button"
-              onClick={() => {
-                disconnect();
-                setShowMenu(false);
-              }}
-              className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-accent rounded-sm transition-colors"
+              onClick={() => disconnect()}
+              className="w-full text-left px-3 py-3 sm:py-2 text-xs text-red-400 hover:bg-accent rounded-sm transition-colors min-h-[44px] sm:min-h-0 flex items-center"
             >
-              Disconnect
+              <LogOut className="size-3" /> Disconnect
             </button>
           </div>
         </>
