@@ -85,33 +85,7 @@ export function Header({
 
       <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-4">
         <div className="flex items-center gap-2 sm:gap-4">
-          <svg className="w-8 h-8" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#8B5CF6"/>
-                <stop offset="50%" stopColor="#06B6D4"/>
-                <stop offset="100%" stopColor="#10B981"/>
-              </linearGradient>
-              <linearGradient id="kGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#06B6D4"/>
-                <stop offset="100%" stopColor="#8B5CF6"/>
-              </linearGradient>
-            </defs>
-            <circle cx="256" cy="256" r="240" fill="#0a0a0a"/>
-            <circle cx="256" cy="256" r="180" fill="none" stroke="url(#ringGradient)" strokeWidth="24" strokeLinecap="round"/>
-            <g stroke="url(#ringGradient)" strokeWidth="6" strokeLinecap="round">
-              <line x1="256" y1="50" x2="256" y2="70"/>
-              <line x1="462" y1="256" x2="442" y2="256"/>
-              <line x1="256" y1="462" x2="256" y2="442"/>
-              <line x1="50" y1="256" x2="70" y2="256"/>
-            </g>
-            <g transform="translate(256, 256)">
-              <line x1="-40" y1="-90" x2="-40" y2="90" stroke="url(#kGradient)" strokeWidth="28" strokeLinecap="round"/>
-              <line x1="-40" y1="-10" x2="60" y2="-90" stroke="url(#kGradient)" strokeWidth="28" strokeLinecap="round"/>
-              <line x1="-40" y1="10" x2="60" y2="90" stroke="url(#kGradient)" strokeWidth="28" strokeLinecap="round"/>
-            </g>
-            <circle cx="256" cy="256" r="12" fill="#F59E0B"/>
-          </svg>
+          <span className="text-base sm:text-lg font-bold tracking-tight">Orakel</span>
 
           <div className="flex items-center rounded-md border border-border overflow-hidden h-7">
             <button
