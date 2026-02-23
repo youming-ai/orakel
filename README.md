@@ -1,203 +1,390 @@
-# Polymarket BTC 15m Assistant
+# Polymarket Crypto 15m Trading Bot
 
-A real-time console trading assistant for Polymarket **"Bitcoin Up or Down" 15-minute** markets.
+A production-grade automated trading bot for Polymarket **15-minute Up/Down** crypto markets with paper trading support, web dashboard, and Docker containerization.
 
-It combines:
-- Polymarket market selection + UP/DOWN prices + liquidity
-- Polymarket live WS **Chainlink BTC/USD CURRENT PRICE** (same feed shown on the Polymarket UI)
-- Fallback to on-chain Chainlink (Polygon) via HTTP/WSS RPC
-- Binance spot price for reference
-- Short-term TA snapshot (Heiken Ashi, RSI, MACD, VWAP, Delta 1/3m)
-- A simple live **Predict (LONG/SHORT %)** derived from the assistant’s current TA scoring
+## Supported Markets
 
-## Requirements
+| Market | Binance Symbol | Chainlink Aggregator |
+|--------|----------------|---------------------|
+| BTC | BTCUSDT | 0xc907E116054Ad103354f2D350FD2514433D57F6f |
+| ETH | ETHUSDT | 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612 |
+| SOL | SOLUSDT | 0x5d4316B4fddEe94c1D9DA3a8a3c48bD6DA966047 |
+| XRP | XRPUSDT | 0x8F62BF41D0B0Ec112D6953973B1Db26240129c37 |
 
-- Node.js **18+** (https://nodejs.org/en)
-- npm (comes with Node)
+## Features
 
+- **Paper Trading Mode** — Simulate trades against live market data without spending real USDC
+- **Real-time Data** — Binance WebSocket + Polymarket Chainlink feed + on-chain fallback
+- **Technical Analysis** — Heiken Ashi, RSI, MACD, VWAP, realized volatility
+- **Probability Model** — Volatility-implied probability blended with TA scoring
+- **Regime Detection** — Trend/RANGE/CHOP market state detection with dynamic thresholds
+- **Web Dashboard** — Astro + React + shadcn/ui + recharts for monitoring and visualization
+- **Docker Ready** — One-command deployment with docker-compose
 
-## Run from terminal (step-by-step)
+## Architecture
 
-### 1) Clone the repository
+```
+                         Docker Compose
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│  ┌─────────────────────┐    ┌──────────────────────────┐ │
+│  │  web (port 4321)    │    │  bot (port 9999)         │ │
+│  │  Astro Dev Server   │───▶│  Bun Runtime             │ │
+│  │                     │/api│                          │ │
+│  │  React 19           │    │  Hono API Server         │ │
+│  │  shadcn/ui          │    │  ├ GET /api/state        │ │
+│  │  recharts           │    │  ├ GET /api/trades       │ │
+│  │  Tailwind v4        │    │  ├ GET /api/signals      │ │
+│  │  Hot Reload         │    │  └ GET /api/paper-stats  │ │
+│  └─────────────────────┘    │                          │ │
+│                              │  Trading Engine          │ │
+│                              │  ├ Data Collection       │ │
+│                              │  ├ TA Indicators         │ │
+│                              │  ├ Probability Blend     │ │
+│                              │  ├ Edge Computation      │ │
+│                              │  └ Paper/Live Execution  │ │
+│                              └──────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
+```
+
+## Quick Start
+
+### Prerequisites
+
+- [Bun](https://bun.sh/) v1.0+
+- [Docker](https://www.docker.com/) + Docker Compose (for containerized deployment)
+- [OrbStack](https://orbstack.dev/) (recommended for macOS)
+
+### Run with Docker (Recommended)
 
 ```bash
+# Clone the repository
 git clone https://github.com/FrondEnt/PolymarketBTC15mAssistant.git
+cd PolymarketBTC15mAssistant
+
+# Create .env file
+echo "PAPER_MODE=true" > .env
+
+# Start both services
+docker compose up --build
+
+# Bot API:    http://localhost:9999
+# Web Dashboard: http://localhost:4321
 ```
 
-Alternative (no git):
-
-- Click the green `<> Code` button on GitHub
-- Choose `Download ZIP`
-- Extract the ZIP
-- Open a terminal in the extracted project folder
-
-Then open a terminal in the project folder.
-
-### 2) Install dependencies
+### Run Locally (Development)
 
 ```bash
-npm install
+# Install dependencies
+bun install
+
+# Install web dependencies
+cd web && bun install && cd ..
+
+# Create .env file
+echo "PAPER_MODE=true" > .env
+
+# Terminal 1: Run bot
+bun run start
+
+# Terminal 2: Run web dev server
+cd web && bun run dev
 ```
-
-### 3) (Optional) Set environment variables
-
-You can run without extra config (defaults are included), but for more stable Chainlink fallback it’s recommended to set at least one Polygon RPC.
-
-#### Windows PowerShell (current terminal session)
-
-```powershell
-$env:POLYGON_RPC_URL = "https://polygon-rpc.com"
-$env:POLYGON_RPC_URLS = "https://polygon-rpc.com,https://rpc.ankr.com/polygon"
-$env:POLYGON_WSS_URLS = "wss://polygon-bor-rpc.publicnode.com"
-```
-
-Optional Polymarket settings:
-
-```powershell
-$env:POLYMARKET_AUTO_SELECT_LATEST = "true"
-# $env:POLYMARKET_SLUG = "btc-updown-15m-..."   # pin a specific market
-```
-
-#### Windows CMD (current terminal session)
-
-```cmd
-set POLYGON_RPC_URL=https://polygon-rpc.com
-set POLYGON_RPC_URLS=https://polygon-rpc.com,https://rpc.ankr.com/polygon
-set POLYGON_WSS_URLS=wss://polygon-bor-rpc.publicnode.com
-```
-
-Optional Polymarket settings:
-
-```cmd
-set POLYMARKET_AUTO_SELECT_LATEST=true
-REM set POLYMARKET_SLUG=btc-updown-15m-...
-```
-
-Notes:
-- These environment variables apply only to the current terminal window.
-- If you want permanent env vars, set them via Windows System Environment Variables or use a `.env` loader of your choice.
 
 ## Configuration
 
-This project reads configuration from environment variables.
+### Environment Variables
 
-You can set them in your shell, or create a `.env` file and load it using your preferred method.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PAPER_MODE` | `false` | Enable paper trading (no real money) |
+| `PRIVATE_KEY` | - | EOA wallet private key (64 hex chars, without 0x prefix) |
+| `POLYGON_RPC_URL` | `https://polygon-rpc.com` | Polygon RPC endpoint |
+| `POLYGON_WSS_URL` | - | Polygon WebSocket RPC |
+| `HTTPS_PROXY` | - | HTTP proxy for all requests |
 
-### Polymarket
+### Strategy Configuration (`config.json`)
 
-- `POLYMARKET_AUTO_SELECT_LATEST` (default: `true`)
-  - When `true`, automatically picks the latest 15m market.
-- `POLYMARKET_SERIES_ID` (default: `10192`)
-- `POLYMARKET_SERIES_SLUG` (default: `btc-up-or-down-15m`)
-- `POLYMARKET_SLUG` (optional)
-  - If set, the assistant will target a specific market slug.
-- `POLYMARKET_LIVE_WS_URL` (default: `wss://ws-live-data.polymarket.com`)
-
-### Chainlink on Polygon (fallback)
-
-- `CHAINLINK_BTC_USD_AGGREGATOR`
-  - Default: `0xc907E116054Ad103354f2D350FD2514433D57F6f`
-
-HTTP RPC:
-- `POLYGON_RPC_URL` (default: `https://polygon-rpc.com`)
-- `POLYGON_RPC_URLS` (optional, comma-separated)
-  - Example: `https://polygon-rpc.com,https://rpc.ankr.com/polygon`
-
-WSS RPC (optional but recommended for more real-time fallback):
-- `POLYGON_WSS_URL` (optional)
-- `POLYGON_WSS_URLS` (optional, comma-separated)
-
-### Proxy support
-
-The bot supports HTTP(S) proxies for both HTTP requests (fetch) and WebSocket connections.
-
-Supported env vars (standard):
-
-- `HTTPS_PROXY` / `https_proxy`
-- `HTTP_PROXY` / `http_proxy`
-- `ALL_PROXY` / `all_proxy`
-
-Examples:
-
-PowerShell:
-
-```powershell
-$env:HTTPS_PROXY = "http://127.0.0.1:8080"
-# or
-$env:ALL_PROXY = "socks5://127.0.0.1:1080"
+```json
+{
+  "risk": {
+    "maxTradeSizeUsdc": 5,
+    "limitDiscount": 0.05,
+    "dailyMaxLossUsdc": 100,
+    "maxOpenPositions": 2,
+    "minLiquidity": 15000,
+    "maxTradesPerWindow": 1
+  },
+  "strategy": {
+    "edgeThresholdEarly": 0.06,
+    "edgeThresholdMid": 0.08,
+    "edgeThresholdLate": 0.10,
+    "minProbEarly": 0.52,
+    "minProbMid": 0.55,
+    "minProbLate": 0.60,
+    "blendWeights": { "vol": 0.5, "ta": 0.5 },
+    "regimeMultipliers": {
+      "CHOP": 1.3,
+      "RANGE": 1.0,
+      "TREND_ALIGNED": 0.8,
+      "TREND_OPPOSED": 1.2
+    }
+  }
+}
 ```
 
-CMD:
+#### Strategy Parameters Explained
 
-```cmd
-set HTTPS_PROXY=http://127.0.0.1:8080
-REM or
-set ALL_PROXY=socks5://127.0.0.1:1080
+| Parameter | Description |
+|-----------|-------------|
+| `edgeThresholdEarly/Mid/Late` | Minimum edge required to trade in each time phase (>10min, 5-10min, <5min) |
+| `minProbEarly/Mid/Late` | Minimum model probability required |
+| `blendWeights.vol/ta` | Weight for volatility-implied vs TA-based probability |
+| `regimeMultipliers` | Threshold multiplier based on detected market regime |
+
+#### Edge Calculation
+
+```
+effectiveThreshold = baseThreshold × regimeMultiplier
+edge = modelProbability - marketPrice
+
+Trade triggers when: edge ≥ effectiveThreshold AND modelProb ≥ minProb
 ```
 
-#### Proxy with username + password (simple guide)
+Example: In CHOP regime during EARLY phase:
+- Effective threshold = 0.06 × 1.3 = 0.078
+- Model must show at least 7.8% edge over market price
 
-1) Take your proxy host and port (example: `1.2.3.4:8080`).
+## Trading Logic
 
-2) Add your login and password in the URL:
+### Data Flow (per second)
 
-- HTTP/HTTPS proxy:
-  - `http://USERNAME:PASSWORD@HOST:PORT`
-- SOCKS5 proxy:
-  - `socks5://USERNAME:PASSWORD@HOST:PORT`
+```
+1. Data Collection (parallel)
+   ├─ Binance REST: 240 × 1-min candles
+   ├─ Binance WS: Real-time trade price
+   ├─ Polymarket WS: Chainlink current price
+   ├─ Polymarket REST: Market data + UP/DOWN prices + orderbook
 
-3) Set it in the terminal and run the bot.
+2. Technical Indicators
+   ├─ Heiken Ashi: Candle color + consecutive count
+   ├─ RSI(14): Relative strength + slope
+   ├─ MACD(12,26,9): Histogram + histogram delta
+   ├─ VWAP: Volume-weighted average price + slope
+   └─ Volatility: 60-candle realized volatility × √15
 
-PowerShell:
+3. Direction Scoring
+   ├─ Price vs VWAP: +2 points for direction
+   ├─ VWAP slope: +2 points for direction
+   ├─ RSI + slope: +2 points if aligned
+   ├─ MACD histogram: +2 points if expanding
+   └─ Heiken Ashi: +1 point if 2+ consecutive
+   → rawUp = upScore / (upScore + downScore)
 
-```powershell
-$env:HTTPS_PROXY = "http://USERNAME:PASSWORD@HOST:PORT"
-npm start
+4. Probability Blending
+   ├─ Volatility-implied: Φ(ln(P/PTB) / (vol × √(t/15)))
+   ├─ TA raw: rawUp from step 3
+   └─ Blended: (0.5×vol + 0.5×ta) + adjustments
+
+5. Regime Detection
+   ├─ TREND_UP: Price>VWAP, VWAP↑, volume>avg
+   ├─ TREND_DOWN: Price<VWAP, VWAP↓, volume>avg
+   ├─ CHOP: VWAP crossovers >3 in 20 candles
+   └─ RANGE: Default
+
+6. Edge Computation
+   ├─ rawSum = marketYes + marketNo
+   ├─ Arbitrage if rawSum < 0.98
+   ├─ Skip if rawSum > 1.06 (vig too high)
+   └─ edgeUp = modelUp - marketUp
+
+7. Trade Decision
+   ├─ Phase: EARLY(>10min), MID(5-10min), LATE(<5min)
+   ├─ Apply regime multiplier to threshold
+   └─ ENTER if edge ≥ threshold AND prob ≥ minProb
 ```
 
-CMD:
+### Paper Trading Settlement
 
-```cmd
-set HTTPS_PROXY=http://USERNAME:PASSWORD@HOST:PORT
-npm start
+When a 15-minute window expires:
+- If `finalPrice > PTB` → UP wins
+- If `finalPrice < PTB` → DOWN wins  
+- If `finalPrice = PTB` → DOWN wins (Polymarket rule)
+
+P&L calculation:
+- Win: `+size × (1 - buyPrice)`
+- Loss: `-size × buyPrice`
+
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/state` | Full dashboard state (markets, wallet, config, paper stats) |
+| `GET /api/trades` | Recent trades from CSV (100 records) |
+| `GET /api/signals` | Recent signals from CSV (200 records) |
+| `GET /api/paper-stats` | Paper trading statistics + trade details |
+
+### Example Response: `/api/state`
+
+```json
+{
+  "markets": [{
+    "id": "BTC",
+    "spotPrice": 68034,
+    "priceToBeat": 68010,
+    "marketUp": 0.66,
+    "marketDown": 0.33,
+    "predictDirection": "LONG",
+    "haColor": "green",
+    "haConsecutive": 3,
+    "rsi": 51.8,
+    "macd": {"hist": 0.2, "histDelta": 0.05},
+    "vwapSlope": 0.12,
+    "action": "ENTER",
+    "side": "UP",
+    "edge": 0.082,
+    "strength": "GOOD"
+  }],
+  "paperMode": true,
+  "paperStats": {
+    "totalTrades": 5,
+    "wins": 3,
+    "losses": 2,
+    "pending": 0,
+    "winRate": 0.6,
+    "totalPnl": 1.45
+  }
+}
 ```
 
-Important: if your password contains special characters like `@` or `:` you must URL-encode it.
+## Web Dashboard
 
-Example:
+### Features
 
-- password: `p@ss:word`
-- encoded: `p%40ss%3Aword`
-- proxy URL: `http://user:p%40ss%3Aword@1.2.3.4:8080`
+- **Header**: Mode badge (PAPER/LIVE), wallet status
+- **Paper Stats Cards**: Trades, Win Rate, Wins, Losses, P&L
+- **Cumulative P&L Chart**: Area chart showing profit over time
+- **Market Breakdown Chart**: Stacked bar chart by market
+- **Market Cards**: Real-time price, prediction, 8 indicators, trade decision
+- **Trade Table**: Recent trades with PAPER indicator
+- **Strategy Config Panel**: Current thresholds and risk parameters
 
-## Run
+### Tech Stack
+
+- [Astro](https://astro.build/) v5 — Static site generator with React islands
+- [React](https://react.dev/) v19 — UI components
+- [shadcn/ui](https://ui.shadcn.com/) — Component library (new-york style)
+- [recharts](https://recharts.org/) — Chart visualization
+- [Tailwind CSS](https://tailwindcss.com/) v4 — Styling
+
+## Project Structure
+
+```
+├── src/                      # Bot source code
+│   ├── index.ts              # Main loop, processMarket()
+│   ├── trader.ts             # executeTrade(), paper mode
+│   ├── paperStats.ts         # Paper trade tracking
+│   ├── api.ts                # Hono API server
+│   ├── state.ts              # Shared state management
+│   ├── config.ts             # Configuration loader
+│   ├── types.ts              # TypeScript interfaces
+│   ├── markets.ts            # Market definitions
+│   ├── orderManager.ts       # Order lifecycle management
+│   ├── redeemer.ts           # On-chain redemption
+│   ├── utils.ts              # Helper functions
+│   ├── data/                 # Data sources
+│   │   ├── binance.ts        # REST API
+│   │   ├── binanceWs.ts      # WebSocket
+│   │   ├── polymarket.ts     # Gamma + CLOB API
+│   │   ├── polymarketLiveWs.ts
+│   │   ├── chainlink.ts      # On-chain RPC
+│   │   └── chainlinkWs.ts
+│   ├── engines/              # Trading logic
+│   │   ├── probability.ts    # Scoring + blending
+│   │   ├── edge.ts           # Edge + decision
+│   │   └── regime.ts         # Market regime detection
+│   └── indicators/           # TA indicators
+│       ├── rsi.ts
+│       ├── macd.ts
+│       ├── vwap.ts
+│       └── heikenAshi.ts
+├── web/                      # Frontend
+│   ├── src/
+│   │   ├── pages/index.astro
+│   │   └── components/
+│   │       ├── Dashboard.tsx
+│   │       ├── Header.tsx
+│   │       ├── MarketCard.tsx
+│   │       ├── TradeTable.tsx
+│   │       └── PaperStatsChart.tsx
+│   ├── astro.config.mjs
+│   ├── Dockerfile
+│   └── package.json
+├── logs/                     # Runtime data
+│   ├── trades-*.csv
+│   ├── signals-*.csv
+│   ├── daily-state.json
+│   └── paper-stats.json
+├── config.json               # Strategy parameters
+├── docker-compose.yml
+├── Dockerfile
+└── package.json
+```
+
+## Docker Services
+
+```yaml
+services:
+  bot:
+    build: .
+    ports: ["9999:9999"]
+    volumes:
+      - ./logs:/app/logs
+      - ./config.json:/app/config.json:ro
+    environment:
+      - PAPER_MODE=${PAPER_MODE:-true}
+
+  web:
+    build: ./web
+    ports: ["4321:4321"]
+    volumes:
+      - ./web/src:/app/src      # Hot reload
+    environment:
+      - API_URL=http://bot:9999
+    depends_on: [bot]
+```
+
+## Development
+
+### Type Check
 
 ```bash
-npm start
+bun run typecheck
 ```
 
-### Stop
-
-Press `Ctrl + C` in the terminal.
-
-### Update to latest version
+### Build Web
 
 ```bash
-git pull
-npm install
-npm start
+cd web && bun run build
 ```
 
-## Notes / Troubleshooting
+### Rebuild Docker
 
-- If you see no Chainlink updates:
-  - Polymarket WS might be temporarily unavailable. The bot falls back to Chainlink on-chain price via Polygon RPC.
-  - Ensure at least one working Polygon RPC URL is configured.
-- If the console looks like it “spams” lines:
-  - The renderer uses `readline.cursorTo` + `clearScreenDown` for a stable, static screen, but some terminals may still behave differently.
+```bash
+docker compose down
+docker compose up --build
+```
 
 ## Safety
 
-This is not financial advice. Use at your own risk.
+- Paper trading is enabled by default (`PAPER_MODE=true`)
+- Live trading requires explicit `PAPER_MODE=false` + wallet configuration
+- Daily loss limit prevents runaway losses
+- Maximum open positions limit prevents over-exposure
 
-created by @krajekis
+## Disclaimer
+
+This is not financial advice. Trading involves significant risk. Use at your own risk.
+
+---
+
