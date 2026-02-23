@@ -17,6 +17,6 @@ export default defineConfig({
       "/api": apiTarget,
     },
     host: true,
-    allowedHosts: ["*.um1ng.me"],
+    allowedHosts: true,
   },
 });
