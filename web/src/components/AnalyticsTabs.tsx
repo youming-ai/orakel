@@ -249,15 +249,16 @@ function buildMarketFromTrades(trades: PaperTradeEntry[]): Record<string, Market
 }
 
 export function AnalyticsTabs({ stats, trades, byMarket, config, onConfigSaved, markets, liveTrades, viewMode }: AnalyticsTabsProps) {
+  const riskConfig = viewMode === "paper" ? config.paperRisk : config.liveRisk;
   const [form, setForm] = useState<StrategyFormValues>(() =>
-    toStrategyFormValues(config.strategy, config.paperRisk)
+    toStrategyFormValues(config.strategy, riskConfig)
   );
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setForm(toStrategyFormValues(config.strategy, config.paperRisk));
-  }, [config.strategy, config.paperRisk]);
+    setForm(toStrategyFormValues(config.strategy, viewMode === "paper" ? config.paperRisk : config.liveRisk));
+  }, [config.strategy, config.paperRisk, config.liveRisk, viewMode]);
 
   const derivedStats = useMemo(() => buildStatsFromTrades(trades), [trades]);
   const mergedStats = stats ?? derivedStats;
@@ -379,7 +380,7 @@ export function AnalyticsTabs({ stats, trades, byMarket, config, onConfigSaved, 
       const res = await fetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ strategy: strategyView, paperRisk: riskView }),
+        body: JSON.stringify({ strategy: strategyView, [viewMode === "paper" ? "paperRisk" : "liveRisk"]: riskView }),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {

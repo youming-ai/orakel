@@ -128,6 +128,7 @@ export default function Dashboard() {
   }, [viewMode]);
 
   const fetchPaperStats = useCallback(async () => {
+    if (viewMode !== "paper") return;
     try {
       const res = await fetch("/api/paper-stats");
       if (!res.ok) return;
@@ -144,7 +145,7 @@ export default function Dashboard() {
       else if (data.recentTrades) setPaperTrades(data.recentTrades);
       if (data.byMarket) setPaperByMarket(data.byMarket);
     } catch {}
-  }, []);
+  }, [viewMode]);
 
   const handleViewModeChange = useCallback((mode: "paper" | "live") => {
     setViewMode(mode);
@@ -211,12 +212,13 @@ export default function Dashboard() {
       />
       <main className="p-6 space-y-6 max-w-7xl mx-auto">
         <AnalyticsTabs
-          stats={state.paperStats}
-          trades={paperTrades}
-          byMarket={paperByMarket}
+          stats={viewMode === "paper" ? state.paperStats : null}
+          trades={viewMode === "paper" ? paperTrades : []}
+          byMarket={viewMode === "paper" ? paperByMarket : {}}
           config={state.config}
           onConfigSaved={async () => {
-            await Promise.all([fetchState(), fetchPaperStats()]);
+            await fetchState();
+            if (viewMode === "paper") await fetchPaperStats();
           }}
           markets={state.markets}
           liveTrades={trades}
