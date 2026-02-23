@@ -1,27 +1,31 @@
-# Polymarket Crypto 15m Trading Bot
+# Orakel
 
-A production-grade automated trading bot for Polymarket **15-minute Up/Down** crypto markets with paper trading support, web dashboard, and Docker containerization.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub Stars](https://img.shields.io/github/stars/youming-ai/orakel)](https://github.com/youming-ai/orakel/stargazers)
+[![Docker Pulls](https://img.shields.io/docker/pulls/orakel/bot)](https://hub.docker.com/r/orakel/bot)
 
-## Supported Markets
+一个针对 Polymarket **15分钟涨跌** 加密货币市场的生产级自动化交易机器人，支持模拟交易、Web 仪表板和 Docker 部署。
 
-| Market | Binance Symbol | Chainlink Aggregator |
-|--------|----------------|---------------------|
+## 支持的市场
+
+| 市场 | Binance 交易对 | Chainlink 聚合器 |
+|------|---------------|------------------|
 | BTC | BTCUSDT | 0xc907E116054Ad103354f2D350FD2514433D57F6f |
 | ETH | ETHUSDT | 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612 |
 | SOL | SOLUSDT | 0x5d4316B4fddEe94c1D9DA3a8a3c48bD6DA966047 |
 | XRP | XRPUSDT | 0x8F62BF41D0B0Ec112D6953973B1Db26240129c37 |
 
-## Features
+## 功能特性
 
-- **Paper Trading Mode** — Simulate trades against live market data without spending real USDC
-- **Real-time Data** — Binance WebSocket + Polymarket Chainlink feed + on-chain fallback
-- **Technical Analysis** — Heiken Ashi, RSI, MACD, VWAP, realized volatility
-- **Probability Model** — Volatility-implied probability blended with TA scoring
-- **Regime Detection** — Trend/RANGE/CHOP market state detection with dynamic thresholds
-- **Web Dashboard** — Astro + React + shadcn/ui + recharts for monitoring and visualization
-- **Docker Ready** — One-command deployment with docker-compose
+- **模拟交易模式** — 使用实时市场数据模拟交易，不使用真实资金
+- **实时数据** — Binance WebSocket + Polymarket Chainlink 喂价 + 链上备选
+- **技术分析** — Heiken Ashi、RSI、MACD、VWAP、已实现波动率
+- **概率模型** — 波动率隐含概率与 TA 评分融合
+- **市场状态检测** — Trend/RANGE/CHOP 市场状态识别与动态阈值
+- **Web 仪表板** — React + shadcn/ui + recharts 监控与可视化
+- **Docker 部署** — 一键部署 via docker-compose
 
-## Architecture
+## 系统架构
 
 ```
                          Docker Compose
@@ -37,73 +41,76 @@ A production-grade automated trading bot for Polymarket **15-minute Up/Down** cr
 │  │  Tailwind v4        │    │  ├ GET /api/signals      │ │
 │  │  Hot Reload         │    │  └ GET /api/paper-stats  │ │
 │  └─────────────────────┘    │                          │ │
-│                              │  Trading Engine          │ │
-│                              │  ├ Data Collection       │ │
+│                              │  Trading Engine           │ │
+│                              │  ├ Data Collection        │ │
 │                              │  ├ TA Indicators         │ │
 │                              │  ├ Probability Blend     │ │
 │                              │  ├ Edge Computation      │ │
-│                              │  └ Paper/Live Execution  │ │
+│                              │  └ Paper/Live Execution │ │
 │                              └──────────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
+## 快速开始
 
-### Prerequisites
+### 前置要求
 
 - [Bun](https://bun.sh/) v1.0+
-- [Docker](https://www.docker.com/) + Docker Compose (for containerized deployment)
-- [OrbStack](https://orbstack.dev/) (recommended for macOS)
+- [Docker](https://www.docker.com/) + Docker Compose（容器化部署）
+- [OrbStack](https://orbstack.dev/)（macOS 推荐）
 
-### Run with Docker (Recommended)
+### 使用 Docker 运行（推荐）
 
 ```bash
-# Clone the repository
-git clone https://github.com/FrondEnt/PolymarketBTC15mAssistant.git
-cd PolymarketBTC15mAssistant
+# 克隆仓库
+git clone https://github.com/youming-ai/orakel.git
+cd orakel
 
-# Create .env file
-echo "PAPER_MODE=true" > .env
+# 复制环境变量配置
+cp .env.example .env
 
-# Start both services
+# 启动服务
 docker compose up --build
 
 # Bot API:    http://localhost:9999
-# Web Dashboard: http://localhost:4321
+# Web 仪表板: http://localhost:4321
 ```
 
-### Run Locally (Development)
+### 本地运行（开发）
 
 ```bash
-# Install dependencies
+# 安装依赖
 bun install
 
-# Install web dependencies
+# 安装 Web 依赖
 cd web && bun install && cd ..
 
-# Create .env file
-echo "PAPER_MODE=true" > .env
+# 复制环境变量配置
+cp .env.example .env
 
-# Terminal 1: Run bot
+# 终端 1: 运行 bot
 bun run start
 
-# Terminal 2: Run web dev server
+# 终端 2: 运行 Web 开发服务器
 cd web && bun run dev
 ```
 
-## Configuration
+## 配置
 
-### Environment Variables
+### 环境变量
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PAPER_MODE` | `false` | Enable paper trading (no real money) |
-| `PRIVATE_KEY` | - | EOA wallet private key (64 hex chars, without 0x prefix) |
-| `POLYGON_RPC_URL` | `https://polygon-rpc.com` | Polygon RPC endpoint |
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PAPER_MODE` | `true` | 模拟交易模式（不花真钱）|
+| `POLYGON_RPC_URL` | `https://polygon-rpc.com` | Polygon RPC 端点 |
 | `POLYGON_WSS_URL` | - | Polygon WebSocket RPC |
-| `HTTPS_PROXY` | - | HTTP proxy for all requests |
+| `POLYMARKET_LIVE_WS_URL` | `wss://ws-live-data.polymarket.com` | Polymarket 实时数据 WS |
+| `API_PORT` | `9999` | API 服务端口 |
+| `HTTPS_PROXY` | - | HTTP 代理 |
 
-### Strategy Configuration (`config.json`)
+> **注意**: 实盘交易需要通过 Web 界面连接钱包（不再支持 `PRIVATE_KEY` 环境变量）
+
+### 策略配置 (`config.json`)
 
 ```json
 {
@@ -133,98 +140,104 @@ cd web && bun run dev
 }
 ```
 
-#### Strategy Parameters Explained
+#### 策略参数说明
 
-| Parameter | Description |
-|-----------|-------------|
-| `edgeThresholdEarly/Mid/Late` | Minimum edge required to trade in each time phase (>10min, 5-10min, <5min) |
-| `minProbEarly/Mid/Late` | Minimum model probability required |
-| `blendWeights.vol/ta` | Weight for volatility-implied vs TA-based probability |
-| `regimeMultipliers` | Threshold multiplier based on detected market regime |
+| 参数 | 说明 |
+|------|------|
+| `edgeThresholdEarly/Mid/Late` | 各时间段交易的最小边缘要求（>10分钟、5-10分钟、<5分钟）|
+| `minProbEarly/Mid/Late` | 所需的最小模型概率 |
+| `blendWeights.vol/ta` | 波动率隐含概率 vs TA 概率的权重 |
+| `regimeMultipliers` | 基于检测到的市场状态的阈值乘数 |
 
-#### Edge Calculation
-
-```
-effectiveThreshold = baseThreshold × regimeMultiplier
-edge = modelProbability - marketPrice
-
-Trade triggers when: edge ≥ effectiveThreshold AND modelProb ≥ minProb
-```
-
-Example: In CHOP regime during EARLY phase:
-- Effective threshold = 0.06 × 1.3 = 0.078
-- Model must show at least 7.8% edge over market price
-
-## Trading Logic
-
-### Data Flow (per second)
+#### 边缘计算
 
 ```
-1. Data Collection (parallel)
-   ├─ Binance REST: 240 × 1-min candles
-   ├─ Binance WS: Real-time trade price
-   ├─ Polymarket WS: Chainlink current price
-   ├─ Polymarket REST: Market data + UP/DOWN prices + orderbook
+effectiveThreshold = 基础阈值 × 状态乘数
+edge = 模型概率 - 市场价格
 
-2. Technical Indicators
-   ├─ Heiken Ashi: Candle color + consecutive count
-   ├─ RSI(14): Relative strength + slope
-   ├─ MACD(12,26,9): Histogram + histogram delta
-   ├─ VWAP: Volume-weighted average price + slope
-   └─ Volatility: 60-candle realized volatility × √15
+交易触发条件: edge ≥ effectiveThreshold AND 模型概率 ≥ minProb
+```
 
-3. Direction Scoring
-   ├─ Price vs VWAP: +2 points for direction
-   ├─ VWAP slope: +2 points for direction
-   ├─ RSI + slope: +2 points if aligned
-   ├─ MACD histogram: +2 points if expanding
-   └─ Heiken Ashi: +1 point if 2+ consecutive
+示例: CHOP 状态 + EARLY 阶段:
+- 有效阈值 = 0.06 × 1.3 = 0.078
+- 模型必须显示超过市场价格至少 7.8% 的边缘
+
+## 交易逻辑
+
+### 数据流（每秒）
+
+```
+1. 数据采集（并行）
+   ├─ Binance REST: 240 × 1分钟K线
+   ├─ Binance WS: 实时成交价
+   ├─ Polymarket WS: Chainlink 当前价
+   └─ Polymarket REST: 市场数据 + UP/DOWN 价格 + 订单簿
+
+2. 技术指标
+   ├─ Heiken Ashi: K线颜色 + 连续计数
+   ├─ RSI(14): 相对强弱 + 斜率
+   ├─ MACD(12,26,9): 柱状图 + 柱状图变化量
+   ├─ VWAP: 成交量加权平均价 + 斜率
+   └─ 波动率: 60K线已实现波动率 × √15
+
+3. 方向评分
+   ├─ 价格 vs VWAP: +2 分同方向
+   ├─ VWAP 斜率: +2 分同方向
+   ├─ RSI + 斜率: 对齐则 +2 分
+   ├─ MACD 柱状图: 扩张则 +2 分
+   └─ Heiken Ashi: 连续2+则 +1 分
    → rawUp = upScore / (upScore + downScore)
 
-4. Probability Blending
-   ├─ Volatility-implied: Φ(ln(P/PTB) / (vol × √(t/15)))
-   ├─ TA raw: rawUp from step 3
-   └─ Blended: (0.5×vol + 0.5×ta) + adjustments
+4. 概率融合
+   ├─ 波动率隐含: Φ(ln(P/PTB) / (vol × √(t/15)))
+   ├─ TA 原始: 步骤3的 rawUp
+   └─ 融合: (0.5×vol + 0.5×ta) + 调整
 
-5. Regime Detection
-   ├─ TREND_UP: Price>VWAP, VWAP↑, volume>avg
-   ├─ TREND_DOWN: Price<VWAP, VWAP↓, volume>avg
-   ├─ CHOP: VWAP crossovers >3 in 20 candles
-   └─ RANGE: Default
+5. 状态检测
+   ├─ TREND_UP: 价格>VWAP, VWAP↑, 成交量>均值
+   ├─ TREND_DOWN: 价格<VWAP, VWAP↓, 成交量>均值
+   ├─ CHOP: 20K线内 VWAP 穿越 >3 次
+   └─ RANGE: 默认
 
-6. Edge Computation
+6. 边缘计算
    ├─ rawSum = marketYes + marketNo
-   ├─ Arbitrage if rawSum < 0.98
-   ├─ Skip if rawSum > 1.06 (vig too high)
+   ├─ rawSum < 0.98 → 套利机会
+   ├─ rawSum > 1.06 → vig 太高，跳过
    └─ edgeUp = modelUp - marketUp
 
-7. Trade Decision
-   ├─ Phase: EARLY(>10min), MID(5-10min), LATE(<5min)
-   ├─ Apply regime multiplier to threshold
-   └─ ENTER if edge ≥ threshold AND prob ≥ minProb
+7. 交易决策
+   ├─ 阶段: EARLY(>10分钟), MID(5-10分钟), LATE(<5分钟)
+   ├─ 应用状态乘数到阈值
+   └─ 满足边缘 ≥ 阈值 AND 概率 ≥ minProb → 入场
 ```
 
-### Paper Trading Settlement
+### 模拟交易结算
 
-When a 15-minute window expires:
-- If `finalPrice > PTB` → UP wins
-- If `finalPrice < PTB` → DOWN wins  
-- If `finalPrice = PTB` → DOWN wins (Polymarket rule)
+15分钟窗口结束时:
+- `finalPrice > PTB` → UP 获胜
+- `finalPrice < PTB` → DOWN 获胜
+- `finalPrice = PTB` → DOWN 获胜（Polymarket 规则）
 
-P&L calculation:
-- Win: `+size × (1 - buyPrice)`
-- Loss: `-size × buyPrice`
+盈亏计算:
+- 盈利: `+size × (1 - buyPrice)`
+- 亏损: `-size × buyPrice`
 
-## API Endpoints
+## API 接口
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/state` | Full dashboard state (markets, wallet, config, paper stats) |
-| `GET /api/trades` | Recent trades from CSV (100 records) |
-| `GET /api/signals` | Recent signals from CSV (200 records) |
-| `GET /api/paper-stats` | Paper trading statistics + trade details |
+| 接口 | 说明 |
+|------|------|
+| `GET /api/state` | 完整仪表板状态（市场、钱包、配置、模拟统计）|
+| `GET /api/trades` | CSV 中的近期交易（100条）|
+| `GET /api/signals` | CSV 中的近期信号（200条）|
+| `GET /api/paper-stats` | 模拟交易统计 + 交易详情 |
+| `POST /api/paper/start` | 启动模拟交易 |
+| `POST /api/paper/stop` | 停止模拟交易 |
+| `POST /api/live/start` | 启动实盘交易（需先连接钱包）|
+| `POST /api/live/stop` | 停止实盘交易 |
+| `POST /api/live/connect` | 连接钱包（通过前端 UI）|
+| `POST /api/live/disconnect` | 断开钱包连接 |
 
-### Example Response: `/api/state`
+### 示例响应: `/api/state`
 
 ```json
 {
@@ -257,58 +270,58 @@ P&L calculation:
 }
 ```
 
-## Web Dashboard
+## Web 仪表板
 
-### Features
+### 功能
 
-- **Header**: Mode badge (PAPER/LIVE), wallet status
-- **Paper Stats Cards**: Trades, Win Rate, Wins, Losses, P&L
-- **Cumulative P&L Chart**: Area chart showing profit over time
-- **Market Breakdown Chart**: Stacked bar chart by market
-- **Market Cards**: Real-time price, prediction, 8 indicators, trade decision
-- **Trade Table**: Recent trades with PAPER indicator
-- **Strategy Config Panel**: Current thresholds and risk parameters
+- **标题栏**: 模式徽章（模拟/实盘）、钱包状态
+- **模拟统计卡片**: 交易数、胜率、盈利、亏损、P&L
+- **累计 P&L 图表**: 面积图显示盈利随时间变化
+- **市场分类图表**: 按市场分组的堆叠柱状图
+- **市场卡片**: 实时价格、预测、8个指标、交易决策
+- **交易表格**: 近期交易记录（含模拟标识）
+- **策略配置面板**: 当前阈值和风险参数
 
-### Tech Stack
+### 技术栈
 
-- [Astro](https://astro.build/) v5 — Static site generator with React islands
-- [React](https://react.dev/) v19 — UI components
-- [shadcn/ui](https://ui.shadcn.com/) — Component library (new-york style)
-- [recharts](https://recharts.org/) — Chart visualization
-- [Tailwind CSS](https://tailwindcss.com/) v4 — Styling
+- [Astro](https://astro.build/) v5 — 静态站点生成器 + React islands
+- [React](https://react.dev/) v19 — UI 组件
+- [shadcn/ui](https://ui.shadcn.com/) — 组件库
+- [recharts](https://recharts.org/) — 图表可视化
+- [Tailwind CSS](https://tailwindcss.com/) v4 — 样式
 
-## Project Structure
+## 项目结构
 
 ```
-├── src/                      # Bot source code
-│   ├── index.ts              # Main loop, processMarket()
-│   ├── trader.ts             # executeTrade(), paper mode
-│   ├── paperStats.ts         # Paper trade tracking
-│   ├── api.ts                # Hono API server
-│   ├── state.ts              # Shared state management
-│   ├── config.ts             # Configuration loader
-│   ├── types.ts              # TypeScript interfaces
-│   ├── markets.ts            # Market definitions
-│   ├── orderManager.ts       # Order lifecycle management
-│   ├── redeemer.ts           # On-chain redemption
-│   ├── utils.ts              # Helper functions
-│   ├── data/                 # Data sources
+├── src/                      # Bot 源代码
+│   ├── index.ts              # 主循环, processMarket()
+│   ├── trader.ts             # executeTrade(), 模拟模式
+│   ├── paperStats.ts         # 模拟交易跟踪
+│   ├── api.ts                # Hono API 服务器
+│   ├── state.ts              # 共享状态管理
+│   ├── config.ts             # 配置加载器
+│   ├── types.ts              # TypeScript 接口
+│   ├── markets.ts            # 市场定义
+│   ├── orderManager.ts       # 订单生命周期管理
+│   ├── redeemer.ts           # 链上赎回
+│   ├── utils.ts              # 辅助函数
+│   ├── data/                 # 数据源
 │   │   ├── binance.ts        # REST API
 │   │   ├── binanceWs.ts      # WebSocket
 │   │   ├── polymarket.ts     # Gamma + CLOB API
 │   │   ├── polymarketLiveWs.ts
-│   │   ├── chainlink.ts      # On-chain RPC
+│   │   ├── chainlink.ts      # 链上 RPC
 │   │   └── chainlinkWs.ts
-│   ├── engines/              # Trading logic
-│   │   ├── probability.ts    # Scoring + blending
-│   │   ├── edge.ts           # Edge + decision
-│   │   └── regime.ts         # Market regime detection
-│   └── indicators/           # TA indicators
+│   ├── engines/              # 交易逻辑
+│   │   ├── probability.ts    # 评分 + 融合
+│   │   ├── edge.ts           # 边缘 + 决策
+│   │   └── regime.ts         # 市场状态检测
+│   └── indicators/           # TA 指标
 │       ├── rsi.ts
 │       ├── macd.ts
 │       ├── vwap.ts
 │       └── heikenAshi.ts
-├── web/                      # Frontend
+├── web/                      # 前端
 │   ├── src/
 │   │   ├── pages/index.astro
 │   │   └── components/
@@ -320,18 +333,20 @@ P&L calculation:
 │   ├── astro.config.mjs
 │   ├── Dockerfile
 │   └── package.json
-├── logs/                     # Runtime data
+├── logs/                     # 运行时数据
 │   ├── trades-*.csv
 │   ├── signals-*.csv
 │   ├── daily-state.json
 │   └── paper-stats.json
-├── config.json               # Strategy parameters
+├── config.json               # 策略参数
 ├── docker-compose.yml
 ├── Dockerfile
-└── package.json
+├── package.json
+├── .env                      # 环境变量（不提交）
+└── .env.example              # 环境变量示例
 ```
 
-## Docker Services
+## Docker 服务
 
 ```yaml
 services:
@@ -348,43 +363,46 @@ services:
     build: ./web
     ports: ["4321:4321"]
     volumes:
-      - ./web/src:/app/src      # Hot reload
+      - ./web/src:/app/src      # 热重载
     environment:
       - API_URL=http://bot:9999
     depends_on: [bot]
 ```
 
-## Development
+## 开发
 
-### Type Check
+### 类型检查
 
 ```bash
 bun run typecheck
 ```
 
-### Build Web
+### 构建 Web
 
 ```bash
 cd web && bun run build
 ```
 
-### Rebuild Docker
+### 重建 Docker
 
 ```bash
 docker compose down
 docker compose up --build
 ```
 
-## Safety
+## 安全
 
-- Paper trading is enabled by default (`PAPER_MODE=true`)
-- Live trading requires explicit `PAPER_MODE=false` + wallet configuration
-- Daily loss limit prevents runaway losses
-- Maximum open positions limit prevents over-exposure
+- 默认启用模拟交易（`PAPER_MODE=true`）
+- 实盘交易需要 `PAPER_MODE=false` 并通过 Web 界面连接钱包
+- 每日亏损限制防止连续亏损
+- 最大持仓限制防止过度暴露
 
-## Disclaimer
+## 免责声明
 
-This is not financial advice. Trading involves significant risk. Use at your own risk.
+本项目不构成金融建议。交易涉及重大风险。请自行承担风险。
 
 ---
 
+## 相关文档
+
+- [Polymarket 官方文档笔记](./docs/POLYMARKET_OFFICIAL_DOCS.md)
