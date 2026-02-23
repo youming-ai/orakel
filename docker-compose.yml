@@ -1,0 +1,27 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      - PAPER_MODE=${PAPER_MODE:-true}
+    ports:
+      - "9999:9999"
+    volumes:
+      - ./logs:/app/logs
+      - ./config.json:/app/config.json:ro
+    restart: unless-stopped
+    stdin_open: false
+    tty: true
+
+  web:
+    build: ./web
+    environment:
+      - API_URL=http://bot:9999
+    ports:
+      - "9998:4321"
+    volumes:
+      - ./web/src:/app/src
+      - ./web/public:/app/public
+    depends_on:
+      - bot
+    restart: unless-stopped

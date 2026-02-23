@@ -1,0 +1,41 @@
+{
+  "paper": {
+    "risk": {
+      "maxTradeSizeUsdc": 5,
+      "limitDiscount": 0.05,
+      "dailyMaxLossUsdc": 100,
+      "maxOpenPositions": 2,
+      "minLiquidity": 15000,
+      "maxTradesPerWindow": 1
+    },
+    "initialBalance": 1000
+  },
+  "live": {
+    "risk": {
+      "maxTradeSizeUsdc": 5,
+      "limitDiscount": 0.05,
+      "dailyMaxLossUsdc": 100,
+      "maxOpenPositions": 2,
+      "minLiquidity": 15000,
+      "maxTradesPerWindow": 1
+    }
+  },
+  "strategy": {
+    "edgeThresholdEarly": 0.06,
+    "edgeThresholdMid": 0.08,
+    "edgeThresholdLate": 0.10,
+    "minProbEarly": 0.52,
+    "minProbMid": 0.55,
+    "minProbLate": 0.60,
+    "blendWeights": {
+      "vol": 0.5,
+      "ta": 0.5
+    },
+    "regimeMultipliers": {
+      "CHOP": 1.3,
+      "RANGE": 1.0,
+      "TREND_ALIGNED": 0.8,
+      "TREND_OPPOSED": 1.2
+    }
+  }
+}

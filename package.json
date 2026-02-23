@@ -1,16 +1,24 @@
 {
-  "name": "polyassistent",
+  "name": "polymarket-bot",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node src/index.js"
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "ethers": "^6.11.1",
+    "@polymarket/clob-client": "^5.2.4",
+    "ethers": "^5.8.0",
+    "hono": "^4.12.1",
     "https-proxy-agent": "^7.0.6",
     "socks-proxy-agent": "^8.0.5",
     "undici": "^6.21.3",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/ws": "^8",
+    "typescript": "^5.7"
   }
 }

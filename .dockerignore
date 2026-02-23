@@ -1,0 +1,10 @@
+node_modules
+web/node_modules
+web/dist
+web/.astro
+.env
+.env.*
+.git
+logs/
+*.md
+.DS_Store
