@@ -66,7 +66,8 @@ function parseCsv(filePath: string, limit = 200): Record<string, string>[] {
 		const raw = fs.readFileSync(filePath, "utf8").trim();
 		if (!raw) return [];
 		const lines = raw.split("\n");
-		return lines
+		const dataLines = lines[0]?.startsWith("timestamp") ? lines.slice(1) : lines;
+		return dataLines
 			.slice(-limit)
 			.map((line) => {
 				const vals = parseCsvLine(line);
