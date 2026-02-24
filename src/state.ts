@@ -1,50 +1,11 @@
-export interface MarketSnapshot {
-  id: string;
-  label: string;
-  ok: boolean;
-  error?: string;
-
-  // Prices
-  spotPrice: number | null;
-  currentPrice: number | null;
-  priceToBeat: number | null;
-
-  // Polymarket prices
-  marketUp: number | null;
-  marketDown: number | null;
-  rawSum: number | null;
-  arbitrage: boolean;
-
-  // Prediction
-  predictLong: number | null;
-  predictShort: number | null;
-  predictDirection: "LONG" | "SHORT" | "NEUTRAL";
-
-  // Indicators
-  haColor: string | null;
-  haConsecutive: number;
-  rsi: number | null;
-  macd: { macd: number; signal: number; hist: number; histDelta: number | null } | null;
-  vwapSlope: number | null;
-
-  // Timing
-  timeLeftMin: number | null;
-  phase: string | null;
-
-  // Decision
-  action: string;
-  side: string | null;
-  edge: number | null;
-  strength: string | null;
-  reason: string | null;
-
-  // Extra
-  volatility15m: number | null;
-  blendSource: string | null;
-  volImpliedUp: number | null;
-  binanceChainlinkDelta: number | null;
-  orderbookImbalance: number | null;
-}
+import { EventEmitter } from "node:events";
+import type {
+  MarketSnapshot,
+  SignalNewPayload,
+  StateSnapshotPayload,
+  TradeExecutedPayload,
+  WsMessage,
+} from "./types.ts";
 
 export interface DashboardState {
   markets: MarketSnapshot[];
@@ -76,6 +37,61 @@ export interface DashboardState {
   livePendingStop: boolean;
   paperPendingSince: number | null;
   livePendingSince: number | null;
+}
+
+export const botEvents = new EventEmitter();
+
+let _stateVersion = 0;
+
+export function getStateVersion(): number {
+  return _stateVersion;
+}
+
+export function incrementStateVersion(): number {
+  _stateVersion += 1;
+  return _stateVersion;
+}
+
+export function emitStateSnapshot(payload: StateSnapshotPayload): void {
+  const version = incrementStateVersion();
+  const message = {
+    type: "state:snapshot",
+    data: payload,
+    ts: Date.now(),
+    version,
+  } satisfies WsMessage<StateSnapshotPayload>;
+
+  try {
+    botEvents.emit("state:snapshot", message);
+  } catch {}
+}
+
+export function emitSignalNew(payload: SignalNewPayload): void {
+  const version = incrementStateVersion();
+  const message = {
+    type: "signal:new",
+    data: payload,
+    ts: Date.now(),
+    version,
+  } satisfies WsMessage<SignalNewPayload>;
+
+  try {
+    botEvents.emit("signal:new", message);
+  } catch {}
+}
+
+export function emitTradeExecuted(payload: TradeExecutedPayload): void {
+  const version = incrementStateVersion();
+  const message = {
+    type: "trade:executed",
+    data: payload,
+    ts: Date.now(),
+    version,
+  } satisfies WsMessage<TradeExecutedPayload>;
+
+  try {
+    botEvents.emit("trade:executed", message);
+  } catch {}
 }
 
 let _markets: MarketSnapshot[] = [];

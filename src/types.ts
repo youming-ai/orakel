@@ -73,6 +73,8 @@ export interface AppConfig {
   macdSlow: number;
   macdSignal: number;
   paperMode: boolean;
+  persistBackend: StorageBackend;
+  readBackend: Exclude<StorageBackend, "dual">;
   polymarket: {
     marketSlug: string;
     autoSelectLatest: boolean;
@@ -108,6 +110,7 @@ export type Phase = "EARLY" | "MID" | "LATE";
 export type Regime = "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP";
 export type Strength = "STRONG" | "GOOD" | "OPTIONAL";
 export type Side = "UP" | "DOWN";
+export type StorageBackend = "csv" | "dual" | "sqlite";
 
 export interface TradeDecision {
   action: "ENTER" | "NO_TRADE";
@@ -244,6 +247,40 @@ export interface RedeemResult {
   error?: string;
 }
 
+export interface MarketSnapshot {
+  id: string;
+  label: string;
+  ok: boolean;
+  error?: string;
+  spotPrice: number | null;
+  currentPrice: number | null;
+  priceToBeat: number | null;
+  marketUp: number | null;
+  marketDown: number | null;
+  rawSum: number | null;
+  arbitrage: boolean;
+  predictLong: number | null;
+  predictShort: number | null;
+  predictDirection: "LONG" | "SHORT" | "NEUTRAL";
+  haColor: string | null;
+  haConsecutive: number;
+  rsi: number | null;
+  macd: { macd: number; signal: number; hist: number; histDelta: number | null } | null;
+  vwapSlope: number | null;
+  timeLeftMin: number | null;
+  phase: string | null;
+  action: string;
+  side: string | null;
+  edge: number | null;
+  strength: string | null;
+  reason: string | null;
+  volatility15m: number | null;
+  blendSource: string | null;
+  volImpliedUp: number | null;
+  binanceChainlinkDelta: number | null;
+  orderbookImbalance: number | null;
+}
+
 export interface PaperTradeEntry {
   id: string;
   marketId: string;
@@ -267,6 +304,60 @@ export interface PaperStats {
   pending: number;
   winRate: number;
   totalPnl: number;
+}
+
+export type WsEventType =
+  | "state:snapshot"
+  | "signal:new"
+  | "trade:executed";
+
+export interface WsMessage<T = unknown> {
+  type: WsEventType;
+  data: T;
+  ts: number;
+  version: number;
+}
+
+export interface StateSnapshotPayload {
+  markets: MarketSnapshot[];
+  updatedAt: string;
+  paperRunning: boolean;
+  liveRunning: boolean;
+  paperPendingStart: boolean;
+  paperPendingStop: boolean;
+  livePendingStart: boolean;
+  livePendingStop: boolean;
+  paperStats: {
+    totalTrades: number;
+    wins: number;
+    losses: number;
+    pending: number;
+    winRate: number;
+    totalPnl: number;
+  } | null;
+}
+
+export interface SignalNewPayload {
+  marketId: string;
+  timestamp: string;
+  regime: string | null;
+  signal: "ENTER" | "HOLD";
+  modelUp: number;
+  modelDown: number;
+  edgeUp: number | null;
+  edgeDown: number | null;
+  recommendation: string | null;
+}
+
+export interface TradeExecutedPayload {
+  marketId: string;
+  mode: "paper" | "live";
+  side: "UP" | "DOWN";
+  price: number;
+  size: number;
+  timestamp: string;
+  orderId: string;
+  status: string;
 }
 
 // === Account Separation Types ===
