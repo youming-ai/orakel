@@ -142,7 +142,7 @@ export function ConnectWallet() {
         <Badge
           variant="default"
           className={cn(
-            "text-[10px]",
+            "text-[11px]",
             chain?.id === 137
               ? "bg-purple-600 hover:bg-purple-600"
               : "bg-amber-600 hover:bg-amber-600"
@@ -162,11 +162,11 @@ export function ConnectWallet() {
           />
           <div className="fixed sm:absolute bottom-0 sm:bottom-auto left-0 sm:left-auto right-0 sm:right-0 top-auto sm:top-full sm:mt-2 z-50 sm:min-w-[200px] rounded-t-xl sm:rounded-md border-t sm:border border-border bg-popover p-1 shadow-lg" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
             <div className="px-3 py-2.5 border-b border-border">
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1"><Wallet className="size-3" /> Address</div>
+              <div className="text-[11px] text-muted-foreground flex items-center gap-1"><Wallet className="size-3" /> Address</div>
               <div className="font-mono text-xs break-all">{address}</div>
             </div>
             <div className="px-3 py-2.5 border-b border-border">
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1"><Coins className="size-3" /> USDC.e Balance</div>
+              <div className="text-[11px] text-muted-foreground flex items-center gap-1"><Coins className="size-3" /> USDC.e Balance</div>
               <div
                 className={cn(
                   "font-mono text-xs",
@@ -183,7 +183,7 @@ export function ConnectWallet() {
               </div>
             </div>
             <div className="px-3 py-2.5 border-b border-border">
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1"><Gem className="size-3" /> Native Balance</div>
+              <div className="text-[11px] text-muted-foreground flex items-center gap-1"><Gem className="size-3" /> Native Balance</div>
               <div className={cn("font-mono text-xs", balanceError ? "text-red-400" : "") }>
                 {balanceLoading
                   ? "Loading..."

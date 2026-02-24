@@ -4,7 +4,7 @@ import {
 	useQuery,
 	useQueryClient,
 } from "@tanstack/react-query";
-import type { ConfigPayload } from "./api";
+import type { ConfigPayload, DashboardState, TradeRecord } from "./api";
 import { api } from "./api";
 import type { ViewMode } from "./types";
 import type { WsMessage } from "./ws";
@@ -70,7 +70,7 @@ export function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 	return (msg: WsMessage) => {
 		switch (msg.type) {
 			case "state:snapshot": {
-				qc.setQueryData(queries.state().queryKey, msg.data);
+				qc.setQueryData(queries.state().queryKey, msg.data as DashboardState);
 				break;
 			}
 			case "trade:executed": {

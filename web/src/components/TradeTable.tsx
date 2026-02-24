@@ -99,7 +99,7 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 										<Badge
 											variant="secondary"
 											className={cn(
-												"text-[10px] px-1.5",
+												"text-[11px] px-1.5",
 												isUp
 													? "bg-emerald-500/15 text-emerald-400"
 													: "bg-red-500/15 text-red-400",
@@ -115,7 +115,7 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 										{t.price}
 									</TableCell>
 									<TableCell className="hidden sm:table-cell">
-										<Badge variant="secondary" className="text-[10px] px-1.5">
+										<Badge variant="secondary" className="text-[11px] px-1.5">
 											{t.status || "placed"}
 										</Badge>
 									</TableCell>
@@ -123,7 +123,7 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 										<TableCell className="hidden sm:table-cell">
 											<Badge
 												variant="secondary"
-												className="text-[10px] px-1.5 bg-amber-500/15 text-amber-400 border-amber-500/30"
+												className="text-[11px] px-1.5 bg-amber-500/15 text-amber-400 border-amber-500/30"
 											>
 												PAPER
 											</Badge>

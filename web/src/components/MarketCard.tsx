@@ -24,7 +24,7 @@ function macdLabel(macd: MarketSnapshot["macd"]): {
 export function MarketCard({ market: m }: MarketCardProps) {
 	if (!m.ok) {
 		return (
-			<Card className="border-red-900/40 bg-red-950/20">
+			<Card className="border-red-500/30 bg-red-500/10">
 				<CardHeader className="pb-2">
 					<CardTitle className="text-base">{m.id}</CardTitle>
 				</CardHeader>
@@ -47,7 +47,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					<CardTitle className="text-base font-bold">{m.id}</CardTitle>
 					<div className="flex items-center gap-2">
 						{m.phase && (
-							<Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+							<Badge variant="secondary" className="text-[11px] px-1.5 py-0">
 								{m.phase}
 							</Badge>
 						)}

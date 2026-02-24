@@ -50,12 +50,15 @@ import type {
 	TradeRecord,
 } from "@/lib/api";
 import { SAVE_STATUS_TIMEOUT_MS, TIMING_BUCKETS } from "@/lib/constants";
+import { CHART_COLORS, CHART_HEIGHT, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
 import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
 import { useConfigMutation } from "@/lib/queries";
 import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { MarketCard } from "./MarketCard";
 import { TradeTable } from "./TradeTable";
+import { StatCard } from "./StatCard";
+import { ChartErrorBoundary } from "./ChartErrorBoundary";
 
 interface AnalyticsTabsProps {
 	stats: PaperStats | null;
@@ -89,14 +92,6 @@ interface StrategyFormValues {
 	regimeTREND_OPPOSED: number;
 }
 
-const COLORS = {
-	positive: "#34d399",
-	negative: "#f87171",
-	pending: "#fbbf24",
-	axis: "#71717a",
-	grid: "#2f2f3a",
-	tipBg: "#1a1a2e",
-};
 
 function toStrategyFormValues(
 	strategyRaw: StrategyConfig,
@@ -299,8 +294,8 @@ export function AnalyticsTabs({
 		const up = trades.filter((t) => t.side === "UP").length;
 		const down = trades.filter((t) => t.side === "DOWN").length;
 		return [
-			{ name: "UP", value: up, color: COLORS.positive },
-			{ name: "DOWN", value: down, color: COLORS.negative },
+			{ name: "UP", value: up, color: CHART_COLORS.positive },
+			{ name: "DOWN", value: down, color: CHART_COLORS.negative },
 		];
 	}, [trades]);
 
@@ -328,6 +323,9 @@ export function AnalyticsTabs({
 		maxTradeSizeUsdc: form.maxTradeSizeUsdc,
 		maxOpenPositions: form.maxOpenPositions,
 		dailyMaxLossUsdc: form.dailyMaxLossUsdc,
+		limitDiscount: config.paperRisk.limitDiscount,
+		minLiquidity: config.paperRisk.minLiquidity,
+		maxTradesPerWindow: config.paperRisk.maxTradesPerWindow,
 	};
 
 	function saveConfig() {
@@ -467,10 +465,11 @@ export function AnalyticsTabs({
 							Cumulative P&L
 						</CardTitle>
 					</CardHeader>
-					<CardContent className="h-48 sm:h-72">
+					<CardContent className={CHART_HEIGHT.responsive}>
 						{pnlTimeline.length === 0 ? (
 							<EmptyPlaceholder />
 						) : (
+							<ChartErrorBoundary>
 							<ResponsiveContainer width="100%" height="100%">
 								<AreaChart data={pnlTimeline}>
 									<defs>
@@ -484,38 +483,33 @@ export function AnalyticsTabs({
 											<stop
 												offset="5%"
 												stopColor={
-													timelinePositive ? COLORS.positive : COLORS.negative
+													timelinePositive ? CHART_COLORS.positive : CHART_COLORS.negative
 												}
 												stopOpacity={0.35}
 											/>
 											<stop
 												offset="95%"
 												stopColor={
-													timelinePositive ? COLORS.positive : COLORS.negative
+													timelinePositive ? CHART_COLORS.positive : CHART_COLORS.negative
 												}
 												stopOpacity={0}
 											/>
 										</linearGradient>
 									</defs>
-									<CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} />
+									<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
 									<XAxis
 										dataKey="time"
-										tick={{ fontSize: 11, fill: COLORS.axis }}
+										tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
 										minTickGap={24}
 									/>
 									<YAxis
-										tick={{ fontSize: 11, fill: COLORS.axis }}
+										tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
 										tickFormatter={(v: number) => `${v.toFixed(1)}`}
 										width={52}
 									/>
 									<Tooltip
-										cursor={{ stroke: "#52525b", strokeDasharray: "3 3" }}
-										contentStyle={{
-											background: COLORS.tipBg,
-											border: "1px solid #3f3f46",
-											borderRadius: 8,
-											fontSize: 12,
-										}}
+										cursor={TOOLTIP_CURSOR_STYLE}
+										contentStyle={TOOLTIP_CONTENT_STYLE}
 										labelFormatter={(_, payload) => {
 											const row = payload?.[0]?.payload as
 												| {
@@ -546,13 +540,14 @@ export function AnalyticsTabs({
 										type="monotone"
 										dataKey="cumulative"
 										stroke={
-											timelinePositive ? COLORS.positive : COLORS.negative
+											timelinePositive ? CHART_COLORS.positive : CHART_COLORS.negative
 										}
 										fill="url(#timelineGrad)"
 										strokeWidth={2}
 									/>
 								</AreaChart>
 							</ResponsiveContainer>
+						</ChartErrorBoundary>
 						)}
 					</CardContent>
 				</Card>
@@ -571,21 +566,22 @@ export function AnalyticsTabs({
 								Win Rate by Market
 							</CardTitle>
 						</CardHeader>
-						<CardContent className="h-56 sm:h-72">
+						<CardContent className={CHART_HEIGHT.responsive}>
 							{marketRows.length === 0 ? (
 								<EmptyPlaceholder />
 							) : (
-								<ResponsiveContainer width="100%" height="100%">
+								<ChartErrorBoundary>
+							<ResponsiveContainer width="100%" height="100%">
 									<BarChart
 										data={marketRows}
 										layout="vertical"
 										margin={{ right: 56 }}
 									>
-										<CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} />
+										<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
 										<XAxis
 											type="number"
 											domain={[0, 100]}
-											tick={{ fontSize: 11, fill: COLORS.axis }}
+											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
 										/>
 										<YAxis
 											type="category"
@@ -594,12 +590,7 @@ export function AnalyticsTabs({
 											width={48}
 										/>
 										<Tooltip
-											contentStyle={{
-												background: COLORS.tipBg,
-												border: "1px solid #3f3f46",
-												borderRadius: 8,
-												fontSize: 12,
-											}}
+											contentStyle={TOOLTIP_CONTENT_STYLE}
 											formatter={(value, _, item) => {
 												const v = asNumber(value, 0);
 												const p = item.payload as {
@@ -636,14 +627,15 @@ export function AnalyticsTabs({
 													key={row.market}
 													fill={
 														row.winRate >= 0.5
-															? COLORS.positive
-															: COLORS.negative
+															? CHART_COLORS.positive
+															: CHART_COLORS.negative
 													}
 												/>
 											))}
 										</Bar>
 									</BarChart>
 								</ResponsiveContainer>
+						</ChartErrorBoundary>
 							)}
 						</CardContent>
 					</Card>
@@ -654,28 +646,24 @@ export function AnalyticsTabs({
 								P&L by Market
 							</CardTitle>
 						</CardHeader>
-						<CardContent className="h-56 sm:h-72">
+						<CardContent className={CHART_HEIGHT.responsive}>
 							{marketRows.length === 0 ? (
 								<EmptyPlaceholder />
 							) : (
-								<ResponsiveContainer width="100%" height="100%">
+								<ChartErrorBoundary>
+							<ResponsiveContainer width="100%" height="100%">
 									<BarChart data={marketRows}>
-										<CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} />
+										<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
 										<XAxis
 											dataKey="market"
-											tick={{ fontSize: 11, fill: COLORS.axis }}
+											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
 										/>
 										<YAxis
-											tick={{ fontSize: 11, fill: COLORS.axis }}
+											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
 											width={52}
 										/>
 										<Tooltip
-											contentStyle={{
-												background: COLORS.tipBg,
-												border: "1px solid #3f3f46",
-												borderRadius: 8,
-												fontSize: 12,
-											}}
+											contentStyle={TOOLTIP_CONTENT_STYLE}
 											formatter={(value) => {
 												const v = asNumber(value, 0);
 												return [
@@ -689,13 +677,14 @@ export function AnalyticsTabs({
 												<Cell
 													key={`${row.market}-pnl`}
 													fill={
-														row.pnl >= 0 ? COLORS.positive : COLORS.negative
+														row.pnl >= 0 ? CHART_COLORS.positive : CHART_COLORS.negative
 													}
 												/>
 											))}
 										</Bar>
 									</BarChart>
 								</ResponsiveContainer>
+						</ChartErrorBoundary>
 							)}
 						</CardContent>
 					</Card>
@@ -774,29 +763,25 @@ export function AnalyticsTabs({
 								Entry Timing Distribution
 							</CardTitle>
 						</CardHeader>
-						<CardContent className="h-56 sm:h-72">
+						<CardContent className={CHART_HEIGHT.responsive}>
 							{trades.length === 0 ? (
 								<EmptyPlaceholder />
 							) : (
-								<ResponsiveContainer width="100%" height="100%">
+								<ChartErrorBoundary>
+							<ResponsiveContainer width="100%" height="100%">
 									<BarChart data={timingData}>
-										<CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} />
+										<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
 										<XAxis
 											dataKey="name"
-											tick={{ fontSize: 11, fill: COLORS.axis }}
+											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
 										/>
 										<YAxis
 											allowDecimals={false}
-											tick={{ fontSize: 11, fill: COLORS.axis }}
+											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
 											width={40}
 										/>
 										<Tooltip
-											contentStyle={{
-												background: COLORS.tipBg,
-												border: "1px solid #3f3f46",
-												borderRadius: 8,
-												fontSize: 12,
-											}}
+											contentStyle={TOOLTIP_CONTENT_STYLE}
 											formatter={(value, _, item) => {
 												const v = Math.round(asNumber(value, 0));
 												const p = item.payload as {
@@ -816,16 +801,17 @@ export function AnalyticsTabs({
 													key={`timing-${item.name}`}
 													fill={
 														item.resolved === 0
-															? COLORS.pending
+															? CHART_COLORS.pending
 															: item.winRate >= 0.5
-																? COLORS.positive
-																: COLORS.negative
+																? CHART_COLORS.positive
+																: CHART_COLORS.negative
 													}
 												/>
 											))}
 										</Bar>
 									</BarChart>
 								</ResponsiveContainer>
+						</ChartErrorBoundary>
 							)}
 						</CardContent>
 					</Card>
@@ -836,11 +822,12 @@ export function AnalyticsTabs({
 								Direction Distribution
 							</CardTitle>
 						</CardHeader>
-						<CardContent className="h-56 sm:h-72">
+						<CardContent className={CHART_HEIGHT.responsive}>
 							{sideTotal === 0 ? (
 								<EmptyPlaceholder />
 							) : (
 								<>
+							<ChartErrorBoundary>
 									<ResponsiveContainer width="100%" height="84%">
 										<PieChart>
 											<Pie
@@ -861,12 +848,7 @@ export function AnalyticsTabs({
 												))}
 											</Pie>
 											<Tooltip
-												contentStyle={{
-													background: COLORS.tipBg,
-													border: "1px solid #3f3f46",
-													borderRadius: 8,
-													fontSize: 12,
-												}}
+												contentStyle={TOOLTIP_CONTENT_STYLE}
 												formatter={(value) => {
 													const v = Math.round(asNumber(value, 0));
 													return [`${v} trades`, "Count"];
@@ -874,6 +856,7 @@ export function AnalyticsTabs({
 											/>
 										</PieChart>
 									</ResponsiveContainer>
+						</ChartErrorBoundary>
 									<div className="mt-2 flex items-center justify-center gap-3 text-xs">
 										<Badge
 											variant="secondary"
@@ -1200,38 +1183,5 @@ function EmptyPlaceholder() {
 		<div className="h-full flex items-center justify-center text-xs text-muted-foreground">
 			No data
 		</div>
-	);
-}
-
-function StatCard({
-	label,
-	value,
-	color,
-	suffix,
-	icon,
-}: {
-	label: string;
-	value: string;
-	color?: string;
-	suffix?: string;
-	icon?: React.ReactNode;
-}) {
-	return (
-		<Card>
-			<CardContent className="py-3 px-4">
-				<span className="text-[11px] text-muted-foreground flex items-center gap-1">
-					{icon}
-					{label}
-				</span>
-				<span className={cn("font-mono text-lg font-bold block", color)}>
-					{value}
-					{suffix && (
-						<span className="text-xs font-normal text-muted-foreground ml-1">
-							{suffix}
-						</span>
-					)}
-				</span>
-			</CardContent>
-		</Card>
 	);
 }

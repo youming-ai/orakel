@@ -329,7 +329,6 @@ edge = 模型概率 - 市场价格
 │   │       ├── Header.tsx
 │   │       ├── MarketCard.tsx
 │   │       ├── TradeTable.tsx
-│   │       └── PaperStatsChart.tsx
 │   ├── astro.config.mjs
 │   ├── Dockerfile
 │   └── package.json
