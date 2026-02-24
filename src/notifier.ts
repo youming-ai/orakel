@@ -1,70 +1,73 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import { createLogger } from "./logger.ts";
 
-const LOG_DIR = "./logs";
+const LOG_DIR = "./data";
 const POLL_MS = 2000;
 const COOLDOWN_MS = 60000;
 
+const log = createLogger("notify");
+
 interface SignalPayload {
-  marketId?: string;
-  marketSlug?: string;
-  timestamp?: string;
-  side?: "UP" | "DOWN" | string;
-  strength?: "STRONG" | "GOOD" | string;
-  edgeUp?: number;
-  edgeDown?: number;
-  modelUp?: number;
-  modelDown?: number;
-  timeLeftMin?: number;
-  phase?: string;
-  marketUp?: number | null;
-  marketDown?: number | null;
+	marketId?: string;
+	marketSlug?: string;
+	timestamp?: string;
+	side?: "UP" | "DOWN" | string;
+	strength?: "STRONG" | "GOOD" | string;
+	edgeUp?: number;
+	edgeDown?: number;
+	modelUp?: number;
+	modelDown?: number;
+	timeLeftMin?: number;
+	phase?: string;
+	marketUp?: number | null;
+	marketDown?: number | null;
 }
 
 const lastPushByMarket: Map<string, { slug: string; time: number }> = new Map();
 
 function listSignalFiles(): string[] {
-  try {
-    const entries = fs.readdirSync(LOG_DIR);
-    return entries
-      .filter((name: string) => /^latest-signal-[A-Za-z0-9_-]+\.json$/.test(name))
-      .map((name: string) => `${LOG_DIR}/${name}`);
-  } catch {
-    return [];
-  }
+	try {
+		const entries = fs.readdirSync(LOG_DIR);
+		return entries
+			.filter((name: string) => /^latest-signal-[A-Za-z0-9_-]+\.json$/.test(name))
+			.map((name: string) => `${LOG_DIR}/${name}`);
+	} catch {
+		return [];
+	}
 }
 
 function checkAndPushFile(filePath: string): void {
-  let signal: SignalPayload;
-  try {
-    signal = JSON.parse(fs.readFileSync(filePath, "utf8")) as SignalPayload;
-  } catch {
-    return;
-  }
+	let signal: SignalPayload;
+	try {
+		signal = JSON.parse(fs.readFileSync(filePath, "utf8")) as SignalPayload;
+	} catch {
+		return;
+	}
 
-  const now = Date.now();
-  const marketId = String(signal.marketId || "GLOBAL").toUpperCase();
-  const slug = signal.marketSlug || "unknown";
-  const prev = lastPushByMarket.get(marketId);
-  if (prev && prev.slug === slug && now - prev.time < COOLDOWN_MS) {
-    return;
-  }
+	const now = Date.now();
+	const marketId = String(signal.marketId || "GLOBAL").toUpperCase();
+	const slug = signal.marketSlug || "unknown";
+	const prev = lastPushByMarket.get(marketId);
+	if (prev && prev.slug === slug && now - prev.time < COOLDOWN_MS) {
+		return;
+	}
 
-  const signalAge = now - new Date(signal.timestamp ?? 0).getTime();
-  if (signalAge > 5000) return;
+	const signalAge = now - new Date(signal.timestamp ?? 0).getTime();
+	if (signalAge > 5000) return;
 
-  lastPushByMarket.set(marketId, { slug, time: now });
+	lastPushByMarket.set(marketId, { slug, time: now });
 
-  const emoji = signal.side === "UP" ? "🟢" : "🔴";
-  const strengthEmoji = signal.strength === "STRONG" ? "💪" : signal.strength === "GOOD" ? "👍" : "🔹";
-  const edgeBase = signal.side === "UP" ? signal.edgeUp : signal.edgeDown;
-  const edge = Math.abs((edgeBase || 0) * 100).toFixed(1);
-  const modelUp = ((signal.modelUp ?? 0) * 100).toFixed(0);
-  const modelDown = ((signal.modelDown ?? 0) * 100).toFixed(0);
-  const timeLeft = Math.max(0, signal.timeLeftMin ?? 0).toFixed(0);
+	const emoji = signal.side === "UP" ? "🟢" : "🔴";
+	const strengthEmoji = signal.strength === "STRONG" ? "💪" : signal.strength === "GOOD" ? "👍" : "🔹";
+	const edgeBase = signal.side === "UP" ? signal.edgeUp : signal.edgeDown;
+	const edge = Math.abs((edgeBase || 0) * 100).toFixed(1);
+	const modelUp = ((signal.modelUp ?? 0) * 100).toFixed(0);
+	const modelDown = ((signal.modelDown ?? 0) * 100).toFixed(0);
+	const timeLeft = Math.max(0, signal.timeLeftMin ?? 0).toFixed(0);
 
-  const msg = `🚨 **Polymarket Signal!** ${emoji}
+	const msg = `🚨 **Polymarket Signal!** ${emoji}
 
 **Asset**: ${marketId}
 **Side**: BUY ${signal.side}
@@ -76,24 +79,26 @@ function checkAndPushFile(filePath: string): void {
 
 ⚡ Place order on Polymarket!`;
 
-  console.log(JSON.stringify({
-    type: "DISCORD_PUSH",
-    channel: "discord",
-    to: "channel:1472992159824220414",
-    message: msg
-  }));
+	log.info(
+		JSON.stringify({
+			type: "DISCORD_PUSH",
+			channel: "discord",
+			to: "channel:1472992159824220414",
+			message: msg,
+		}),
+	);
 
-  try {
-    fs.unlinkSync(filePath);
-  } catch {}
+	try {
+		fs.unlinkSync(filePath);
+	} catch (err) { log.warn("Failed to delete signal file:", filePath, err); }
 }
 
 function checkAndPush(): void {
-  const files = listSignalFiles();
-  for (const filePath of files) {
-    checkAndPushFile(filePath);
-  }
+	const files = listSignalFiles();
+	for (const filePath of files) {
+		checkAndPushFile(filePath);
+	}
 }
 
-console.error("[notifier] Watching for signals...");
+log.error("Watching for signals...");
 setInterval(checkAndPush, POLL_MS);
