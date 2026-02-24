@@ -12,7 +12,7 @@ import type { TradeRecord } from "@/lib/api";
 import { TRADE_TABLE_PAGE_SIZE } from "@/lib/constants";
 import { fmtDate, fmtTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface TradeTableProps {
@@ -28,6 +28,20 @@ function fmtTimestamp(ts: string): string {
 function sideLabel(side: string): { text: string; isUp: boolean } {
 	const up = (side ?? "").includes("UP");
 	return { text: up ? "BUY UP" : "BUY DOWN", isUp: up };
+}
+
+const WINDOW_SEC = 15 * 60;
+
+function getMarketCycleSlug(market: string, timestamp: string): string | null {
+	if (!market || !timestamp) return null;
+	const tsSec = Math.floor(new Date(timestamp).getTime() / 1000);
+	if (Number.isNaN(tsSec)) return null;
+	const windowStart = Math.floor(tsSec / WINDOW_SEC) * WINDOW_SEC;
+	return `${market.toLowerCase()}-updown-15m-${windowStart}`;
+}
+
+function getPolymarketUrl(slug: string): string {
+	return `https://polymarket.com/event/${slug}`;
 }
 
 export function TradeTable({ trades, paperMode }: TradeTableProps) {
@@ -63,7 +77,7 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 						<TableRow>
 							<TableHead className="w-20 hidden sm:table-cell">Date</TableHead>
 							<TableHead className="w-20">Time</TableHead>
-							<TableHead className="w-16">Market</TableHead>
+							<TableHead className="min-w-[180px]">Market</TableHead>
 							<TableHead className="w-24">Side</TableHead>
 							<TableHead className="w-16 text-right hidden sm:table-cell">
 								Amount
@@ -93,7 +107,21 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 										{fmtTimestamp(t.timestamp)}
 									</TableCell>
 									<TableCell className="font-mono text-xs font-medium">
-										{t.market}
+										{(() => {
+											const slug = getMarketCycleSlug(t.market, t.timestamp);
+											if (!slug) return t.market;
+											return (
+												<a
+													href={getPolymarketUrl(slug)}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors hover:underline"
+												>
+													{slug}
+													<ExternalLink className="size-3 shrink-0" />
+												</a>
+											);
+										})()}
 									</TableCell>
 									<TableCell>
 										<Badge

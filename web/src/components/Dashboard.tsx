@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createWsCacheHandler, useDashboardState, useLiveCancel, useLiveToggle, usePaperCancel, usePaperStats, usePaperToggle, useTrades } from "@/lib/queries";
+import { useUIStore } from "@/lib/store";
 import type { ViewMode } from "@/lib/types";
 import { useWebSocket } from "@/lib/ws";
 import { AnalyticsTabs } from "./AnalyticsTabs";
@@ -18,13 +19,10 @@ import {
 } from "@/components/ui/alert-dialog";
 
 function DashboardContent() {
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("viewMode") as ViewMode) || "paper";
-    }
-    return "paper";
-  });
-  const [confirmAction, setConfirmAction] = useState<"start" | "stop" | null>(null);
+  const viewMode = useUIStore((s) => s.viewMode);
+  const setViewMode = useUIStore((s) => s.setViewMode);
+  const confirmAction = useUIStore((s) => s.confirmAction);
+  const setConfirmAction = useUIStore((s) => s.setConfirmAction);
   const queryClient = useQueryClient();
 
   // WebSocket cache handler - memoized to prevent infinite re-renders
@@ -53,10 +51,7 @@ function DashboardContent() {
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("viewMode", mode);
-    }
-  }, []);
+  }, [setViewMode]);
 
 
   const handlePaperToggle = useCallback(() => {
@@ -66,7 +61,7 @@ function DashboardContent() {
       return;
     }
     setConfirmAction(state.paperRunning ? "stop" : "start");
-  }, [state, paperCancel]);
+  }, [state, paperCancel, setConfirmAction]);
 
   const handleLiveToggle = useCallback(() => {
     if (!state) return;
@@ -76,7 +71,7 @@ function DashboardContent() {
     }
     if (!state.liveRunning && !state.liveWallet?.clientReady) return;
     setConfirmAction(state.liveRunning ? "stop" : "start");
-  }, [state, liveCancel]);
+  }, [state, liveCancel, setConfirmAction]);
 
 
   const handleConfirm = useCallback(() => {
@@ -87,7 +82,7 @@ function DashboardContent() {
       liveToggle.mutate(confirmAction === "stop");
     }
     setConfirmAction(null);
-  }, [state, confirmAction, viewMode, paperToggle, liveToggle]);
+  }, [state, confirmAction, viewMode, paperToggle, liveToggle, setConfirmAction]);
 
   if (!state) {
     return (
