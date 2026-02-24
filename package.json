@@ -5,22 +5,29 @@
   "private": true,
   "scripts": {
     "start": "bun run src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:ci": "tsc --noEmit -p tsconfig.check.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "format": "biome format --write src/",
+    "backup": "bun run scripts/backup-db.ts"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
     "@polymarket/clob-client": "^5.2.4",
     "ethers": "^5.8.0",
     "hono": "^4.12.1",
-    "https-proxy-agent": "^7.0.6",
-    "socks-proxy-agent": "^8.0.5",
     "undici": "^6.21.3",
     "ws": "^8.18.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
     "@types/bun": "latest",
     "@types/ws": "^8",
-    "typescript": "^5.7"
+    "typescript": "^5.7",
+    "vitest": "^4.0.18"
   }
 }
