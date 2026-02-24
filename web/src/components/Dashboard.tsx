@@ -1,6 +1,8 @@
-import { useCallback, useState } from "react";
-import { useDashboardState, useLiveCancel, useLiveToggle, usePaperCancel, usePaperStats, usePaperToggle, useTrades } from "@/lib/queries";
+import { useCallback, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { createWsCacheHandler, useDashboardState, useLiveCancel, useLiveToggle, usePaperCancel, usePaperStats, usePaperToggle, useTrades } from "@/lib/queries";
 import type { ViewMode } from "@/lib/types";
+import { useWebSocket } from "@/lib/ws";
 import { AnalyticsTabs } from "./AnalyticsTabs";
 import { Header } from "./Header";
 import { Web3Provider } from "./Web3Provider";
@@ -23,6 +25,20 @@ function DashboardContent() {
     return "paper";
   });
   const [confirmAction, setConfirmAction] = useState<"start" | "stop" | null>(null);
+  const queryClient = useQueryClient();
+
+  // WebSocket cache handler - memoized to prevent infinite re-renders
+  const wsCacheHandler = useMemo(
+    () => createWsCacheHandler(queryClient),
+    [queryClient]
+  );
+
+  // WebSocket connection
+  useWebSocket({
+    onMessage: wsCacheHandler,
+    onConnect: () => console.log("[Dashboard] WebSocket connected"),
+    onDisconnect: () => console.log("[Dashboard] WebSocket disconnected"),
+  });
 
   const { data: state, error: stateError } = useDashboardState();
   const { data: trades = [] } = useTrades(viewMode);

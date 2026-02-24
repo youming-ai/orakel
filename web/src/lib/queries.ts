@@ -7,6 +7,8 @@ import {
 import type { ConfigPayload } from "./api";
 import { api } from "./api";
 import type { ViewMode } from "./types";
+import type { WsMessage } from "./ws";
+import { useWebSocket } from "./ws";
 
 // ---------------------------------------------------------------------------
 // Query Options Factory
@@ -14,12 +16,13 @@ import type { ViewMode } from "./types";
 // ---------------------------------------------------------------------------
 
 export const queries = {
-	state: () =>
+	state: (wsConnected: boolean = false) =>
 		queryOptions({
 			queryKey: ["state"] as const,
 			queryFn: api.getState,
-			refetchInterval: 2_000,
-			staleTime: 0,
+			// Only poll if WebSocket is not connected
+			refetchInterval: wsConnected ? false : 2_000,
+			staleTime: wsConnected ? 30_000 : 0,
 		}),
 
 	trades: (mode: ViewMode) =>
@@ -57,6 +60,40 @@ export function usePaperStats(enabled: boolean) {
 		enabled,
 		refetchInterval: enabled ? 10_000 : false,
 	});
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket Cache Handler
+// ---------------------------------------------------------------------------
+
+export function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
+	return (msg: WsMessage) => {
+		switch (msg.type) {
+			case "state:snapshot": {
+				qc.setQueryData(queries.state().queryKey, msg.data);
+				break;
+			}
+			case "trade:executed": {
+				qc.invalidateQueries({ queryKey: queries.trades("paper").queryKey });
+				qc.invalidateQueries({ queryKey: queries.trades("live").queryKey });
+				qc.invalidateQueries({ queryKey: queries.paperStats().queryKey });
+				break;
+			}
+			case "signal:new": {
+				qc.invalidateQueries({ queryKey: queries.state().queryKey });
+				break;
+			}
+		}
+	};
+}
+
+// Hook that combines WebSocket with React Query cache updates
+export function useDashboardStateWithWs() {
+	const queryClient = useQueryClient();
+	const { isConnected } = useWebSocket({
+		onMessage: createWsCacheHandler(queryClient),
+	});
+	return useQuery(queries.state(isConnected));
 }
 
 // ---------------------------------------------------------------------------
