@@ -1,5 +1,7 @@
 import fs from "node:fs";
-import { PAPER_INITIAL_BALANCE, CONFIG } from "./config.ts";
+import { CONFIG, PAPER_INITIAL_BALANCE } from "./config.ts";
+import { createLogger } from "./logger.ts";
+const log = createLogger("paperStats");
 import { PERSIST_BACKEND, statements } from "./db.ts";
 import type { PaperStats, PaperTradeEntry, Side } from "./types.ts";
 
@@ -10,6 +12,7 @@ interface DailyPnl {
 	pnl: number;
 	trades: number;
 }
+
 
 interface PersistedPaperState {
 	trades: PaperTradeEntry[];
@@ -23,6 +26,35 @@ interface PersistedPaperState {
 	dailyCountedTradeIds: string[]; // Persisted as array, mirrored to Set for O(1) lookups
 	stoppedAt: string | null;
 	stopReason: string | null;
+}
+
+interface PaperStateRow {
+	initial_balance: number;
+	current_balance: number;
+	max_drawdown: number;
+	wins: number;
+	losses: number;
+	total_pnl: number;
+	stopped_at: string | null;
+	stop_reason: string | null;
+	daily_pnl: string;
+	daily_counted_trade_ids: string;
+}
+
+interface PaperTradeRow {
+	id: string;
+	market_id: string;
+	window_start_ms: number;
+	side: string;
+	price: number;
+	size: number;
+	price_to_beat: number;
+	current_price_at_entry: number | null;
+	timestamp: string;
+	resolved: number;
+	won: number | null;
+	pnl: number | null;
+	settle_price: number | null;
 }
 
 let state: PersistedPaperState = {
@@ -42,43 +74,161 @@ let state: PersistedPaperState = {
 // O(1) lookup mirror of state.dailyCountedTradeIds
 let dailyCountedTradeIdSet = new Set<string>();
 
-try {
-	if (fs.existsSync(STATS_PATH)) {
-		const raw = fs.readFileSync(STATS_PATH, "utf8");
-		const parsed: unknown = JSON.parse(raw);
-		if (parsed && typeof parsed === "object") {
-			const obj = parsed as Record<string, unknown>;
-			state = {
-				trades: Array.isArray(obj.trades)
-					? (obj.trades as PaperTradeEntry[])
-					: [],
-				wins: typeof obj.wins === "number" ? obj.wins : 0,
-				losses: typeof obj.losses === "number" ? obj.losses : 0,
-				totalPnl: typeof obj.totalPnl === "number" ? obj.totalPnl : 0,
-				initialBalance:
-					typeof obj.initialBalance === "number"
-						? obj.initialBalance
-						: PAPER_INITIAL_BALANCE,
-				currentBalance:
-					typeof obj.currentBalance === "number"
-						? obj.currentBalance
-						: PAPER_INITIAL_BALANCE +
-							(typeof obj.totalPnl === "number" ? obj.totalPnl : 0),
-				maxDrawdown: typeof obj.maxDrawdown === "number" ? obj.maxDrawdown : 0,
-				dailyPnl: Array.isArray(obj.dailyPnl)
-					? (obj.dailyPnl as DailyPnl[])
-					: [],
-				dailyCountedTradeIds: Array.isArray(obj.dailyCountedTradeIds)
-					? (obj.dailyCountedTradeIds as string[])
-					: [],
-				stoppedAt: typeof obj.stoppedAt === "string" ? obj.stoppedAt : null,
-				stopReason: typeof obj.stopReason === "string" ? obj.stopReason : null,
-			};
+let loadedFromSqlite = false;
+
+export function initPaperStats(): void {
+	if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
+		try {
+			const row = statements.getPaperState().get() as PaperStateRow | null;
+			const tradeRows = statements.getAllPaperTrades().all() as PaperTradeRow[];
+			const trades = tradeRows.map((r) => ({
+				id: r.id,
+				marketId: r.market_id,
+				windowStartMs: r.window_start_ms,
+				side: r.side as "UP" | "DOWN",
+				price: r.price,
+				size: r.size,
+				priceToBeat: r.price_to_beat,
+				currentPriceAtEntry: r.current_price_at_entry,
+				timestamp: r.timestamp,
+				resolved: Boolean(r.resolved),
+				won: r.won === null ? null : Boolean(r.won),
+				pnl: r.pnl,
+				settlePrice: r.settle_price,
+			}));
+
+			if (row) {
+				// Normal path: paper_state row + trades both exist
+				state = {
+					trades,
+					wins: row.wins,
+					losses: row.losses,
+					totalPnl: row.total_pnl,
+					initialBalance: row.initial_balance,
+					currentBalance: row.current_balance,
+					maxDrawdown: row.max_drawdown,
+					dailyPnl: safeParseJson<DailyPnl[]>(row.daily_pnl, []),
+					dailyCountedTradeIds: safeParseJson<string[]>(row.daily_counted_trade_ids, []),
+					stoppedAt: row.stopped_at,
+					stopReason: row.stop_reason,
+				};
+				loadedFromSqlite = true;
+			} else if (trades.length > 0) {
+				// Recovery: paper_state missing but paper_trades exist — reconstruct
+				let wins = 0;
+				let losses = 0;
+				let totalPnl = 0;
+				let currentBalance = PAPER_INITIAL_BALANCE;
+				let maxDrawdown = 0;
+
+				for (const t of trades) {
+					if (t.resolved) {
+						if (t.won) wins++;
+						else losses++;
+						const pnl = t.pnl ?? 0;
+						totalPnl += pnl;
+						currentBalance += pnl;
+					} else {
+						currentBalance -= t.size;
+					}
+					const drawdown = PAPER_INITIAL_BALANCE - currentBalance;
+					if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+				}
+
+				state = {
+					trades,
+					wins,
+					losses,
+					totalPnl,
+					initialBalance: PAPER_INITIAL_BALANCE,
+					currentBalance,
+					maxDrawdown,
+					dailyPnl: [],
+					dailyCountedTradeIds: [],
+					stoppedAt: null,
+					stopReason: null,
+				};
+
+				// Persist the reconstructed state so this recovery is one-time
+				savePaperState();
+				loadedFromSqlite = true;
+			}
+		} catch (err) {
+			log.warn("Failed to load paper state from SQLite:", err);
 		}
 	}
-} catch {}
-// Initialize the Set mirror from persisted array
-dailyCountedTradeIdSet = new Set(state.dailyCountedTradeIds);
+
+	// Fallback: load from JSON (csv mode, or first migration from JSON → SQLite)
+	if (!loadedFromSqlite) {
+		try {
+			if (fs.existsSync(STATS_PATH)) {
+				const raw = fs.readFileSync(STATS_PATH, "utf8");
+				const parsed: unknown = JSON.parse(raw);
+				if (parsed && typeof parsed === "object") {
+					const obj = parsed as Record<string, unknown>;
+					state = {
+						trades: Array.isArray(obj.trades) ? (obj.trades as PaperTradeEntry[]) : [],
+						wins: typeof obj.wins === "number" ? obj.wins : 0,
+						losses: typeof obj.losses === "number" ? obj.losses : 0,
+						totalPnl: typeof obj.totalPnl === "number" ? obj.totalPnl : 0,
+						initialBalance: typeof obj.initialBalance === "number" ? obj.initialBalance : PAPER_INITIAL_BALANCE,
+						currentBalance:
+							typeof obj.currentBalance === "number"
+								? obj.currentBalance
+								: PAPER_INITIAL_BALANCE + (typeof obj.totalPnl === "number" ? obj.totalPnl : 0),
+						maxDrawdown: typeof obj.maxDrawdown === "number" ? obj.maxDrawdown : 0,
+						dailyPnl: Array.isArray(obj.dailyPnl) ? (obj.dailyPnl as DailyPnl[]) : [],
+						dailyCountedTradeIds: Array.isArray(obj.dailyCountedTradeIds) ? (obj.dailyCountedTradeIds as string[]) : [],
+						stoppedAt: typeof obj.stoppedAt === "string" ? obj.stoppedAt : null,
+						stopReason: typeof obj.stopReason === "string" ? obj.stopReason : null,
+					};
+
+					// Migrate JSON data into SQLite on first run
+					if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
+						for (const trade of state.trades) {
+							upsertPaperTrade(trade);
+						}
+						savePaperState();
+					}
+				}
+			}
+		} catch (err) {
+			log.warn("Failed to load paper state from JSON:", err);
+		}
+	}
+
+	// Initialize the Set mirror from persisted array
+	dailyCountedTradeIdSet = new Set(state.dailyCountedTradeIds);
+}
+// Call at module scope for backward compat
+initPaperStats();
+
+
+// ============ Persistence ============
+
+function safeParseJson<T>(raw: string | null | undefined, fallback: T): T {
+	if (!raw) return fallback;
+	try {
+		return JSON.parse(raw) as T;
+	} catch {
+		return fallback;
+	}
+}
+
+function savePaperState(): void {
+	statements.upsertPaperState().run({
+		$initialBalance: state.initialBalance,
+		$currentBalance: state.currentBalance,
+		$maxDrawdown: state.maxDrawdown,
+		$wins: state.wins,
+		$losses: state.losses,
+		$totalPnl: state.totalPnl,
+		$stoppedAt: state.stoppedAt,
+		$stopReason: state.stopReason,
+		$dailyPnl: JSON.stringify(state.dailyPnl),
+		$dailyCountedTradeIds: JSON.stringify(state.dailyCountedTradeIds),
+	});
+}
 
 function save(): void {
 	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
@@ -87,6 +237,8 @@ function save(): void {
 	}
 
 	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
+		savePaperState();
+
 		statements.upsertDailyStats().run({
 			$date: new Date().toDateString(),
 			$mode: "paper",
@@ -118,12 +270,7 @@ function upsertPaperTrade(trade: PaperTradeEntry): void {
 	});
 }
 
-export function addPaperTrade(
-	entry: Omit<
-		PaperTradeEntry,
-		"id" | "resolved" | "won" | "pnl" | "settlePrice"
-	>,
-): string {
+export function addPaperTrade(entry: Omit<PaperTradeEntry, "id" | "resolved" | "won" | "pnl" | "settlePrice">): string {
 	const id = `paper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 	const trade: PaperTradeEntry = {
 		...entry,
@@ -140,10 +287,7 @@ export function addPaperTrade(
 	return id;
 }
 
-export function resolvePaperTrades(
-	windowStartMs: number,
-	finalPrices: Map<string, number>,
-): number {
+export function resolvePaperTrades(windowStartMs: number, finalPrices: Map<string, number>): number {
 	let resolved = 0;
 	for (const trade of state.trades) {
 		if (trade.resolved) continue;
@@ -178,10 +322,10 @@ export function resolvePaperTrades(
 		const drawdown = state.initialBalance - state.currentBalance;
 		if (drawdown > state.maxDrawdown) state.maxDrawdown = drawdown;
 		state.totalPnl += trade.pnl;
-		
+
 		// Update daily PnL tracking (with deduplication)
 		updateDailyPnl(trade.id, trade.pnl);
-		
+
 		upsertPaperTrade(trade);
 		resolved++;
 	}
@@ -281,7 +425,7 @@ function getTodayDate(): string {
 
 function getTodayPnl(): DailyPnl {
 	const today = getTodayDate();
-	let todayData = state.dailyPnl.find(d => d.date === today);
+	let todayData = state.dailyPnl.find((d) => d.date === today);
 	if (!todayData) {
 		todayData = { date: today, pnl: 0, trades: 0 };
 		state.dailyPnl.push(todayData);
@@ -381,13 +525,13 @@ function updateDailyPnl(tradeId: string, pnl: number): void {
 	if (dailyCountedTradeIdSet.has(tradeId)) {
 		return;
 	}
-	
+
 	const today = getTodayPnl();
 	today.pnl += pnl;
 	today.trades += 1;
 	state.dailyCountedTradeIds.push(tradeId);
 	dailyCountedTradeIdSet.add(tradeId);
-	
+
 	// Clean up old trade IDs (keep only last 500)
 	if (state.dailyCountedTradeIds.length > 500) {
 		state.dailyCountedTradeIds = state.dailyCountedTradeIds.slice(-500);

@@ -1,4 +1,8 @@
 import type { Wallet } from "ethers";
+import { createLogger } from "./logger.ts";
+
+const log = createLogger("redeemer");
+
 import { Contract, constants } from "ethers";
 import type { RedeemResult } from "./types.ts";
 
@@ -36,19 +40,15 @@ const GAS_OVERRIDES = {
 
 const redeemed = new Set<string>();
 
-export async function fetchRedeemablePositions(
-	walletAddress: string,
-): Promise<RedeemablePosition[]> {
+export async function fetchRedeemablePositions(walletAddress: string): Promise<RedeemablePosition[]> {
 	try {
-		const res = await fetch(
-			`${DATA_API}/positions?user=${walletAddress.toLowerCase()}`,
-		);
+		const res = await fetch(`${DATA_API}/positions?user=${walletAddress.toLowerCase()}`);
 		if (!res.ok) return [];
 		const positions = toPositions(await res.json());
 		return positions.filter((p) => p.redeemable && Number(p.currentValue ?? 0) > 0);
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);
-		console.error("[redeemer] Failed to fetch positions:", msg);
+		log.error("Failed to fetch positions:", msg);
 		return [];
 	}
 }
@@ -57,9 +57,7 @@ export async function redeemAll(wallet: Wallet): Promise<RedeemResult[]> {
 	const positions = await fetchRedeemablePositions(wallet.address);
 	if (!positions.length) return [];
 
-	const conditionIds: string[] = [
-		...new Set(positions.map((p) => String(p.conditionId))),
-	];
+	const conditionIds: string[] = [...new Set(positions.map((p) => String(p.conditionId)))];
 	const results: RedeemResult[] = [];
 
 	for (const conditionId of conditionIds) {
@@ -74,37 +72,22 @@ export async function redeemAll(wallet: Wallet): Promise<RedeemResult[]> {
 				continue;
 			}
 
-			const tx = await ctf.redeemPositions(
-				USDC_E,
-				constants.HashZero,
-				conditionId,
-				[1, 2],
-				GAS_OVERRIDES,
-			);
-			console.log(
-				`[redeemer] Redeem tx sent: ${tx.hash} (condition: ${conditionId.slice(0, 10)}...)`,
-			);
+			const tx = await ctf.redeemPositions(USDC_E, constants.HashZero, conditionId, [1, 2], GAS_OVERRIDES);
+			log.info(`Redeem tx sent: ${tx.hash} (condition: ${conditionId.slice(0, 10)}...)`);
 			const receipt = await Promise.race([
 				tx.wait(),
-				new Promise((_, reject) =>
-					setTimeout(() => reject(new Error("tx.wait timeout 60s")), 60_000),
-				),
+				new Promise((_, reject) => setTimeout(() => reject(new Error("tx.wait timeout 60s")), 60_000)),
 			]);
 			if (receipt.status !== 1) {
-				console.error(`[redeemer] Tx reverted: ${tx.hash}`);
+				log.error(`Tx reverted: ${tx.hash}`);
 				results.push({ conditionId, txHash: tx.hash, error: "tx_reverted" });
 				continue;
 			}
 			redeemed.add(key);
 
 			const matched = positions.filter((p) => p.conditionId === conditionId);
-			const value = matched.reduce(
-				(sum, p) => sum + Number(p.currentValue ?? 0),
-				0,
-			);
-			console.log(
-				`[redeemer] Redeemed $${value.toFixed(2)} from ${matched[0]?.title || conditionId}`,
-			);
+			const value = matched.reduce((sum, p) => sum + Number(p.currentValue ?? 0), 0);
+			log.info(`Redeemed $${value.toFixed(2)} from ${matched[0]?.title || conditionId}`);
 			results.push({
 				conditionId,
 				txHash: tx.hash,
@@ -113,10 +96,7 @@ export async function redeemAll(wallet: Wallet): Promise<RedeemResult[]> {
 			});
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : String(err);
-			console.error(
-				`[redeemer] Failed to redeem ${conditionId.slice(0, 10)}:`,
-				msg,
-			);
+			log.error(`Failed to redeem ${conditionId.slice(0, 10)}:`, msg);
 			results.push({ conditionId, error: msg });
 		}
 	}
@@ -124,16 +104,12 @@ export async function redeemAll(wallet: Wallet): Promise<RedeemResult[]> {
 	return results;
 }
 
-export async function redeemAllPositions(
-	wallet: Wallet,
-): Promise<RedeemResult[]> {
+export async function redeemAllPositions(wallet: Wallet): Promise<RedeemResult[]> {
 	try {
 		const allPositions = await fetchAllRedeemable(wallet.address);
 		if (!allPositions.length) return [];
 
-		const conditionIds: string[] = [
-			...new Set(allPositions.map((p) => String(p.conditionId))),
-		];
+		const conditionIds: string[] = [...new Set(allPositions.map((p) => String(p.conditionId)))];
 		const results: RedeemResult[] = [];
 
 		for (const conditionId of conditionIds) {
@@ -145,13 +121,7 @@ export async function redeemAllPositions(
 				const denominator = await ctf.payoutDenominator(conditionId);
 				if (denominator.isZero()) continue;
 
-				const tx = await ctf.redeemPositions(
-					USDC_E,
-					constants.HashZero,
-					conditionId,
-					[1, 2],
-					GAS_OVERRIDES,
-				);
+				const tx = await ctf.redeemPositions(USDC_E, constants.HashZero, conditionId, [1, 2], GAS_OVERRIDES);
 				await tx.wait();
 				redeemed.add(key);
 				results.push({ conditionId, txHash: tx.hash });
@@ -166,13 +136,9 @@ export async function redeemAllPositions(
 	}
 }
 
-export async function fetchAllRedeemable(
-	walletAddress: string,
-): Promise<RedeemablePosition[]> {
+export async function fetchAllRedeemable(walletAddress: string): Promise<RedeemablePosition[]> {
 	try {
-		const res = await fetch(
-			`${DATA_API}/positions?user=${walletAddress.toLowerCase()}`,
-		);
+		const res = await fetch(`${DATA_API}/positions?user=${walletAddress.toLowerCase()}`);
 		if (!res.ok) return [];
 		const positions = toPositions(await res.json());
 		return positions.filter((p) => p.redeemable);
