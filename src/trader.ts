@@ -3,7 +3,9 @@ import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
 import { CONFIG } from "./config.ts";
+import { PERSIST_BACKEND, statements } from "./db.ts";
 import { addPaperTrade } from "./paperStats.ts";
+import { emitTradeExecuted } from "./state.ts";
 import type {
 	DailyState,
 	MarketConfig,
@@ -60,14 +62,18 @@ function isApiCreds(value: unknown): value is ApiKeyCreds {
 }
 
 try {
-	const saved: DailyState = JSON.parse(fs.readFileSync(PAPER_DAILY_PATH, "utf8"));
+	const saved: DailyState = JSON.parse(
+		fs.readFileSync(PAPER_DAILY_PATH, "utf8"),
+	);
 	if (saved.date === new Date().toDateString()) {
 		paperDailyState = saved;
 	}
 } catch {}
 
 try {
-	const saved: DailyState = JSON.parse(fs.readFileSync(LIVE_DAILY_PATH, "utf8"));
+	const saved: DailyState = JSON.parse(
+		fs.readFileSync(LIVE_DAILY_PATH, "utf8"),
+	);
 	if (saved.date === new Date().toDateString()) {
 		liveDailyState = saved;
 	}
@@ -76,9 +82,28 @@ try {
 function saveDailyState(mode: "paper" | "live"): void {
 	const dirPath = mode === "paper" ? "./logs/paper" : "./logs/live";
 	const filePath = mode === "paper" ? PAPER_DAILY_PATH : LIVE_DAILY_PATH;
-	fs.mkdirSync(dirPath, { recursive: true });
 	const state = mode === "paper" ? paperDailyState : liveDailyState;
-	fs.writeFileSync(filePath, JSON.stringify(state, null, 2));
+
+	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
+		fs.mkdirSync(dirPath, { recursive: true });
+		fs.writeFileSync(filePath, JSON.stringify(state, null, 2));
+	}
+
+	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
+		const existing = statements.getDailyStats().get({
+			$date: state.date,
+			$mode: mode,
+		}) as { wins?: number | null; losses?: number | null } | null;
+
+		statements.upsertDailyStats().run({
+			$date: state.date,
+			$mode: mode,
+			$pnl: state.pnl,
+			$trades: state.trades,
+			$wins: Number(existing?.wins ?? 0),
+			$losses: Number(existing?.losses ?? 0),
+		});
+	}
 }
 
 async function createProvider(): Promise<providers.JsonRpcProvider | null> {
@@ -96,7 +121,9 @@ async function createProvider(): Promise<providers.JsonRpcProvider | null> {
 }
 
 export async function initTrader(): Promise<void> {
-	console.log("[trader] initTrader() is deprecated — use connectWallet() instead");
+	console.log(
+		"[trader] initTrader() is deprecated — use connectWallet() instead",
+	);
 }
 
 export async function connectWallet(
@@ -218,6 +245,7 @@ function tradeLogPath(
 
 function logTrade(
 	trade: {
+		timestamp?: string;
 		market?: string;
 		side: string;
 		amount: number;
@@ -238,8 +266,9 @@ function logTrade(
 		"status",
 		"mode",
 	];
+	const timestamp = trade.timestamp ?? new Date().toISOString();
 	const row = [
-		new Date().toISOString(),
+		timestamp,
 		trade.market || "",
 		trade.side,
 		trade.amount,
@@ -251,16 +280,32 @@ function logTrade(
 
 	const line = `${row.join(",")}\n`;
 
-	const dirPath = `./logs/${mode}`;
-	if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
+		const dirPath = `./logs/${mode}`;
+		if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 
-	const logPath = tradeLogPath(marketId, mode);
+		const logPath = tradeLogPath(marketId, mode);
+		if (!fs.existsSync(logPath)) {
+			fs.writeFileSync(logPath, `${header.join(",")}\n`);
+		}
 
-	if (!fs.existsSync(logPath)) {
-		fs.writeFileSync(logPath, `${header.join(",")}\n`);
+		fs.appendFileSync(logPath, line);
 	}
 
-	fs.appendFileSync(logPath, line);
+	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
+		statements.insertTrade().run({
+			$timestamp: timestamp,
+			$market: marketId ?? trade.market ?? "",
+			$side: trade.side,
+			$amount: trade.amount,
+			$price: trade.price,
+			$orderId: trade.orderId ?? "",
+			$status: trade.status,
+			$mode: mode,
+			$pnl: null,
+			$won: null,
+		});
+	}
 }
 
 export async function executeTrade(
@@ -297,7 +342,11 @@ export async function executeTrade(
 			timestamp: new Date().toISOString(),
 		});
 
-		console.log(`[PAPER] Simulated fill: ${side} at ${price}¢ | ${marketSlug} (${paperId})`);
+		console.log(
+			`[PAPER] Simulated fill: ${side} at ${price}¢ | ${marketSlug} (${paperId})`,
+		);
+
+		const paperTradeTimestamp = new Date().toISOString();
 
 		logTrade(
 			{
@@ -311,6 +360,17 @@ export async function executeTrade(
 			signal.marketId || marketConfig?.id,
 			mode,
 		);
+
+		emitTradeExecuted({
+			marketId: signal.marketId,
+			mode,
+			side,
+			price,
+			size: Number(riskConfig.maxTradeSizeUsdc || 0),
+			timestamp: paperTradeTimestamp,
+			orderId: paperId,
+			status: "paper_filled",
+		});
 
 		paperDailyState.trades++;
 		saveDailyState("paper");
@@ -392,6 +452,7 @@ export async function executeTrade(
 			typeof resultObj.status === "string" ? resultObj.status : undefined;
 
 		console.log("[trader] Order result:", JSON.stringify(result));
+		const liveTradeTimestamp = new Date().toISOString();
 
 		logTrade(
 			{
@@ -407,6 +468,16 @@ export async function executeTrade(
 		);
 
 		if (resultOrderId || resultId) {
+			emitTradeExecuted({
+				marketId: signal.marketId,
+				mode,
+				side,
+				price,
+				size: Number(riskConfig.maxTradeSizeUsdc || 0),
+				timestamp: liveTradeTimestamp,
+				orderId: resultOrderId || resultId || "unknown",
+				status: resultStatus || "placed",
+			});
 			liveDailyState.trades++;
 			saveDailyState("live");
 		}
@@ -464,7 +535,11 @@ export function getConfig(): {
 	liveRisk: RiskConfig;
 	strategy: typeof CONFIG.strategy;
 } {
-	return { paperRisk: CONFIG.paperRisk, liveRisk: CONFIG.liveRisk, strategy: CONFIG.strategy };
+	return {
+		paperRisk: CONFIG.paperRisk,
+		liveRisk: CONFIG.liveRisk,
+		strategy: CONFIG.strategy,
+	};
 }
 
 export function getDailyState(): DailyState {

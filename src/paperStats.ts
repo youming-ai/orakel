@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { PAPER_INITIAL_BALANCE } from "./config.ts";
+import { PERSIST_BACKEND, statements } from "./db.ts";
 import type { PaperStats, PaperTradeEntry, Side } from "./types.ts";
 
 const STATS_PATH = "./logs/paper-stats.json";
@@ -31,15 +32,21 @@ try {
 		if (parsed && typeof parsed === "object") {
 			const obj = parsed as Record<string, unknown>;
 			state = {
-				trades: Array.isArray(obj.trades) ? (obj.trades as PaperTradeEntry[]) : [],
+				trades: Array.isArray(obj.trades)
+					? (obj.trades as PaperTradeEntry[])
+					: [],
 				wins: typeof obj.wins === "number" ? obj.wins : 0,
 				losses: typeof obj.losses === "number" ? obj.losses : 0,
 				totalPnl: typeof obj.totalPnl === "number" ? obj.totalPnl : 0,
-				initialBalance: typeof obj.initialBalance === "number" ? obj.initialBalance : PAPER_INITIAL_BALANCE,
+				initialBalance:
+					typeof obj.initialBalance === "number"
+						? obj.initialBalance
+						: PAPER_INITIAL_BALANCE,
 				currentBalance:
 					typeof obj.currentBalance === "number"
 						? obj.currentBalance
-						: PAPER_INITIAL_BALANCE + (typeof obj.totalPnl === "number" ? obj.totalPnl : 0),
+						: PAPER_INITIAL_BALANCE +
+							(typeof obj.totalPnl === "number" ? obj.totalPnl : 0),
 				maxDrawdown: typeof obj.maxDrawdown === "number" ? obj.maxDrawdown : 0,
 			};
 		}
@@ -47,11 +54,49 @@ try {
 } catch {}
 
 function save(): void {
-	fs.mkdirSync("./logs", { recursive: true });
-	fs.writeFileSync(STATS_PATH, JSON.stringify(state, null, 2));
+	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
+		fs.mkdirSync("./logs", { recursive: true });
+		fs.writeFileSync(STATS_PATH, JSON.stringify(state, null, 2));
+	}
+
+	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
+		statements.upsertDailyStats().run({
+			$date: new Date().toDateString(),
+			$mode: "paper",
+			$pnl: state.totalPnl,
+			$trades: state.trades.length,
+			$wins: state.wins,
+			$losses: state.losses,
+		});
+	}
 }
 
-export function addPaperTrade(entry: Omit<PaperTradeEntry, "id" | "resolved" | "won" | "pnl" | "settlePrice">): string {
+function upsertPaperTrade(trade: PaperTradeEntry): void {
+	if (PERSIST_BACKEND !== "dual" && PERSIST_BACKEND !== "sqlite") return;
+
+	statements.insertPaperTrade().run({
+		$id: trade.id,
+		$marketId: trade.marketId,
+		$windowStartMs: trade.windowStartMs,
+		$side: trade.side,
+		$price: trade.price,
+		$size: trade.size,
+		$priceToBeat: trade.priceToBeat,
+		$currentPriceAtEntry: trade.currentPriceAtEntry,
+		$timestamp: trade.timestamp,
+		$resolved: trade.resolved ? 1 : 0,
+		$won: trade.won === null ? null : trade.won ? 1 : 0,
+		$pnl: trade.pnl,
+		$settlePrice: trade.settlePrice,
+	});
+}
+
+export function addPaperTrade(
+	entry: Omit<
+		PaperTradeEntry,
+		"id" | "resolved" | "won" | "pnl" | "settlePrice"
+	>,
+): string {
 	const id = `paper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 	const trade: PaperTradeEntry = {
 		...entry,
@@ -63,6 +108,7 @@ export function addPaperTrade(entry: Omit<PaperTradeEntry, "id" | "resolved" | "
 	};
 	state.trades.push(trade);
 	state.currentBalance -= entry.size;
+	upsertPaperTrade(trade);
 	save();
 	return id;
 }
@@ -105,6 +151,7 @@ export function resolvePaperTrades(
 		const drawdown = state.initialBalance - state.currentBalance;
 		if (drawdown > state.maxDrawdown) state.maxDrawdown = drawdown;
 		state.totalPnl += trade.pnl;
+		upsertPaperTrade(trade);
 		resolved++;
 	}
 
@@ -125,7 +172,11 @@ export function getPaperStats(): PaperStats {
 	};
 }
 
-export function getPaperBalance(): { initial: number; current: number; maxDrawdown: number } {
+export function getPaperBalance(): {
+	initial: number;
+	current: number;
+	maxDrawdown: number;
+} {
 	return {
 		initial: state.initialBalance,
 		current: state.currentBalance,
