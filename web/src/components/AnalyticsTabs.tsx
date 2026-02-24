@@ -1,4 +1,5 @@
 import {
+	AlertTriangle,
 	BarChart3,
 	Clock,
 	DollarSign,
@@ -10,6 +11,7 @@ import {
 	Target,
 	TrendingDown,
 	TrendingUp,
+	Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -46,13 +48,15 @@ import type {
 	PaperStats,
 	PaperTradeEntry,
 	RiskConfig,
+	StopLossStatus,
 	StrategyConfig,
+	TodayStats,
 	TradeRecord,
 } from "@/lib/api";
 import { SAVE_STATUS_TIMEOUT_MS, TIMING_BUCKETS } from "@/lib/constants";
 import { CHART_COLORS, CHART_HEIGHT, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
 import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
-import { useConfigMutation } from "@/lib/queries";
+import { useConfigMutation, usePaperClearStop } from "@/lib/queries";
 import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { MarketCard } from "./MarketCard";
@@ -72,6 +76,8 @@ interface AnalyticsTabsProps {
 	markets: MarketSnapshot[];
 	liveTrades: TradeRecord[];
 	viewMode: ViewMode;
+	stopLoss?: StopLossStatus;
+	todayStats?: TodayStats;
 }
 
 interface StrategyFormValues {
@@ -184,8 +190,11 @@ export function AnalyticsTabs({
 	markets,
 	liveTrades,
 	viewMode,
+	stopLoss,
+	todayStats,
 }: AnalyticsTabsProps) {
 	const configMutation = useConfigMutation(viewMode);
+	const clearStopMutation = usePaperClearStop();
 	const riskConfig = viewMode === "paper" ? config.paperRisk : config.liveRisk;
 	const [form, setForm] = useState<StrategyFormValues>(() =>
 		toStrategyFormValues(config.strategy, riskConfig),
@@ -414,6 +423,75 @@ export function AnalyticsTabs({
 			</div>
 
 			<TabsContent value="overview" className="space-y-4">
+				{/* Stop Loss Warning */}
+				{stopLoss?.stoppedAt && (
+					<Card className="border-red-500/50 bg-red-500/10">
+						<CardContent className="py-3">
+							<div className="flex items-center gap-3">
+								<AlertTriangle className="w-5 h-5 text-red-400" />
+								<div className="flex-1">
+									<p className="text-sm font-medium text-red-400">Trading Stopped</p>
+									<p className="text-xs text-red-400/70">
+										Reason: {stopLoss.reason} • Since {fmtTime(stopLoss.stoppedAt)}
+									</p>
+								</div>
+								<Button
+									size="sm"
+									variant="outline"
+									className="h-7 text-xs border-red-400/50 text-red-400 hover:bg-red-400/10"
+							onClick={() => clearStopMutation.mutate()}
+							disabled={clearStopMutation.isPending}
+								>
+									Reset & Resume
+								</Button>
+							</div>
+						</CardContent>
+					</Card>
+				)}
+
+				{/* Today Stats & Stop Loss Status */}
+				{viewMode === "paper" && todayStats && (
+					<Card className="border-border/50">
+						<CardContent className="py-3">
+							<div className="flex items-center justify-between">
+								<div className="flex items-center gap-4">
+									<div className="flex items-center gap-2">
+										<Zap className="w-4 h-4 text-amber-400" />
+										<span className="text-xs text-muted-foreground">Today</span>
+									</div>
+									<span className={cn(
+										"font-mono text-sm font-medium",
+										todayStats.pnl >= 0 ? "text-emerald-400" : "text-red-400"
+									)}>
+										{todayStats.pnl >= 0 ? "+" : ""}{todayStats.pnl.toFixed(2)} USDC
+									</span>
+									<span className="text-xs text-muted-foreground">
+										{todayStats.trades} trade{todayStats.trades !== 1 ? "s" : ""}
+									</span>
+								</div>
+								<div className="flex items-center gap-2">
+									<span className="text-xs text-muted-foreground">Daily Limit:</span>
+									<div className="w-24 h-2 bg-muted/30 rounded-full overflow-hidden">
+										<div
+											className={cn(
+												"h-full rounded-full transition-all",
+												todayStats.pnl >= 0 ? "bg-emerald-400" :
+												Math.abs(todayStats.pnl) / todayStats.limit > 0.7 ? "bg-red-400" : "bg-amber-400"
+											)}
+											style={{ 
+												width: `${Math.min(100, (Math.max(0, todayStats.limit + todayStats.pnl) / todayStats.limit) * 100)}%` 
+											}}
+										/>
+									</div>
+									<span className="text-xs text-muted-foreground">
+										{((1 - Math.abs(todayStats.pnl) / todayStats.limit) * 100).toFixed(0)}%
+									</span>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+				)}
+
 				<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
 					<StatCard
 						label="Trades"

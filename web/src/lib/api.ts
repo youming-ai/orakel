@@ -1,5 +1,5 @@
 // Use fetch directly to avoid Hono version mismatch between web and root
-const API_BASE = "/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 async function get<T>(path: string): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`);
@@ -23,7 +23,7 @@ async function put<T>(path: string, data: unknown): Promise<T> {
 export const api = {
 	getState: () => get<DashboardState>("/state"),
 	getTrades: (mode: string) => get<TradeRecord[]>(`/trades?mode=${mode}`),
-	getPaperStats: () => get<{ trades: PaperTradeEntry[]; byMarket: Record<string, MarketBreakdown> }>("/paper-stats"),
+	getPaperStats: () => get<PaperStatsResponse>("/paper-stats"),
 	saveConfig: (data: ConfigPayload) => put<{ ok: boolean }>("/config", data),
 	paperStart: () => post<{ ok: boolean }>("/paper/start"),
 	paperStop: () => post<{ ok: boolean }>("/paper/stop"),
@@ -31,9 +31,52 @@ export const api = {
 	liveStart: () => post<{ ok: boolean }>("/live/start"),
 	liveStop: () => post<{ ok: boolean }>("/live/stop"),
 	liveCancel: () => post<{ ok: boolean }>("/live/cancel"),
+	paperClearStop: () => post<{ ok: boolean }>("/paper/clear-stop"),
 };
 
-// Types - defined locally to avoid Hono type import issues
+// ============ Stop Loss Types ============
+
+export interface StopLossStatus {
+	stoppedAt: string | null;
+	reason: string | null;
+}
+
+export interface DailyPnlEntry {
+	date: string;
+	pnl: number;
+	trades: number;
+}
+
+export interface TodayStats {
+	pnl: number;
+	trades: number;
+	limit: number;
+}
+
+export interface PaperBalance {
+	initial: number;
+	current: number;
+	maxDrawdown: number;
+}
+
+// ============ Confidence Types ============
+
+export interface ConfidenceFactors {
+	indicatorAlignment: number;
+	volatilityScore: number;
+	orderbookScore: number;
+	timingScore: number;
+	regimeScore: number;
+}
+
+export interface ConfidenceResult {
+	score: number;
+	factors: ConfidenceFactors;
+	level: "HIGH" | "MEDIUM" | "LOW";
+}
+
+// ============ Core Types ============
+
 export interface DashboardState {
 	markets: MarketSnapshot[];
 	paperMode: boolean;
@@ -55,6 +98,9 @@ export interface DashboardState {
 		connected: boolean;
 		clientReady: boolean;
 	} | null;
+	stopLoss?: StopLossStatus;
+	balance?: PaperBalance;
+	todayStats?: TodayStats;
 }
 
 export interface MarketSnapshot {
@@ -89,6 +135,7 @@ export interface MarketSnapshot {
 	volImpliedUp: number | null;
 	binanceChainlinkDelta: number | null;
 	orderbookImbalance: number | null;
+	confidence?: ConfidenceResult;
 }
 
 export interface PaperStats {
@@ -98,6 +145,16 @@ export interface PaperStats {
 	pending: number;
 	winRate: number;
 	totalPnl: number;
+}
+
+export interface PaperStatsResponse {
+	stats: PaperStats;
+	trades: PaperTradeEntry[];
+	byMarket: Record<string, MarketBreakdown>;
+	stopLoss?: StopLossStatus;
+	balance?: PaperBalance;
+	todayStats?: TodayStats;
+	dailyPnl?: DailyPnlEntry[];
 }
 
 export interface StrategyConfig {
@@ -114,6 +171,7 @@ export interface StrategyConfig {
 		TREND_ALIGNED: number;
 		TREND_OPPOSED: number;
 	};
+	minConfidence?: number;
 }
 
 export interface RiskConfig {

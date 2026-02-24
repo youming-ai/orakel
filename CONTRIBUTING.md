@@ -57,22 +57,27 @@ git checkout -b feature/your-feature
 ```
 orakel/
 ├── src/              # Bot 核心代码
-├── web/              # 前端代码
-├── docs/             # 文档
-├── logs/             # 运行时日志
+│   ├── engines/      # 交易策略引擎
+│   ├── indicators/   # 技术指标
+│   └── data/         # 数据源
+├── web/              # 前端代码 (Vite + React)
+├── data/             # 运行时数据
 └── config.json       # 策略配置
 ```
 
 ## 技术栈
 
 - **Backend**: Bun, TypeScript, Hono, ethers
-- **Frontend**: React 19, Astro, Tailwind CSS v4, shadcn/ui
+- **Frontend**: Vite, React 19, Tailwind CSS v4, shadcn/ui, wagmi
 - **Blockchain**: Polygon, Polymarket CLOB
 
 ## 许可证
 
 通过贡献代码，你同意你的贡献将在 [MIT 许可证](LICENSE) 下发布。
 
+---
+
+任何问题欢迎提交 Issue 或参与讨论！
 ---
 
 任何问题欢迎提交 Issue 或参与讨论！

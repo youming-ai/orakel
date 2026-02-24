@@ -32,16 +32,16 @@
 ┌──────────────────────────────────────────────────────────┐
 │                                                          │
 │  ┌─────────────────────┐    ┌──────────────────────────┐ │
-│  │  web (port 4321)    │    │  bot (port 9999)         │ │
-│  │  Astro Dev Server   │───▶│  Bun Runtime             │ │
+│  │  web (port 9998)    │    │  bot (port 9999)         │ │
+│  │  Vite Dev Server    │───▶│  Bun Runtime             │ │
 │  │                     │/api│                          │ │
 │  │  React 19           │    │  Hono API Server         │ │
 │  │  shadcn/ui          │    │  ├ GET /api/state        │ │
 │  │  recharts           │    │  ├ GET /api/trades       │ │
 │  │  Tailwind v4        │    │  ├ GET /api/signals      │ │
 │  │  Hot Reload         │    │  └ GET /api/paper-stats  │ │
-│  └─────────────────────┘    │                          │ │
-│                              │  Trading Engine           │ │
+│  │  wagmi + viem       │    │                          │ │
+│  └─────────────────────┘    │  Trading Engine           │ │
 │                              │  ├ Data Collection        │ │
 │                              │  ├ TA Indicators         │ │
 │                              │  ├ Probability Blend     │ │
@@ -73,7 +73,7 @@ cp .env.example .env
 docker compose up --build
 
 # Bot API:    http://localhost:9999
-# Web 仪表板: http://localhost:4321
+# Web 前端:   http://localhost:9998
 ```
 
 ### 本地运行（开发）
@@ -114,53 +114,81 @@ cd web && bun run dev
 
 ```json
 {
-  "risk": {
-    "maxTradeSizeUsdc": 5,
-    "limitDiscount": 0.05,
-    "dailyMaxLossUsdc": 100,
-    "maxOpenPositions": 2,
-    "minLiquidity": 15000,
-    "maxTradesPerWindow": 1
+  "paper": {
+    "risk": {
+      "maxTradeSizeUsdc": 5,
+      "limitDiscount": 0.05,
+      "dailyMaxLossUsdc": 100,
+      "maxOpenPositions": 2,
+      "minLiquidity": 15000,
+      "maxTradesPerWindow": 1
+    },
+    "initialBalance": 1000
+  },
+  "live": {
+    "risk": {
+      "maxTradeSizeUsdc": 5,
+      "limitDiscount": 0.05,
+      "dailyMaxLossUsdc": 100,
+      "maxOpenPositions": 2,
+      "minLiquidity": 15000,
+      "maxTradesPerWindow": 1
+    }
   },
   "strategy": {
-    "edgeThresholdEarly": 0.06,
-    "edgeThresholdMid": 0.08,
-    "edgeThresholdLate": 0.10,
-    "minProbEarly": 0.52,
-    "minProbMid": 0.55,
-    "minProbLate": 0.60,
-    "blendWeights": { "vol": 0.5, "ta": 0.5 },
+    "edgeThresholdEarly": 0.09,
+    "edgeThresholdMid": 0.11,
+    "edgeThresholdLate": 0.14,
+    "minProbEarly": 0.60,
+    "minProbMid": 0.62,
+    "minProbLate": 0.65,
+    "blendWeights": { "vol": 0.50, "ta": 0.50 },
     "regimeMultipliers": {
-      "CHOP": 1.3,
+      "CHOP": 999,
       "RANGE": 1.0,
-      "TREND_ALIGNED": 0.8,
-      "TREND_OPPOSED": 1.2
-    }
+      "TREND_ALIGNED": 0.85,
+      "TREND_OPPOSED": 1.5
+    },
+    "maxGlobalTradesPerWindow": 1,
+    "minConfidence": 0.50,
+    "skipMarkets": ["BTC"]
   }
 }
 ```
 
-#### 策略参数说明
+#### 风险参数
 
 | 参数 | 说明 |
 |------|------|
-| `edgeThresholdEarly/Mid/Late` | 各时间段交易的最小边缘要求（>10分钟、5-10分钟、<5分钟）|
-| `minProbEarly/Mid/Late` | 所需的最小模型概率 |
-| `blendWeights.vol/ta` | 波动率隐含概率 vs TA 概率的权重 |
-| `regimeMultipliers` | 基于检测到的市场状态的阈值乘数 |
+| `maxTradeSizeUsdc` | 单笔交易最大金额 (USDC) |
+| `limitDiscount` | 限价单折扣（低于市场价）|
+| `dailyMaxLossUsdc` | 每日最大亏损限制 |
+| `maxOpenPositions` | 最大同时持仓数 |
+| `minLiquidity` | 最小市场流动性要求 |
+| `maxTradesPerWindow` | 每个15分钟窗口最大交易数 |
 
-#### 边缘计算
+#### 策略参数
 
-```
-effectiveThreshold = 基础阈值 × 状态乘数
-edge = 模型概率 - 市场价格
+| 参数 | 说明 |
+|------|------|
+| `edgeThresholdEarly/Mid/Late` | 各阶段最小边缘要求（>10分钟、5-10分钟、<5分钟）|
+| `minProbEarly/Mid/Late` | 各阶段最小模型概率 |
+| `blendWeights.vol/ta` | 波动率概率 vs TA 概率权重（默认 50/50）|
+| `regimeMultipliers` | 市场状态乘数（CHOP=999 表示跳过震荡市）|
+| `minConfidence` | 最小信心评分阈值 |
+| `skipMarkets` | 跳过的市场列表 |
 
-交易触发条件: edge ≥ effectiveThreshold AND 模型概率 ≥ minProb
-```
+#### 市场特定调整
 
-示例: CHOP 状态 + EARLY 阶段:
-- 有效阈值 = 0.06 × 1.3 = 0.078
-- 模型必须显示超过市场价格至少 7.8% 的边缘
+基于回测表现，对不同市场应用额外边缘乘数：
+
+| 市场 | 历史胜率 | 边缘乘数 |
+|------|----------|----------|
+| BTC | 42.1% | 1.5x（需 50% 更多边缘）|
+| ETH | 46.9% | 1.2x（需 20% 更多边缘）|
+| SOL | 51.0% | 1.0x（标准）|
+| XRP | 54.2% | 1.0x（标准）|
+
 
 ## 交易逻辑
 
@@ -284,13 +312,14 @@ edge = 模型概率 - 市场价格
 
 ### 技术栈
 
-- [Astro](https://astro.build/) v5 — 静态站点生成器 + React islands
+- [Vite](https://vitejs.dev/) v7 — 构建工具 + 开发服务器
 - [React](https://react.dev/) v19 — UI 组件
 - [shadcn/ui](https://ui.shadcn.com/) — 组件库
 - [recharts](https://recharts.org/) — 图表可视化
 - [Tailwind CSS](https://tailwindcss.com/) v4 — 样式
-
-## 项目结构
+- [wagmi](https://wagmi.sh/) + [viem](https://viem.sh/) — Web3 钱包连接
+- [Zustand](https://zustand-demo.pmnd.rs/) — 状态管理
+- [TanStack Query](https://tanstack.com/query) — 数据获取
 
 ```
 ├── src/                      # Bot 源代码
@@ -323,20 +352,17 @@ edge = 模型概率 - 市场价格
 │       └── heikenAshi.ts
 ├── web/                      # 前端
 │   ├── src/
-│   │   ├── pages/index.astro
-│   │   └── components/
-│   │       ├── Dashboard.tsx
-│   │       ├── Header.tsx
-│   │       ├── MarketCard.tsx
-│   │       ├── TradeTable.tsx
-│   ├── astro.config.mjs
-│   ├── Dockerfile
+│   │   ├── main.tsx          # 入口
+│   │   ├── components/       # UI 组件
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── Header.tsx
+│   │   │   ├── MarketCard.tsx
+│   │   │   └── TradeTable.tsx
+│   │   └── lib/              # 工具函数
+│   ├── index.html
+│   ├── vite.config.ts
 │   └── package.json
-├── logs/                     # 运行时数据
-│   ├── trades-*.csv
-│   ├── signals-*.csv
-│   ├── daily-state.json
-│   └── paper-stats.json
+├── data/                     # 运行时数据（SQLite + JSON）
 ├── config.json               # 策略参数
 ├── docker-compose.yml
 ├── Dockerfile
@@ -345,22 +371,20 @@ edge = 模型概率 - 市场价格
 └── .env.example              # 环境变量示例
 ```
 
-## Docker 服务
-
 ```yaml
 services:
   bot:
     build: .
     ports: ["9999:9999"]
     volumes:
-      - ./logs:/app/logs
+      - ./data:/app/data
       - ./config.json:/app/config.json:ro
     environment:
       - PAPER_MODE=${PAPER_MODE:-true}
 
   web:
     build: ./web
-    ports: ["4321:4321"]
+    ports: ["9998:4321"]
     volumes:
       - ./web/src:/app/src      # 热重载
     environment:

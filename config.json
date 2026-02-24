@@ -28,16 +28,17 @@
     "minProbMid": 0.62,
     "minProbLate": 0.65,
     "blendWeights": {
-      "vol": 0.60,
-      "ta": 0.40
+      "vol": 0.50,
+      "ta": 0.50
     },
     "regimeMultipliers": {
       "CHOP": 999,
-      "RANGE": 1.2,
-      "TREND_ALIGNED": 0.90,
+      "RANGE": 1.0,
+      "TREND_ALIGNED": 0.85,
       "TREND_OPPOSED": 1.5
     },
-    "maxGlobalTradesPerWindow": 1
+    "maxGlobalTradesPerWindow": 1,
+    "minConfidence": 0.50,
+    "skipMarkets": ["BTC"]
   }
-
 }

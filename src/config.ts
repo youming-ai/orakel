@@ -117,8 +117,10 @@ export const CONFIG: AppConfig = {
     minProbEarly: Number(FILE_STRATEGY.minProbEarly ?? 0.58),
     minProbMid: Number(FILE_STRATEGY.minProbMid ?? 0.6),
     minProbLate: Number(FILE_STRATEGY.minProbLate ?? 0.7),
-    blendWeights: (FILE_STRATEGY.blendWeights as { vol: number; ta: number } | undefined) ?? { vol: 0.7, ta: 0.3 },
-    regimeMultipliers: (FILE_STRATEGY.regimeMultipliers as { CHOP: number; RANGE: number; TREND_ALIGNED: number; TREND_OPPOSED: number } | undefined) ?? { CHOP: 1.5, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.3 }
+    blendWeights: (FILE_STRATEGY.blendWeights as { vol: number; ta: number } | undefined) ?? { vol: 0.5, ta: 0.5 },
+    regimeMultipliers: (FILE_STRATEGY.regimeMultipliers as { CHOP: number; RANGE: number; TREND_ALIGNED: number; TREND_OPPOSED: number } | undefined) ?? { CHOP: 1.5, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.3 },
+    skipMarkets: Array.isArray(FILE_STRATEGY.skipMarkets) ? (FILE_STRATEGY.skipMarkets as string[]) : [],
+    minConfidence: Number(FILE_STRATEGY.minConfidence ?? 0.5),
   },
 
   // Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -149,7 +151,9 @@ export function reloadConfig(): AppConfig {
     minProbMid: Number(fileStrategy.minProbMid ?? CONFIG.strategy.minProbMid),
     minProbLate: Number(fileStrategy.minProbLate ?? CONFIG.strategy.minProbLate),
     blendWeights: (fileStrategy.blendWeights as { vol: number; ta: number } | undefined) ?? CONFIG.strategy.blendWeights,
-    regimeMultipliers: (fileStrategy.regimeMultipliers as { CHOP: number; RANGE: number; TREND_ALIGNED: number; TREND_OPPOSED: number } | undefined) ?? CONFIG.strategy.regimeMultipliers
+    regimeMultipliers: (fileStrategy.regimeMultipliers as { CHOP: number; RANGE: number; TREND_ALIGNED: number; TREND_OPPOSED: number } | undefined) ?? CONFIG.strategy.regimeMultipliers,
+    skipMarkets: Array.isArray(fileStrategy.skipMarkets) ? (fileStrategy.skipMarkets as string[]) : CONFIG.strategy.skipMarkets ?? [],
+    minConfidence: Number(fileStrategy.minConfidence ?? CONFIG.strategy.minConfidence ?? 0.5),
   };
 
   CONFIG.risk = buildRiskConfig(filePaperRisk, fileRisk);

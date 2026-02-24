@@ -1,4 +1,5 @@
 import type {
+  ConfidenceResult,
   EdgeResult,
   Phase,
   Regime,
@@ -16,13 +17,141 @@ const REGIME_DISABLED = 999;
 
 // Market-specific performance from backtest
 // edgeMultiplier > 1.0 = RAISE threshold (harder to trade) for poor performers
-// edgeMultiplier = 1.0 = no adjustment for good performers
-const MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultiplier: number }> = {
-  BTC: { winRate: 0.421, edgeMultiplier: 1.3 },   // Worst performer → require 30% more edge
-  ETH: { winRate: 0.469, edgeMultiplier: 1.1 },   // Below avg → require 10% more edge
+// Use strategy.skipMarkets in config.json to skip markets entirely
+const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultiplier: number }> = {
+  BTC: { winRate: 0.421, edgeMultiplier: 1.5 },   // Worst performer → require 50% more edge
+  ETH: { winRate: 0.469, edgeMultiplier: 1.2 },   // Below avg → require 20% more edge
   SOL: { winRate: 0.510, edgeMultiplier: 1.0 },   // Good performer → standard
   XRP: { winRate: 0.542, edgeMultiplier: 1.0 },   // Best performer → standard
 };
+
+// ============ Confidence Scoring ============
+
+export function computeConfidence(params: {
+  modelUp: number;
+  modelDown: number;
+  edgeUp: number | null;
+  edgeDown: number | null;
+  regime: Regime | null;
+  volatility15m: number | null;
+  orderbookImbalance: number | null;
+  vwapSlope: number | null;
+  rsi: number | null;
+  macdHist: number | null;
+  haColor: string | null;
+  side: Side;
+}): ConfidenceResult {
+  const {
+    modelUp,
+    modelDown,
+    edgeUp,
+    edgeDown,
+    regime,
+    volatility15m,
+    orderbookImbalance,
+    vwapSlope,
+    rsi,
+    macdHist,
+    haColor,
+    side
+  } = params;
+
+  const isUp = side === "UP";
+  const modelProb = isUp ? modelUp : modelDown;
+
+  // 1. Indicator alignment (0-1)
+  let alignedIndicators = 0;
+  const totalIndicators = 4;
+  
+  if (isUp) {
+    if ((vwapSlope ?? 0) > 0) alignedIndicators++;
+    if ((rsi ?? 50) > 50 && (rsi ?? 50) < 80) alignedIndicators++;
+    if ((macdHist ?? 0) > 0) alignedIndicators++;
+    if (haColor === "green") alignedIndicators++;
+  } else {
+    if ((vwapSlope ?? 0) < 0) alignedIndicators++;
+    if ((rsi ?? 50) < 50 && (rsi ?? 50) > 20) alignedIndicators++;
+    if ((macdHist ?? 0) < 0) alignedIndicators++;
+    if (haColor === "red") alignedIndicators++;
+  }
+  const indicatorAlignment = alignedIndicators / totalIndicators;
+
+  // 2. Volatility score (0-1): optimal range 0.3% - 0.8%
+  let volatilityScore = 0.5;
+  if (volatility15m !== null) {
+    const volPct = volatility15m * 100;
+    if (volPct >= 0.3 && volPct <= 0.8) {
+      volatilityScore = 1.0;
+    } else if (volPct >= 0.2 && volPct <= 1.0) {
+      volatilityScore = 0.7;
+    } else if (volPct < 0.2) {
+      volatilityScore = 0.3; // Too low
+    } else {
+      volatilityScore = 0.4; // Too high
+    }
+  }
+
+  // 3. Orderbook score (0-1): imbalance supports direction
+  let orderbookScore = 0.5;
+  if (orderbookImbalance !== null) {
+    const supportsUp = orderbookImbalance > 0.2;
+    const supportsDown = orderbookImbalance < -0.2;
+    if ((isUp && supportsUp) || (!isUp && supportsDown)) {
+      orderbookScore = 0.8 + Math.min(0.2, Math.abs(orderbookImbalance) * 0.2);
+    } else if ((isUp && supportsDown) || (!isUp && supportsUp)) {
+      orderbookScore = 0.3;
+    }
+  }
+
+  // 4. Timing score (0-1): model probability strength
+  let timingScore = 0.5;
+  if (modelProb >= 0.7) timingScore = 1.0;
+  else if (modelProb >= 0.6) timingScore = 0.8;
+  else if (modelProb >= 0.55) timingScore = 0.6;
+  else timingScore = 0.4;
+
+  // 5. Regime score (0-1)
+  let regimeScore = 0.5;
+  if (regime === "TREND_UP" && isUp) regimeScore = 1.0;
+  else if (regime === "TREND_DOWN" && !isUp) regimeScore = 1.0;
+  else if (regime === "RANGE") regimeScore = 0.7;
+  else if (regime === "CHOP") regimeScore = 0.2;
+  else if (regime === "TREND_UP" && !isUp) regimeScore = 0.3;
+  else if (regime === "TREND_DOWN" && isUp) regimeScore = 0.3;
+
+  // Weighted average
+  const weights = {
+    indicatorAlignment: 0.25,
+    volatilityScore: 0.15,
+    orderbookScore: 0.15,
+    timingScore: 0.25,
+    regimeScore: 0.20,
+  };
+
+  const score = clamp(
+    indicatorAlignment * weights.indicatorAlignment +
+    volatilityScore * weights.volatilityScore +
+    orderbookScore * weights.orderbookScore +
+    timingScore * weights.timingScore +
+    regimeScore * weights.regimeScore,
+    0,
+    1
+  );
+
+  const level = score >= 0.7 ? "HIGH" : score >= 0.5 ? "MEDIUM" : "LOW";
+
+  return {
+    score,
+    factors: {
+      indicatorAlignment,
+      volatilityScore,
+      orderbookScore,
+      timingScore,
+      regimeScore,
+    },
+    level,
+  };
+}
 
 function regimeMultiplier(
   regime: Regime | null | undefined,
@@ -32,11 +161,11 @@ function regimeMultiplier(
 ): number {
   // Skip CHOP completely for underperforming markets
   if (regime === "CHOP") {
-    const marketPerf = MARKET_PERFORMANCE[marketId];
+    const marketPerf = DEFAULT_MARKET_PERFORMANCE[marketId];
     if (marketPerf && marketPerf.winRate < 0.45) {
       return REGIME_DISABLED;
     }
-    return Number(multipliers?.CHOP ?? 2.0); // Increased from 1.5 per backtest
+    return Number(multipliers?.CHOP ?? 2.0);
   }
   
   if (regime === "RANGE") return Number(multipliers?.RANGE ?? 1.0);
@@ -47,32 +176,35 @@ function regimeMultiplier(
     const aligned = (trendUp && side === "UP") || (trendDown && side === "DOWN");
     return aligned
       ? Number(multipliers?.TREND_ALIGNED ?? 0.9)
-      : Number(multipliers?.TREND_OPPOSED ?? 1.4); // Increased from 1.3
+      : Number(multipliers?.TREND_OPPOSED ?? 1.4);
   }
 
   return 1;
 }
 
-export function computeEdge({
-  modelUp,
-  modelDown,
-  marketYes,
-  marketNo
-}: {
+// ============ Enhanced Edge Computation with Orderbook ============
+
+export function computeEdge(params: {
   modelUp: number;
   modelDown: number;
   marketYes: number | null;
   marketNo: number | null;
+  orderbookImbalance?: number | null;
+  orderbookSpread?: number | null;
 }): EdgeResult {
+  const { modelUp, modelDown, marketYes, marketNo, orderbookImbalance, orderbookSpread } = params;
+  
   if (marketYes === null || marketNo === null) {
     return {
       marketUp: null,
       marketDown: null,
       edgeUp: null,
       edgeDown: null,
+      effectiveEdgeUp: null,
+      effectiveEdgeDown: null,
       rawSum: null,
       arbitrage: false,
-      overpriced: false
+      overpriced: false,
     };
   }
 
@@ -83,8 +215,37 @@ export function computeEdge({
   const marketUp = clamp(marketYes, 0, 1);
   const marketDown = clamp(marketNo, 0, 1);
 
+  // Base edge
   const edgeUp = modelUp - marketUp;
   const edgeDown = modelDown - marketDown;
+
+  // Adjust for orderbook slippage
+  let effectiveEdgeUp = edgeUp;
+  let effectiveEdgeDown = edgeDown;
+
+  const imbalance = orderbookImbalance ?? null;
+  const spread = orderbookSpread ?? null;
+
+  if (imbalance !== null && Math.abs(imbalance) > 0.2) {
+    // Strong buy pressure → buying UP costs more (less effective edge for UP)
+    // Strong sell pressure → buying DOWN costs more (less effective edge for DOWN)
+    const slippageFactor = Math.abs(imbalance) * 0.02; // Up to 2% adjustment
+    
+    if (imbalance > 0) {
+      // More bids → UP is harder to fill
+      effectiveEdgeUp = edgeUp - slippageFactor;
+    } else {
+      // More asks → DOWN is harder to fill
+      effectiveEdgeDown = edgeDown - slippageFactor;
+    }
+  }
+
+  // Penalize wide spreads
+  if (spread !== null && spread > 0.02) {
+    const spreadPenalty = (spread - 0.02) * 0.5;
+    effectiveEdgeUp -= spreadPenalty;
+    effectiveEdgeDown -= spreadPenalty;
+  }
 
   const maxVig = 0.03;
   const vigTooHigh = rawSum > (1 + maxVig);
@@ -94,10 +255,12 @@ export function computeEdge({
     marketDown,
     edgeUp,
     edgeDown,
+    effectiveEdgeUp,
+    effectiveEdgeDown,
     rawSum,
     arbitrage,
     overpriced,
-    vigTooHigh
+    vigTooHigh,
   };
 }
 
@@ -105,22 +268,41 @@ export function decide(params: {
   remainingMinutes: number;
   edgeUp: number | null;
   edgeDown: number | null;
+  effectiveEdgeUp?: number | null;
+  effectiveEdgeDown?: number | null;
   modelUp?: number | null;
   modelDown?: number | null;
   regime?: Regime | null;
   modelSource?: string;
   strategy: StrategyConfig;
   marketId?: string;
+  // Confidence params
+  volatility15m?: number | null;
+  orderbookImbalance?: number | null;
+  vwapSlope?: number | null;
+  rsi?: number | null;
+  macdHist?: number | null;
+  haColor?: string | null;
+  minConfidence?: number;
 }): TradeDecision {
   const {
     remainingMinutes,
     edgeUp,
     edgeDown,
+    effectiveEdgeUp,
+    effectiveEdgeDown,
     modelUp = null,
     modelDown = null,
     regime = null,
     strategy,
-    marketId = ""
+    marketId = "",
+    volatility15m = null,
+    orderbookImbalance = null,
+    vwapSlope = null,
+    rsi = null,
+    macdHist = null,
+    haColor = null,
+    minConfidence = 0.5,
   } = params;
 
   const phase: Phase = remainingMinutes > 10 ? "EARLY" : remainingMinutes > 5 ? "MID" : "LATE";
@@ -142,12 +324,23 @@ export function decide(params: {
     return { action: "NO_TRADE", side: null, phase, regime, reason: "missing_market_data" };
   }
 
-  const bestSide: Side = edgeUp > edgeDown ? "UP" : "DOWN";
-  const bestEdge = bestSide === "UP" ? edgeUp : edgeDown;
+  // Check if market should be skipped entirely (via config)
+  const skipMarkets = strategy?.skipMarkets ?? [];
+  if (skipMarkets.includes(marketId)) {
+    return { action: "NO_TRADE", side: null, phase, regime, reason: "market_skipped_by_config" };
+  }
+
+  // Use effective edge if available
+  const effUp = effectiveEdgeUp ?? edgeUp;
+  const effDown = effectiveEdgeDown ?? edgeDown;
+
+  const bestSide: Side = effUp > effDown ? "UP" : "DOWN";
+  const bestEdge = bestSide === "UP" ? effUp : effDown;
   const bestModel = bestSide === "UP" ? modelUp : modelDown;
-  
-  // Apply market-specific edge multiplier (>1.0 raises threshold for poor performers)
-  const marketMult = MARKET_PERFORMANCE[marketId]?.edgeMultiplier ?? 1.0;
+
+  // Apply market-specific edge multiplier
+  const marketPerf = DEFAULT_MARKET_PERFORMANCE[marketId];
+  const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
   const adjustedThreshold = baseThreshold * marketMult;
 
   const multiplier = regimeMultiplier(regime, bestSide, strategy?.regimeMultipliers, marketId);
@@ -166,7 +359,7 @@ export function decide(params: {
     return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${minProb}` };
   }
   
-  // Overconfidence checks — soft cap BEFORE hard cap so soft can penalize the 0.22-0.30 range
+  // Overconfidence checks
   if (Math.abs(bestEdge) > HARD_CAP_EDGE) {
     return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
   }
@@ -177,6 +370,51 @@ export function decide(params: {
     }
   }
 
-  const strength: Strength = bestEdge >= 0.15 ? "STRONG" : bestEdge >= 0.08 ? "GOOD" : "OPTIONAL";
-  return { action: "ENTER", side: bestSide, phase, regime, strength, edge: bestEdge };
+  // Compute confidence
+  const confidence = computeConfidence({
+    modelUp: modelUp ?? 0.5,
+    modelDown: modelDown ?? 0.5,
+    edgeUp,
+    edgeDown,
+    regime,
+    volatility15m,
+    orderbookImbalance,
+    vwapSlope,
+    rsi,
+    macdHist,
+    haColor: haColor ?? null,
+    side: bestSide,
+  });
+
+  // Reject low confidence trades
+  if (confidence.score < minConfidence) {
+    return { 
+      action: "NO_TRADE", 
+      side: null, 
+      phase, 
+      regime, 
+      reason: `confidence_${confidence.score.toFixed(2)}_below_${minConfidence}`,
+      confidence,
+    };
+  }
+
+  // Adjust strength based on confidence
+  let strength: Strength;
+  if (confidence.score >= 0.75 && bestEdge >= 0.15) {
+    strength = "STRONG";
+  } else if (confidence.score >= 0.5 && bestEdge >= 0.08) {
+    strength = "GOOD";
+  } else {
+    strength = "OPTIONAL";
+  }
+
+  return { 
+    action: "ENTER", 
+    side: bestSide, 
+    phase, 
+    regime, 
+    strength, 
+    edge: bestEdge,
+    confidence,
+  };
 }

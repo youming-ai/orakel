@@ -145,6 +145,8 @@ function DashboardContent() {
           markets={state.markets}
           liveTrades={trades}
           viewMode={viewMode}
+          stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
+          todayStats={viewMode === "paper" ? state.todayStats : undefined}
         />
       </main>
 

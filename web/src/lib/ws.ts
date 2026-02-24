@@ -101,11 +101,15 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 	const getWsUrl = useCallback(() => {
 		if (url) return url;
 
-		// Auto-detect WebSocket URL based on current location
-		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-		const host = window.location.host;
-		// In development, proxy handles /ws, in production it goes to backend
-		return `${protocol}//${host}/ws`;
+		// Derive WebSocket URL from VITE_API_BASE when deployed separately
+		const apiBase = import.meta.env.VITE_API_BASE;
+		if (apiBase) {
+			const u = new URL(apiBase);
+			const wsProto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+			return `${wsProto}//${u.host}/ws`;
+		}
+		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+		return `${protocol}//${window.location.host}/ws`;
 	}, [url]);
 
 	const connect = useCallback(() => {

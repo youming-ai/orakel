@@ -65,14 +65,70 @@ export function scoreDirection(inputs: ScoreDirectionInput): ScoreResult {
   return { upScore: up, downScore: down, rawUp };
 }
 
+/**
+ * S-curve decay (smoothstep):
+ * - Preserves confidence in early phase (>60% time remaining)
+ * - Smooth transition in mid phase (30-60%)
+ * - Fast decay in late phase (<30%)
+ */
+function sCurveDecay(linearDecay: number): number {
+  if (linearDecay > 0.6) {
+    // Early phase: preserve 95%+ of signal
+    return 0.95 + 0.05 * ((linearDecay - 0.6) / 0.4);
+  }
+  if (linearDecay > 0.3) {
+    // Mid phase: smoothstep transition
+    const t = (linearDecay - 0.3) / 0.3;
+    return 0.5 + 0.45 * (3 * t * t - 2 * t * t * t);
+  }
+  // Late phase: aggressive decay to 50%
+  const t = linearDecay / 0.3;
+  return 0.5 * t * t;
+}
+
 export function applyTimeAwareness(
   rawUp: number,
   remainingMinutes: number,
   windowMinutes: number
 ): { timeDecay: number; adjustedUp: number; adjustedDown: number } {
-  const timeDecay = clamp(remainingMinutes / windowMinutes, 0, 1);
+  const linearDecay = clamp(remainingMinutes / windowMinutes, 0, 1);
+  const timeDecay = clamp(sCurveDecay(linearDecay), 0, 1);
   const adjustedUp = clamp(0.5 + (rawUp - 0.5) * timeDecay, 0, 1);
   return { timeDecay, adjustedUp, adjustedDown: 1 - adjustedUp };
+}
+
+// Adaptive time decay based on volatility
+export function applyAdaptiveTimeDecay(
+  rawUp: number,
+  remainingMinutes: number,
+  windowMinutes: number,
+  volatility15m: number | null
+): { timeDecay: number; adjustedUp: number; adjustedDown: number; decayType: string } {
+  // High volatility = slower decay (more time for price to move)
+  // Low volatility = faster decay (less likely to reach target)
+  
+  const volPct = volatility15m !== null ? volatility15m * 100 : 0.5;
+  
+  // Adjust effective time remaining based on volatility
+  let effectiveRemaining = remainingMinutes;
+  if (volPct > 0.8) {
+    // High vol: add 20% effective time
+    effectiveRemaining = remainingMinutes * 1.2;
+  } else if (volPct < 0.3) {
+    // Low vol: subtract 20% effective time
+    effectiveRemaining = remainingMinutes * 0.8;
+  }
+  
+  const linearDecay = clamp(effectiveRemaining / windowMinutes, 0, 1);
+  const timeDecay = clamp(sCurveDecay(linearDecay), 0, 1);
+  
+  let decayType: string;
+  if (linearDecay > 0.6) decayType = "slow";
+  else if (linearDecay > 0.3) decayType = "medium";
+  else decayType = "fast";
+  
+  const adjustedUp = clamp(0.5 + (rawUp - 0.5) * timeDecay, 0, 1);
+  return { timeDecay, adjustedUp, adjustedDown: 1 - adjustedUp, decayType };
 }
 
 export function computeRealizedVolatility(closes: (number | null)[], lookback = 60): number | null {

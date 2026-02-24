@@ -10,6 +10,10 @@ import {
 	getPaperBalance,
 	getPaperStats,
 	getRecentPaperTrades,
+	getStopReason,
+	getTodayStats,
+	isStopped,
+	clearStopFlag,
 } from "./paperStats.ts";
 import {
 	botEvents,
@@ -259,6 +263,9 @@ const apiRoutes = new Hono()
 
 	.get("/state", (c) => {
 		const status = getClientStatus();
+		const todayStats = getTodayStats();
+		const stopLoss = getStopReason();
+		
 		return c.json({
 			markets: getMarkets(),
 			updatedAt: getUpdatedAt(),
@@ -285,6 +292,8 @@ const apiRoutes = new Hono()
 			livePendingStop: isLivePendingStop(),
 			paperPendingSince: getPaperPendingSince(),
 			livePendingSince: getLivePendingSince(),
+			stopLoss: isStopped() ? stopLoss : null,
+			todayStats: todayStats,
 		});
 	})
 
@@ -437,6 +446,8 @@ const apiRoutes = new Hono()
 			trades: getRecentPaperTrades(),
 			byMarket: getMarketBreakdown(),
 			balance: getPaperBalance(),
+			stopLoss: getStopReason(),
+			todayStats: getTodayStats(),
 		});
 	})
 
@@ -537,6 +548,15 @@ const apiRoutes = new Hono()
 		return c.json({
 			ok: true as const,
 			message: "Pending operation cancelled",
+		});
+	})
+
+	.post("/paper/clear-stop", (c) => {
+		console.log(`[API] POST /paper/clear-stop — manually clearing stop loss flag`);
+		clearStopFlag();
+		return c.json({
+			ok: true as const,
+			message: "Stop loss flag cleared",
 		});
 	})
 

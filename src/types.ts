@@ -57,6 +57,8 @@ export interface StrategyConfig {
     TREND_ALIGNED: number;
     TREND_OPPOSED: number;
   };
+  skipMarkets?: string[];
+  minConfidence?: number;
 }
 
 export interface AppConfig {
@@ -100,6 +102,8 @@ export interface EdgeResult {
   marketDown: number | null;
   edgeUp: number | null;
   edgeDown: number | null;
+  effectiveEdgeUp: number | null;
+  effectiveEdgeDown: number | null;
   rawSum: number | null;
   arbitrage: boolean;
   overpriced: boolean;
@@ -112,6 +116,21 @@ export type Strength = "STRONG" | "GOOD" | "OPTIONAL";
 export type Side = "UP" | "DOWN";
 export type StorageBackend = "csv" | "dual" | "sqlite";
 
+// Confidence scoring
+export interface ConfidenceFactors {
+  indicatorAlignment: number;
+  volatilityScore: number;
+  orderbookScore: number;
+  timingScore: number;
+  regimeScore: number;
+}
+
+export interface ConfidenceResult {
+  score: number;
+  factors: ConfidenceFactors;
+  level: "HIGH" | "MEDIUM" | "LOW";
+}
+
 export interface TradeDecision {
   action: "ENTER" | "NO_TRADE";
   side: Side | null;
@@ -120,6 +139,7 @@ export interface TradeDecision {
   strength?: Strength;
   edge?: number;
   reason?: string;
+  confidence?: ConfidenceResult;
 }
 
 export interface RegimeResult {
@@ -279,6 +299,7 @@ export interface MarketSnapshot {
   volImpliedUp: number | null;
   binanceChainlinkDelta: number | null;
   orderbookImbalance: number | null;
+  confidence?: ConfidenceResult;
 }
 
 export interface PaperTradeEntry {

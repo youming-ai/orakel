@@ -154,3 +154,14 @@ export function useConfigMutation(viewMode: ViewMode) {
 		},
 	});
 }
+
+export function usePaperClearStop() {
+	const qc = useQueryClient();
+	return useMutation({
+		mutationFn: () => api.paperClearStop(),
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: queries.state().queryKey });
+			qc.invalidateQueries({ queryKey: queries.paperStats().queryKey });
+		},
+	});
+}

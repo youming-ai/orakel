@@ -19,6 +19,7 @@ import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
 import { PERSIST_BACKEND, statements } from "./db.ts";
 import { computeEdge, decide } from "./engines/edge.ts";
 import {
+	applyAdaptiveTimeDecay,
 	applyTimeAwareness,
 	blendProbabilities,
 	computeRealizedVolatility,
@@ -37,7 +38,7 @@ import { getActiveMarkets } from "./markets.ts";
 import { applyGlobalProxyFromEnv } from "./net/proxy.ts";
 import { OrderManager } from "./orderManager.ts";
 import {
-	canAffordTrade,
+	canAffordTradeWithStopCheck,
 	getPaperStats,
 	resolvePaperTrades,
 } from "./paperStats.ts";
@@ -833,10 +834,11 @@ async function processMarket({
 	const finalUp =
 		blended.source === "blended"
 			? blended.blendedUp
-			: applyTimeAwareness(
+			: applyAdaptiveTimeDecay(
 					scored.rawUp,
 					timeLeftMin,
 					CONFIG.candleWindowMinutes,
+					volatility15m,
 				).adjustedUp;
 	const finalDown = 1 - finalUp;
 
@@ -867,12 +869,21 @@ async function processMarket({
 		remainingMinutes: timeLeftMin,
 		edgeUp: edge.edgeUp,
 		edgeDown: edge.edgeDown,
+		effectiveEdgeUp: edge.effectiveEdgeUp,
+		effectiveEdgeDown: edge.effectiveEdgeDown,
 		modelUp: finalUp,
 		modelDown: finalDown,
 		regime: regimeInfo.regime,
 		modelSource: blended.source,
 		strategy: CONFIG.strategy,
 		marketId: market.id,
+		volatility15m,
+		orderbookImbalance,
+		vwapSlope,
+		rsi: rsiNow,
+		macdHist: macd?.hist ?? null,
+		haColor: consec.color,
+		minConfidence: CONFIG.strategy.minConfidence ?? 0.5,
 	});
 
 	state.prevSpotPrice = spotPrice ?? state.prevSpotPrice;
@@ -1338,9 +1349,10 @@ async function main(): Promise<void> {
 
 			if (isPaperRunning()) {
 				const tradeSize = Number(CONFIG.paperRisk.maxTradeSizeUsdc || 0);
+				const affordCheck = canAffordTradeWithStopCheck(tradeSize);
 				if (
 					!paperTracker.has(mkt.id, timing.startMs) &&
-					canAffordTrade(tradeSize) &&
+					affordCheck.canTrade &&
 					paperTracker.canTradeGlobally(maxGlobalTrades)
 				) {
 					const result = await executeTrade(
@@ -1351,6 +1363,8 @@ async function main(): Promise<void> {
 					if (result?.success) {
 						paperTracker.record(mkt.id, timing.startMs);
 					}
+				} else if (!affordCheck.canTrade) {
+					console.log(`[PAPER] Trade rejected for ${mkt.id}: ${affordCheck.reason}`);
 				}
 			}
 
@@ -1417,6 +1431,7 @@ async function main(): Promise<void> {
 				volImpliedUp: r.volImpliedUp ?? null,
 				binanceChainlinkDelta: r.binanceChainlinkDelta ?? null,
 				orderbookImbalance: r.orderbookImbalance ?? null,
+				confidence: r.rec?.confidence ?? undefined,
 			}),
 		);
 		updateMarkets(snapshots);

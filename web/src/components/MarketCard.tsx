@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { MarketSnapshot } from "@/lib/api";
+import type { ConfidenceResult, MarketSnapshot } from "@/lib/api";
 import { fmtCents, fmtMinSec, fmtPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,94 @@ function macdLabel(macd: MarketSnapshot["macd"]): {
 	return { text: "red", color: "text-red-400/70" };
 }
 
+function confidenceColor(score: number): string {
+	if (score >= 0.7) return "text-emerald-400";
+	if (score >= 0.5) return "text-amber-400";
+	return "text-red-400";
+}
+
+function confidenceBg(score: number): string {
+	if (score >= 0.7) return "bg-emerald-500/15 border-emerald-500/30";
+	if (score >= 0.5) return "bg-amber-500/15 border-amber-500/30";
+	return "bg-red-500/15 border-red-500/30";
+}
+
+// Mini trend indicator showing HA colors
+function MiniTrend({ haColor, count }: { haColor: string | null; count: number }) {
+	const bars = [];
+	for (let i = 0; i < 5; i++) {
+		const isActive = i < count;
+		const isGreen = haColor === "green";
+		bars.push(
+			<div
+				key={i}
+				className={cn(
+					"w-1.5 h-3 rounded-sm transition-all",
+					isActive
+						? isGreen
+							? "bg-emerald-400"
+							: "bg-red-400"
+						: "bg-muted/30"
+				)}
+			/>
+		);
+	}
+	return <div className="flex gap-0.5 items-center">{bars}</div>;
+}
+
+// Confidence progress bar
+function ConfidenceBar({ confidence }: { confidence?: ConfidenceResult }) {
+	if (!confidence) return null;
+	
+	return (
+		<div className="space-y-1">
+			<div className="flex items-center justify-between text-[10px]">
+				<span className="text-muted-foreground">Confidence</span>
+				<span className={cn("font-mono font-medium", confidenceColor(confidence.score))}>
+					{(confidence.score * 100).toFixed(0)}%
+				</span>
+			</div>
+			<div className="h-1.5 bg-muted/30 rounded-full overflow-hidden">
+				<div
+					className={cn(
+						"h-full rounded-full transition-all duration-300",
+						confidence.score >= 0.7 ? "bg-emerald-400" :
+						confidence.score >= 0.5 ? "bg-amber-400" : "bg-red-400"
+					)}
+					style={{ width: `${confidence.score * 100}%` }}
+				/>
+			</div>
+		</div>
+	);
+}
+
+// Signal strength indicator (traffic light)
+function SignalLight({ action, edge }: { action: string; edge: number | null }) {
+	const edgeNum = edge ?? 0;
+	let color = "bg-muted/50";
+	let glow = "";
+	
+	if (action === "ENTER") {
+		if (edgeNum >= 0.15) {
+			color = "bg-emerald-400";
+			glow = "shadow-emerald-400/50 shadow-md";
+		} else if (edgeNum >= 0.08) {
+			color = "bg-amber-400";
+			glow = "shadow-amber-400/50 shadow-md";
+		} else {
+			color = "bg-yellow-400";
+		}
+	}
+	
+	return (
+		<div className={cn(
+			"w-2.5 h-2.5 rounded-full transition-all duration-300",
+			color,
+			glow
+		)} />
+	);
+}
+
 export function MarketCard({ market: m }: MarketCardProps) {
 	if (!m.ok) {
 		return (
@@ -39,12 +127,16 @@ export function MarketCard({ market: m }: MarketCardProps) {
 	const isEntry = m.action === "ENTER";
 	const phaseBg = m.phase === "LATE" ? "bg-amber-500/10" : "";
 	const macdInfo = macdLabel(m.macd);
+	const confidence = m.confidence;
 
 	return (
 		<Card className={cn("relative overflow-hidden", phaseBg)}>
 			<CardHeader className="pb-3">
 				<div className="flex items-center justify-between">
-					<CardTitle className="text-base font-bold">{m.id}</CardTitle>
+					<div className="flex items-center gap-2">
+						<SignalLight action={m.action} edge={m.edge} />
+						<CardTitle className="text-base font-bold">{m.id}</CardTitle>
+					</div>
 					<div className="flex items-center gap-2">
 						{m.phase && (
 							<Badge variant="secondary" className="text-[11px] px-1.5 py-0">
@@ -92,15 +184,10 @@ export function MarketCard({ market: m }: MarketCardProps) {
 
 				<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
 					<div className="space-y-0.5">
-						<span className="text-muted-foreground block">HA</span>
-						<span
-							className={cn(
-								"font-mono block",
-								m.haColor === "green" ? "text-emerald-300" : "text-red-300",
-							)}
-						>
-							{m.haColor ?? "-"} x{m.haConsecutive}
-						</span>
+						<span className="text-muted-foreground block">HA Trend</span>
+						<div className="flex items-center gap-1.5">
+							<MiniTrend haColor={m.haColor} count={m.haConsecutive} />
+						</div>
 					</div>
 					<div className="space-y-0.5">
 						<span className="text-muted-foreground block">RSI</span>
@@ -177,18 +264,30 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					</div>
 				</div>
 
+				{/* Confidence bar */}
+				{confidence && <ConfidenceBar confidence={confidence} />}
+
 				<div
 					className={cn(
-						"rounded-md px-3 py-1.5 text-xs font-medium text-center",
+						"rounded-md px-3 py-1.5 text-xs font-medium text-center border",
 						isEntry
-							? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-							: "bg-muted/50 text-muted-foreground",
+							? confidenceBg(confidence?.score ?? 0.5)
+							: "bg-muted/50 text-muted-foreground border-transparent",
 					)}
 				>
 					{isEntry ? (
-						<span>
-							BUY {m.side} | Edge {((m.edge ?? 0) * 100).toFixed(1)}% |{" "}
-							{m.strength}
+						<span className="flex items-center justify-center gap-2">
+							<span className="font-semibold">BUY {m.side}</span>
+							<span className="text-muted-foreground">|</span>
+							<span>Edge {((m.edge ?? 0) * 100).toFixed(1)}%</span>
+							{confidence && (
+								<>
+									<span className="text-muted-foreground">|</span>
+									<span className={confidenceColor(confidence.score)}>
+										{confidence.level}
+									</span>
+								</>
+							)}
 						</span>
 					) : (
 						<span>NO TRADE ({m.reason ?? m.phase})</span>
