@@ -16,6 +16,7 @@ import {
 	summarizeOrderBook,
 } from "./data/polymarket.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
+import { PERSIST_BACKEND, statements } from "./db.ts";
 import { computeEdge, decide } from "./engines/edge.ts";
 import {
 	applyTimeAwareness,
@@ -35,29 +36,41 @@ import { computeSessionVwap, computeVwapSeries } from "./indicators/vwap.ts";
 import { getActiveMarkets } from "./markets.ts";
 import { applyGlobalProxyFromEnv } from "./net/proxy.ts";
 import { OrderManager } from "./orderManager.ts";
-import { canAffordTrade, getPaperStats, resolvePaperTrades } from "./paperStats.ts";
-import { redeemAll } from "./redeemer.ts";
-import type { MarketSnapshot } from "./state.ts";
 import {
-  isLiveRunning,
-  isPaperRunning,
-  setLiveRunning,
-  setPaperRunning,
-  updateMarkets,
-  isPaperPendingStart,
-  isPaperPendingStop,
-  isLivePendingStart,
-  isLivePendingStop,
-  clearPaperPending,
-  clearLivePending,
+	canAffordTrade,
+	getPaperStats,
+	resolvePaperTrades,
+} from "./paperStats.ts";
+import { redeemAll } from "./redeemer.ts";
+import {
+	clearLivePending,
+	clearPaperPending,
+	emitSignalNew,
+	emitStateSnapshot,
+	getUpdatedAt,
+	isLivePendingStart,
+	isLivePendingStop,
+	isLiveRunning,
+	isPaperPendingStart,
+	isPaperPendingStop,
+	isPaperRunning,
+	setLiveRunning,
+	setPaperRunning,
+	updateMarkets,
 } from "./state.ts";
 import { shouldTakeTrade } from "./strategyRefinement.ts";
-import { executeTrade, getWallet, updatePnl, getClientStatus } from "./trader.ts";
+import {
+	executeTrade,
+	getClientStatus,
+	getWallet,
+	updatePnl,
+} from "./trader.ts";
 import type {
 	Candle,
 	CandleWindowTiming,
 	MacdResult,
 	MarketConfig,
+	MarketSnapshot,
 	OrderBookSummary,
 	OrderTracker,
 	PolymarketSnapshot,
@@ -596,19 +609,30 @@ function writeLatestSignal(marketId: string, payload: TradeSignal): void {
 }
 
 const paperTracker = {
-	markets: new Set<string>(),  // per-market dedup: `${marketId}:${windowStartMs}`
+	markets: new Set<string>(), // per-market dedup: `${marketId}:${windowStartMs}`
 	windowStartMs: 0,
 	globalCount: 0,
-	clear() { this.markets.clear(); this.globalCount = 0; this.windowStartMs = 0; },
+	clear() {
+		this.markets.clear();
+		this.globalCount = 0;
+		this.windowStartMs = 0;
+	},
 	setWindow(startMs: number) {
 		if (this.windowStartMs !== startMs) {
 			this.clear();
 			this.windowStartMs = startMs;
 		}
 	},
-	has(marketId: string, startMs: number): boolean { return this.markets.has(`${marketId}:${startMs}`); },
-	record(marketId: string, startMs: number) { this.markets.add(`${marketId}:${startMs}`); this.globalCount++; },
-	canTradeGlobally(maxGlobal: number): boolean { return this.globalCount < maxGlobal; },
+	has(marketId: string, startMs: number): boolean {
+		return this.markets.has(`${marketId}:${startMs}`);
+	},
+	record(marketId: string, startMs: number) {
+		this.markets.add(`${marketId}:${startMs}`);
+		this.globalCount++;
+	},
+	canTradeGlobally(maxGlobal: number): boolean {
+		return this.globalCount < maxGlobal;
+	},
 };
 
 async function processMarket({
@@ -870,65 +894,99 @@ async function processMarket({
 			? `Edge: ${(Number(rec.edge) * 100).toFixed(1)}% -> BUY ${rec.side}`
 			: `NO TRADE (${rec.reason || rec.phase})`;
 
-	appendCsvRow(
-		`./logs/signals-${market.id}.csv`,
-		[
-			"timestamp",
-			"entry_minute",
-			"time_left_min",
-			"regime",
-			"signal",
-			"vol_implied_up",
-			"ta_raw_up",
-			"blended_up",
-			"blend_source",
-			"volatility_15m",
-			"price_to_beat",
-			"binance_chainlink_delta",
-			"orderbook_imbalance",
-			"model_up",
-			"model_down",
-			"mkt_up",
-			"mkt_down",
-			"raw_sum",
-			"arbitrage",
-			"edge_up",
-			"edge_down",
-			"recommendation",
-		],
-		[
-			new Date().toISOString(),
-			timing.elapsedMinutes.toFixed(3),
-			Number(timeLeftMin).toFixed(3),
-			regimeInfo.regime,
-			edge.arbitrage
-				? "ARBITRAGE"
-				: rec.action === "ENTER"
-					? `BUY ${rec.side}`
-					: "NO TRADE",
-			volImplied,
-			scored.rawUp,
-			blended.blendedUp,
-			blended.source,
-			volatility15m,
-			priceToBeat,
-			binanceChainlinkDelta,
-			orderbookImbalance,
-			finalUp,
-			finalDown,
-			marketUp,
-			marketDown,
-			edge.rawSum,
-			edge.arbitrage as unknown as number,
-			edge.edgeUp,
-			edge.edgeDown,
-			edge.arbitrage
-				? "ARBITRAGE_ALERT"
-				: rec.action === "ENTER"
-					? `${rec.side}:${rec.phase}:${rec.strength}`
-					: "NO_TRADE",
-		],
-	);
+	const signalTimestamp = new Date().toISOString();
+	const signalLabel = edge.arbitrage
+		? "ARBITRAGE"
+		: rec.action === "ENTER"
+			? `BUY ${rec.side}`
+			: "NO TRADE";
+	const recommendation = edge.arbitrage
+		? "ARBITRAGE_ALERT"
+		: rec.action === "ENTER"
+			? `${rec.side}:${rec.phase}:${rec.strength}`
+			: "NO_TRADE";
+
+	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
+		appendCsvRow(
+			`./logs/signals-${market.id}.csv`,
+			[
+				"timestamp",
+				"entry_minute",
+				"time_left_min",
+				"regime",
+				"signal",
+				"vol_implied_up",
+				"ta_raw_up",
+				"blended_up",
+				"blend_source",
+				"volatility_15m",
+				"price_to_beat",
+				"binance_chainlink_delta",
+				"orderbook_imbalance",
+				"model_up",
+				"model_down",
+				"mkt_up",
+				"mkt_down",
+				"raw_sum",
+				"arbitrage",
+				"edge_up",
+				"edge_down",
+				"recommendation",
+			],
+			[
+				signalTimestamp,
+				timing.elapsedMinutes.toFixed(3),
+				Number(timeLeftMin).toFixed(3),
+				regimeInfo.regime,
+				signalLabel,
+				volImplied,
+				scored.rawUp,
+				blended.blendedUp,
+				blended.source,
+				volatility15m,
+				priceToBeat,
+				binanceChainlinkDelta,
+				orderbookImbalance,
+				finalUp,
+				finalDown,
+				marketUp,
+				marketDown,
+				edge.rawSum,
+				edge.arbitrage ? 1 : 0,
+				edge.edgeUp,
+				edge.edgeDown,
+				recommendation,
+			],
+		);
+	}
+
+	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
+		statements.insertSignal().run({
+			$timestamp: signalTimestamp,
+			$market: market.id,
+			$regime: regimeInfo.regime,
+			$signal: signalLabel,
+			$vol_implied_up: volImplied,
+			$ta_raw_up: scored.rawUp,
+			$blended_up: blended.blendedUp,
+			$blend_source: blended.source,
+			$volatility_15m: volatility15m,
+			$price_to_beat: priceToBeat,
+			$binance_chainlink_delta: binanceChainlinkDelta,
+			$orderbook_imbalance: orderbookImbalance,
+			$model_up: finalUp,
+			$model_down: finalDown,
+			$mkt_up: marketUp,
+			$mkt_down: marketDown,
+			$raw_sum: edge.rawSum,
+			$arbitrage: edge.arbitrage ? 1 : 0,
+			$edge_up: edge.edgeUp,
+			$edge_down: edge.edgeDown,
+			$recommendation: recommendation,
+			$entry_minute: timing.elapsedMinutes.toFixed(3),
+			$time_left_min: Number(timeLeftMin).toFixed(3),
+		});
+	}
 
 	let signalPayload: TradeSignal | null = null;
 	if (rec.action === "ENTER") {
@@ -959,6 +1017,20 @@ async function processMarket({
 			tokens: poly.ok ? (poly.tokens ?? null) : null,
 		};
 		writeLatestSignal(market.id, signalPayload);
+		emitSignalNew({
+			marketId: market.id,
+			timestamp: signalPayload.timestamp,
+			regime: regimeInfo.regime,
+			signal: "ENTER",
+			modelUp: signalPayload.modelUp,
+			modelDown: signalPayload.modelDown,
+			edgeUp: signalPayload.edgeUp,
+			edgeDown: signalPayload.edgeDown,
+			recommendation:
+				rec.action === "ENTER"
+					? `${rec.side}:${rec.phase}:${rec.strength}`
+					: (rec.reason ?? null),
+		});
 	}
 
 	return {
@@ -1082,95 +1154,107 @@ async function main(): Promise<void> {
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
 
-  while (true) {
-    // Check if we should be in the main loop:
-    // - Running (paper or live)
-    // - Pending start (waiting for next cycle)
-    const shouldRunLoop = isPaperRunning() || isLiveRunning() || isPaperPendingStart() || isLivePendingStart();
-    if (!shouldRunLoop) {
-      await sleep(1000);
-      continue;
-    }
+	while (true) {
+		// Check if we should be in the main loop:
+		// - Running (paper or live)
+		// - Pending start (waiting for next cycle)
+		const shouldRunLoop =
+			isPaperRunning() ||
+			isLiveRunning() ||
+			isPaperPendingStart() ||
+			isLivePendingStart();
+		if (!shouldRunLoop) {
+			await sleep(1000);
+			continue;
+		}
 
-    const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
 		if (prevWindowStartMs !== null && timing.startMs !== prevWindowStartMs) {
-      // NEW CYCLE DETECTED - Handle pending start/stop transitions
+			// NEW CYCLE DETECTED - Handle pending start/stop transitions
 
-      // 1. Handle pending start: transition to running at new cycle
-      if (isPaperPendingStart()) {
-        console.log("[PAPER] Pending start detected, starting at new cycle boundary");
-        setPaperRunning(true);
-        clearPaperPending();
-      }
-      if (isLivePendingStart()) {
-        const status = getClientStatus();
-        if (status.walletLoaded && status.clientReady) {
-          console.log("[LIVE] Pending start detected, starting at new cycle boundary");
-          setLiveRunning(true);
-        } else {
-          console.log("[LIVE] Pending start cancelled - wallet not ready");
-        }
-        clearLivePending();
-      }
+			// 1. Handle pending start: transition to running at new cycle
+			if (isPaperPendingStart()) {
+				console.log(
+					"[PAPER] Pending start detected, starting at new cycle boundary",
+				);
+				setPaperRunning(true);
+				clearPaperPending();
+			}
+			if (isLivePendingStart()) {
+				const status = getClientStatus();
+				if (status.walletLoaded && status.clientReady) {
+					console.log(
+						"[LIVE] Pending start detected, starting at new cycle boundary",
+					);
+					setLiveRunning(true);
+				} else {
+					console.log("[LIVE] Pending start cancelled - wallet not ready");
+				}
+				clearLivePending();
+			}
 
-      paperTracker.setWindow(timing.startMs);
+			paperTracker.setWindow(timing.startMs);
 
-      // 2. Settlement logic (resolve paper trades, redeem live positions)
-      if (isPaperRunning()) {
-        const finalPrices = new Map<string, number>();
-        for (const market of markets) {
-          const st = states.get(market.id);
-          if (
-            st?.prevCurrentPrice !== null &&
-            st?.prevCurrentPrice !== undefined
-          ) {
-            finalPrices.set(market.id, st.prevCurrentPrice);
-          }
-        }
-        const prevPnl = getPaperStats().totalPnl;
-        const resolved = resolvePaperTrades(prevWindowStartMs, finalPrices);
-        if (resolved > 0) {
-          const stats = getPaperStats();
-          const pnlDelta = stats.totalPnl - prevPnl;
-          updatePnl(pnlDelta, "paper");
-          console.log(
-            `[PAPER] Resolved ${resolved} trade(s) | W:${stats.wins} L:${stats.losses} | WR:${(stats.winRate * 100).toFixed(0)}% | PnL:${stats.totalPnl.toFixed(2)}`,
-          );
-        }
-      }
+			// 2. Settlement logic (resolve paper trades, redeem live positions)
+			if (isPaperRunning()) {
+				const finalPrices = new Map<string, number>();
+				for (const market of markets) {
+					const st = states.get(market.id);
+					if (
+						st?.prevCurrentPrice !== null &&
+						st?.prevCurrentPrice !== undefined
+					) {
+						finalPrices.set(market.id, st.prevCurrentPrice);
+					}
+				}
+				const prevPnl = getPaperStats().totalPnl;
+				const resolved = resolvePaperTrades(prevWindowStartMs, finalPrices);
+				if (resolved > 0) {
+					const stats = getPaperStats();
+					const pnlDelta = stats.totalPnl - prevPnl;
+					updatePnl(pnlDelta, "paper");
+					console.log(
+						`[PAPER] Resolved ${resolved} trade(s) | W:${stats.wins} L:${stats.losses} | WR:${(stats.winRate * 100).toFixed(0)}% | PnL:${stats.totalPnl.toFixed(2)}`,
+					);
+				}
+			}
 			if (isLiveRunning()) {
-        const wallet = getWallet();
-        if (wallet) {
-          console.log(
-            "[redeemer] Window changed, checking for redeemable positions...",
-          );
-          redeemAll(wallet)
-            .then((results) => {
-              if (results.length) {
-                console.log(
-                  `[redeemer] Redeemed ${results.length} position(s)`,
-                );
-              }
-            })
-            .catch((err: unknown) => {
-              const message = err instanceof Error ? err.message : String(err);
-              console.error("[redeemer] Redemption error:", message);
-            });
-        }
-      }
+				const wallet = getWallet();
+				if (wallet) {
+					console.log(
+						"[redeemer] Window changed, checking for redeemable positions...",
+					);
+					redeemAll(wallet)
+						.then((results) => {
+							if (results.length) {
+								console.log(
+									`[redeemer] Redeemed ${results.length} position(s)`,
+								);
+							}
+						})
+						.catch((err: unknown) => {
+							const message = err instanceof Error ? err.message : String(err);
+							console.error("[redeemer] Redemption error:", message);
+						});
+				}
+			}
 
-      // 3. Handle pending stop: stop AFTER settlement completes
-      if (isPaperPendingStop()) {
-        console.log("[PAPER] Pending stop detected, stopping after cycle settlement");
-        setPaperRunning(false);
-        clearPaperPending();
-      }
-      if (isLivePendingStop()) {
-        console.log("[LIVE] Pending stop detected, stopping after cycle settlement");
-        setLiveRunning(false);
-        clearLivePending();
-      }
-    }
+			// 3. Handle pending stop: stop AFTER settlement completes
+			if (isPaperPendingStop()) {
+				console.log(
+					"[PAPER] Pending stop detected, stopping after cycle settlement",
+				);
+				setPaperRunning(false);
+				clearPaperPending();
+			}
+			if (isLivePendingStop()) {
+				console.log(
+					"[LIVE] Pending stop detected, stopping after cycle settlement",
+				);
+				setLiveRunning(false);
+				clearLivePending();
+			}
+		}
 		prevWindowStartMs = timing.startMs;
 
 		orderTracker.prune();
@@ -1292,51 +1376,61 @@ async function main(): Promise<void> {
 			}
 		}
 
-		updateMarkets(
-			results.map(
-				(r): MarketSnapshot => ({
-					id: r.market.id,
-					label: r.market.label,
-					ok: r.ok,
-					error: r.error,
-					spotPrice: r.spotPrice ?? null,
-					currentPrice: r.currentPrice ?? null,
-					priceToBeat: r.priceToBeat ?? null,
-					marketUp: r.marketUp ?? null,
-					marketDown: r.marketDown ?? null,
-					rawSum: r.rawSum ?? null,
-					arbitrage: r.arbitrage ?? false,
-					predictLong: r.pLong ? Number(r.pLong) : null,
-					predictShort: r.pShort ? Number(r.pShort) : null,
-					predictDirection:
-						(r.predictNarrative as "LONG" | "SHORT" | "NEUTRAL") ?? "NEUTRAL",
-					haColor: r.consec?.color ?? null,
-					haConsecutive: r.consec?.count ?? 0,
-					rsi: r.rsiNow ?? null,
-					macd: r.macd
-						? {
-								macd: r.macd.macd,
-								signal: r.macd.signal,
-								hist: r.macd.hist,
-								histDelta: r.macd.histDelta,
-							}
-						: null,
-					vwapSlope: r.vwapSlope ?? null,
-					timeLeftMin: r.timeLeftMin ?? null,
-					phase: r.rec?.phase ?? null,
-					action: r.rec?.action ?? "NO_TRADE",
-					side: r.rec?.side ?? null,
-					edge: r.rec?.edge ?? null,
-					strength: r.rec?.strength ?? null,
-					reason: r.rec?.reason ?? null,
-					volatility15m: r.volatility15m ?? null,
-					blendSource: r.blendSource ?? null,
-					volImpliedUp: r.volImpliedUp ?? null,
-					binanceChainlinkDelta: r.binanceChainlinkDelta ?? null,
-					orderbookImbalance: r.orderbookImbalance ?? null,
-				}),
-			),
+		const snapshots = results.map(
+			(r): MarketSnapshot => ({
+				id: r.market.id,
+				label: r.market.label,
+				ok: r.ok,
+				error: r.error,
+				spotPrice: r.spotPrice ?? null,
+				currentPrice: r.currentPrice ?? null,
+				priceToBeat: r.priceToBeat ?? null,
+				marketUp: r.marketUp ?? null,
+				marketDown: r.marketDown ?? null,
+				rawSum: r.rawSum ?? null,
+				arbitrage: r.arbitrage ?? false,
+				predictLong: r.pLong ? Number(r.pLong) : null,
+				predictShort: r.pShort ? Number(r.pShort) : null,
+				predictDirection:
+					(r.predictNarrative as "LONG" | "SHORT" | "NEUTRAL") ?? "NEUTRAL",
+				haColor: r.consec?.color ?? null,
+				haConsecutive: r.consec?.count ?? 0,
+				rsi: r.rsiNow ?? null,
+				macd: r.macd
+					? {
+							macd: r.macd.macd,
+							signal: r.macd.signal,
+							hist: r.macd.hist,
+							histDelta: r.macd.histDelta,
+						}
+					: null,
+				vwapSlope: r.vwapSlope ?? null,
+				timeLeftMin: r.timeLeftMin ?? null,
+				phase: r.rec?.phase ?? null,
+				action: r.rec?.action ?? "NO_TRADE",
+				side: r.rec?.side ?? null,
+				edge: r.rec?.edge ?? null,
+				strength: r.rec?.strength ?? null,
+				reason: r.rec?.reason ?? null,
+				volatility15m: r.volatility15m ?? null,
+				blendSource: r.blendSource ?? null,
+				volImpliedUp: r.volImpliedUp ?? null,
+				binanceChainlinkDelta: r.binanceChainlinkDelta ?? null,
+				orderbookImbalance: r.orderbookImbalance ?? null,
+			}),
 		);
+		updateMarkets(snapshots);
+		emitStateSnapshot({
+			markets: snapshots,
+			updatedAt: getUpdatedAt(),
+			paperRunning: isPaperRunning(),
+			liveRunning: isLiveRunning(),
+			paperPendingStart: isPaperPendingStart(),
+			paperPendingStop: isPaperPendingStop(),
+			livePendingStart: isLivePendingStart(),
+			livePendingStop: isLivePendingStop(),
+			paperStats: getPaperStats(),
+		});
 
 		const panelData = results.map((r) => buildPanelData(r));
 		renderScreen(renderGrid(panelData));
