@@ -9,6 +9,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./config.json:/app/config.json:ro
+      - ./data:/app/data
     restart: unless-stopped
     stdin_open: false
     tty: true

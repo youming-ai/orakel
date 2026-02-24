@@ -1,6 +1,26 @@
 import fs from "node:fs";
 import { MARKETS } from "./markets.ts";
-import type { AppConfig, RiskConfig } from "./types.ts";
+import type { AppConfig, RiskConfig, StorageBackend } from "./types.ts";
+
+const PERSIST_BACKENDS: StorageBackend[] = ["csv", "dual", "sqlite"];
+const READ_BACKENDS: Exclude<StorageBackend, "dual">[] = ["csv", "sqlite"];
+
+function parsePersistBackend(value: string | undefined): StorageBackend {
+  if (!value) return "sqlite";
+  const normalized = value.toLowerCase();
+  return PERSIST_BACKENDS.includes(normalized as StorageBackend) ? (normalized as StorageBackend) : "sqlite";
+}
+
+function parseReadBackend(value: string | undefined): Exclude<StorageBackend, "dual"> {
+  if (!value) return "sqlite";
+  const normalized = value.toLowerCase();
+  return READ_BACKENDS.includes(normalized as Exclude<StorageBackend, "dual">)
+    ? (normalized as Exclude<StorageBackend, "dual">)
+    : "sqlite";
+}
+
+export const PERSIST_BACKEND: StorageBackend = parsePersistBackend(process.env.PERSIST_BACKEND);
+export const READ_BACKEND: Exclude<StorageBackend, "dual"> = parseReadBackend(process.env.READ_BACKEND);
 
 function readJsonConfig(): Record<string, unknown> {
   try {
@@ -71,6 +91,8 @@ export const CONFIG: AppConfig = {
   macdSignal: 9,
 
   paperMode: (process.env.PAPER_MODE || "false").toLowerCase() === "true",
+  persistBackend: PERSIST_BACKEND,
+  readBackend: READ_BACKEND,
 
   polymarket: {
     marketSlug: process.env.POLYMARKET_SLUG || "",

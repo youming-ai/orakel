@@ -17,6 +17,7 @@ COPY --from=bot-deps /app/node_modules node_modules
 COPY package.json bun.lock tsconfig.json config.json ./
 COPY src src
 COPY --from=web-build /app/web/dist web/dist
+RUN mkdir -p /app/data && chown bun:bun /app/data
 USER bun
 EXPOSE 9999
 ENTRYPOINT ["dumb-init", "--"]
