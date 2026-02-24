@@ -1,6 +1,26 @@
 node_modules/
-logs/
+
+# environment
 .env
+.env.local
+.env.*.local
+
+# macOS
 .DS_Store
-*.log
+
+# runtime data
 data/
+logs/
+
+# logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# Bun lock (old format)
+*.lockb
+
+# build output
+dist/

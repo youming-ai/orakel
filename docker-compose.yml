@@ -7,9 +7,8 @@ services:
     ports:
       - "9999:9999"
     volumes:
-      - ./logs:/app/logs
-      - ./config.json:/app/config.json:ro
       - ./data:/app/data
+      - ./config.json:/app/config.json:ro
     restart: unless-stopped
     stdin_open: false
     tty: true
@@ -26,3 +25,4 @@ services:
     depends_on:
       - bot
     restart: unless-stopped
+
