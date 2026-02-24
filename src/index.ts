@@ -20,28 +20,20 @@ import { PERSIST_BACKEND, statements } from "./db.ts";
 import { computeEdge, decide } from "./engines/edge.ts";
 import {
 	applyAdaptiveTimeDecay,
-	applyTimeAwareness,
 	blendProbabilities,
 	computeRealizedVolatility,
 	computeVolatilityImpliedProb,
 	scoreDirection,
 } from "./engines/probability.ts";
 import { detectRegime } from "./engines/regime.ts";
-import {
-	computeHeikenAshi,
-	countConsecutive,
-} from "./indicators/heikenAshi.ts";
+import { computeHeikenAshi, countConsecutive } from "./indicators/heikenAshi.ts";
 import { computeMacd } from "./indicators/macd.ts";
 import { computeRsi, slopeLast, sma } from "./indicators/rsi.ts";
 import { computeSessionVwap, computeVwapSeries } from "./indicators/vwap.ts";
+import { createLogger } from "./logger.ts";
 import { getActiveMarkets } from "./markets.ts";
-import { applyGlobalProxyFromEnv } from "./net/proxy.ts";
 import { OrderManager } from "./orderManager.ts";
-import {
-	canAffordTradeWithStopCheck,
-	getPaperStats,
-	resolvePaperTrades,
-} from "./paperStats.ts";
+import { canAffordTradeWithStopCheck, getPaperStats, resolvePaperTrades } from "./paperStats.ts";
 import { redeemAll } from "./redeemer.ts";
 import {
 	clearLivePending,
@@ -60,12 +52,7 @@ import {
 	updateMarkets,
 } from "./state.ts";
 import { shouldTakeTrade } from "./strategyRefinement.ts";
-import {
-	executeTrade,
-	getClientStatus,
-	getWallet,
-	updatePnl,
-} from "./trader.ts";
+import { executeTrade, getClientStatus, getWallet, updatePnl } from "./trader.ts";
 import type {
 	Candle,
 	CandleWindowTiming,
@@ -80,12 +67,32 @@ import type {
 	TradeSignal,
 	WsStreamHandle,
 } from "./types.ts";
-import {
-	appendCsvRow,
-	formatNumber,
-	getCandleWindowTiming,
-	sleep,
-} from "./utils.ts";
+import { appendCsvRow, formatNumber, getCandleWindowTiming, sleep } from "./utils.ts";
+
+const log = createLogger("bot");
+
+const clobCircuitBreaker = {
+	failures: 0,
+	openUntil: 0,
+	maxFailures: 5,
+	cooldownMs: 60_000,
+	isOpen(): boolean {
+		if (this.failures < this.maxFailures) return false;
+		return Date.now() < this.openUntil;
+	},
+	recordFailure(): void {
+		this.failures++;
+		if (this.failures >= this.maxFailures) {
+			this.openUntil = Date.now() + this.cooldownMs;
+			log.warn(`CLOB circuit breaker OPEN - ${this.failures} consecutive failures, cooldown ${this.cooldownMs}ms`);
+		}
+	},
+	recordSuccess(): void {
+		if (this.failures > 0) log.info(`CLOB circuit breaker reset after ${this.failures} failures`);
+		this.failures = 0;
+		this.openUntil = 0;
+	},
+};
 
 interface ProcessMarketParams {
 	market: MarketConfig;
@@ -199,14 +206,13 @@ function renderScreen(text: string): void {
 	try {
 		readline.cursorTo(process.stdout, 0, 0);
 		readline.clearScreenDown(process.stdout);
-	} catch {}
+	} catch (err) {
+		log.debug("renderScreen cursor reset failed:", err);
+	}
 	process.stdout.write(text);
 }
 
-function colorForAction(
-	action: TradeDecision["action"] | undefined,
-	side: TradeDecision["side"] | undefined,
-): string {
+function colorForAction(action: TradeDecision["action"] | undefined, side: TradeDecision["side"] | undefined): string {
 	if (action === "ENTER" && side === "UP") return ANSI.green;
 	if (action === "ENTER" && side === "DOWN") return ANSI.red;
 	return ANSI.gray;
@@ -247,11 +253,7 @@ function fmtTimeLeft(mins: number | null | undefined): string {
 	return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function countVwapCrosses(
-	closes: number[],
-	vwapSeries: number[],
-	lookback: number,
-): number | null {
+function countVwapCrosses(closes: number[], vwapSeries: number[], lookback: number): number | null {
 	if (closes.length < lookback || vwapSeries.length < lookback) return null;
 	let crosses = 0;
 	for (let i = closes.length - lookback + 1; i < closes.length; i += 1) {
@@ -259,13 +261,7 @@ function countVwapCrosses(
 		const prevVwap = vwapSeries[i - 1];
 		const curClose = closes[i];
 		const curVwap = vwapSeries[i];
-		if (
-			prevClose === undefined ||
-			prevVwap === undefined ||
-			curClose === undefined ||
-			curVwap === undefined
-		)
-			continue;
+		if (prevClose === undefined || prevVwap === undefined || curClose === undefined || curVwap === undefined) continue;
 		const prev = prevClose - prevVwap;
 		const cur = curClose - curVwap;
 		if (prev === 0) continue;
@@ -278,9 +274,7 @@ function parsePriceToBeat(market: unknown): number | null {
 	const marketObj = market as AnyRecord | null;
 	const text = String(marketObj?.question ?? marketObj?.title ?? "");
 	if (!text) return null;
-	const m = text.match(
-		/price\s*to\s*beat[^\d$]*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i,
-	);
+	const m = text.match(/price\s*to\s*beat[^\d$]*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
 	if (!m || !m[1]) return null;
 	const raw = m[1].replace(/,/g, "");
 	const n = Number(raw);
@@ -306,28 +300,19 @@ function extractNumericFromMarket(market: unknown): number | null {
 	const marketObj = market as AnyRecord | null;
 	for (const k of directKeys) {
 		const v = marketObj?.[k];
-		const n =
-			typeof v === "string"
-				? Number(v)
-				: typeof v === "number"
-					? v
-					: Number.NaN;
+		const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : Number.NaN;
 		if (Number.isFinite(n)) return n;
 	}
 
 	const seen = new Set<unknown>();
-	const stack: Array<{ obj: unknown; depth: number }> = [
-		{ obj: market, depth: 0 },
-	];
+	const stack: Array<{ obj: unknown; depth: number }> = [{ obj: market, depth: 0 }];
 	while (stack.length) {
 		const item = stack.pop();
 		if (!item) continue;
 		const { obj, depth } = item;
 		if (!obj || typeof obj !== "object" || seen.has(obj) || depth > 6) continue;
 		seen.add(obj);
-		const entries = Array.isArray(obj)
-			? Array.from(obj.entries())
-			: Object.entries(obj as Record<string, unknown>);
+		const entries = Array.isArray(obj) ? Array.from(obj.entries()) : Object.entries(obj as Record<string, unknown>);
 		for (const [key, value] of entries) {
 			const k = String(key).toLowerCase();
 			if (value && typeof value === "object") {
@@ -335,12 +320,7 @@ function extractNumericFromMarket(market: unknown): number | null {
 				continue;
 			}
 			if (!/(price|strike|threshold|target|beat)/i.test(k)) continue;
-			const n =
-				typeof value === "string"
-					? Number(value)
-					: typeof value === "number"
-						? value
-						: Number.NaN;
+			const n = typeof value === "string" ? Number(value) : typeof value === "number" ? value : Number.NaN;
 			if (Number.isFinite(n) && n > 1000 && n < 2_000_000) return n;
 		}
 	}
@@ -365,14 +345,9 @@ function parseJsonArray(value: unknown): unknown[] {
 	}
 }
 
-const polymarketMarketCache: Map<
-	string,
-	{ market: unknown; fetchedAtMs: number }
-> = new Map();
+const polymarketMarketCache: Map<string, { market: unknown; fetchedAtMs: number }> = new Map();
 
-async function resolveCurrent15mMarket(
-	marketDef: MarketConfig,
-): Promise<unknown> {
+async function resolveCurrent15mMarket(marketDef: MarketConfig): Promise<unknown> {
 	const customSlug = marketDef.id === "BTC" ? CONFIG.polymarket.marketSlug : "";
 	if (customSlug) {
 		const bySlug = await fetchMarketBySlug(customSlug);
@@ -397,9 +372,7 @@ async function resolveCurrent15mMarket(
 	return picked;
 }
 
-async function fetchPolymarketSnapshot(
-	marketDef: MarketConfig,
-): Promise<PolymarketSnapshot> {
+async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<PolymarketSnapshot> {
 	const market = await resolveCurrent15mMarket(marketDef);
 	if (!market) return { ok: false, reason: "market_not_found" };
 
@@ -415,21 +388,15 @@ async function fetchPolymarketSnapshot(
 		const tokenRaw = clobTokenIds[i];
 		const tokenId = tokenRaw ? String(tokenRaw) : null;
 		if (!tokenId) continue;
-		if (label === CONFIG.polymarket.upOutcomeLabel.toLowerCase())
-			upTokenId = tokenId;
-		if (label === CONFIG.polymarket.downOutcomeLabel.toLowerCase())
-			downTokenId = tokenId;
+		if (label === CONFIG.polymarket.upOutcomeLabel.toLowerCase()) upTokenId = tokenId;
+		if (label === CONFIG.polymarket.downOutcomeLabel.toLowerCase()) downTokenId = tokenId;
 	}
 
 	const upIndex = outcomes.findIndex(
-		(x) =>
-			String(x ?? "").toLowerCase() ===
-			CONFIG.polymarket.upOutcomeLabel.toLowerCase(),
+		(x) => String(x ?? "").toLowerCase() === CONFIG.polymarket.upOutcomeLabel.toLowerCase(),
 	);
 	const downIndex = outcomes.findIndex(
-		(x) =>
-			String(x ?? "").toLowerCase() ===
-			CONFIG.polymarket.downOutcomeLabel.toLowerCase(),
+		(x) => String(x ?? "").toLowerCase() === CONFIG.polymarket.downOutcomeLabel.toLowerCase(),
 	);
 	const gammaYes = upIndex >= 0 ? Number(outcomePrices[upIndex]) : null;
 	const gammaNo = downIndex >= 0 ? Number(outcomePrices[downIndex]) : null;
@@ -462,18 +429,8 @@ async function fetchPolymarketSnapshot(
 		askLiquidity: null,
 	};
 
-	try {
-		const [yesBuy, noBuy, upBook, downBook] = await Promise.all([
-			fetchClobPrice({ tokenId: upTokenId, side: "buy" }),
-			fetchClobPrice({ tokenId: downTokenId, side: "buy" }),
-			fetchOrderBook({ tokenId: upTokenId }),
-			fetchOrderBook({ tokenId: downTokenId }),
-		]);
-		upBuy = yesBuy;
-		downBuy = noBuy;
-		upBookSummary = summarizeOrderBook(upBook);
-		downBookSummary = summarizeOrderBook(downBook);
-	} catch {
+	if (clobCircuitBreaker.isOpen()) {
+		log.warn(`CLOB fetch skipped for ${marketDef.id} - circuit breaker open until ${new Date(clobCircuitBreaker.openUntil).toISOString()}`);
 		upBookSummary = {
 			bestBid: Number(marketObj.bestBid) || null,
 			bestAsk: Number(marketObj.bestAsk) || null,
@@ -488,6 +445,37 @@ async function fetchPolymarketSnapshot(
 			bidLiquidity: null,
 			askLiquidity: null,
 		};
+	} else {
+		try {
+			const [yesBuy, noBuy, upBook, downBook] = await Promise.all([
+				fetchClobPrice({ tokenId: upTokenId, side: "buy" }),
+				fetchClobPrice({ tokenId: downTokenId, side: "buy" }),
+				fetchOrderBook({ tokenId: upTokenId }),
+				fetchOrderBook({ tokenId: downTokenId }),
+			]);
+			upBuy = yesBuy;
+			downBuy = noBuy;
+			upBookSummary = summarizeOrderBook(upBook);
+			downBookSummary = summarizeOrderBook(downBook);
+			clobCircuitBreaker.recordSuccess();
+		} catch (err) {
+			clobCircuitBreaker.recordFailure();
+			log.warn(`CLOB fetch failed for ${marketDef.id}:`, err);
+			upBookSummary = {
+				bestBid: Number(marketObj.bestBid) || null,
+				bestAsk: Number(marketObj.bestAsk) || null,
+				spread: Number(marketObj.spread) || null,
+				bidLiquidity: null,
+				askLiquidity: null,
+			};
+			downBookSummary = {
+				bestBid: null,
+				bestAsk: null,
+				spread: Number(marketObj.spread) || null,
+				bidLiquidity: null,
+				askLiquidity: null,
+			};
+		}
 	}
 
 	return {
@@ -501,10 +489,8 @@ async function fetchPolymarketSnapshot(
 
 function compactMacdLabel(macd: MacdResult | null | undefined): string {
 	if (!macd) return "flat";
-	if (macd.hist < 0)
-		return macd.histDelta !== null && macd.histDelta < 0 ? "bearish" : "red";
-	if (macd.hist > 0)
-		return macd.histDelta !== null && macd.histDelta > 0 ? "bullish" : "green";
+	if (macd.hist < 0) return macd.histDelta !== null && macd.histDelta < 0 ? "bearish" : "red";
+	if (macd.hist > 0) return macd.histDelta !== null && macd.histDelta > 0 ? "bullish" : "green";
 	return "flat";
 }
 
@@ -573,15 +559,11 @@ function renderGrid(panels: PanelData[]): string {
 
 	const lines: string[] = [top];
 	for (let i = 0; i < 6; i += 1) {
-		lines.push(
-			`│${padAnsi(slots[0].lines[i] ?? "", cellWidth)}│${padAnsi(slots[1].lines[i] ?? "", cellWidth)}│`,
-		);
+		lines.push(`│${padAnsi(slots[0].lines[i] ?? "", cellWidth)}│${padAnsi(slots[1].lines[i] ?? "", cellWidth)}│`);
 	}
 	lines.push(mid);
 	for (let i = 0; i < 6; i += 1) {
-		lines.push(
-			`│${padAnsi(slots[2].lines[i] ?? "", cellWidth)}│${padAnsi(slots[3].lines[i] ?? "", cellWidth)}│`,
-		);
+		lines.push(`│${padAnsi(slots[2].lines[i] ?? "", cellWidth)}│${padAnsi(slots[3].lines[i] ?? "", cellWidth)}│`);
 	}
 	lines.push(bot);
 
@@ -589,9 +571,7 @@ function renderGrid(panels: PanelData[]): string {
 	if (isPaperRunning() || isLiveRunning()) {
 		const paper = isPaperRunning() ? "ON" : "OFF";
 		const live = isLiveRunning() ? "ON" : "OFF";
-		lines.push(
-			`${ANSI.yellow}[MODES]${ANSI.reset} PAPER ${paper} | LIVE ${live}`,
-		);
+		lines.push(`${ANSI.yellow}[MODES]${ANSI.reset} PAPER ${paper} | LIVE ${live}`);
 	}
 	lines.push(
 		`${ANSI.white}ET${ANSI.reset} ${fmtEtTime(now)} | ${ANSI.white}Session${ANSI.reset} ${getBtcSession(now)}`,
@@ -600,13 +580,16 @@ function renderGrid(panels: PanelData[]): string {
 }
 
 function writeLatestSignal(marketId: string, payload: TradeSignal): void {
-	try {
-		fs.mkdirSync("./logs", { recursive: true });
-		fs.writeFileSync(
-			`./logs/latest-signal-${marketId}.json`,
-			JSON.stringify(payload),
-		);
-	} catch {}
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		try {
+			fs.mkdirSync("./data", { recursive: true });
+			fs.writeFileSync(`./data/latest-signal-${marketId}.json`, JSON.stringify(payload));
+			return;
+		} catch (err) {
+			log.warn(`writeLatestSignal attempt ${attempt}/3 failed for ${marketId}:`, err);
+		}
+	}
+	log.error(`writeLatestSignal failed after 3 attempts for market ${marketId}`);
 }
 
 const paperTracker = {
@@ -648,9 +631,11 @@ async function processMarket({
 	const polyWsTick = streams.polymarket.getLast(market.chainlink.wsSymbol);
 	const polyWsPrice = polyWsTick?.price ?? null;
 
-	const chainlinkWsTick: PriceTick = streams.chainlink
-		.get(market.id)
-		?.getLast?.() ?? { price: null, updatedAt: null, source: "chainlink_ws" };
+	const chainlinkWsTick: PriceTick = streams.chainlink.get(market.id)?.getLast?.() ?? {
+		price: null,
+		updatedAt: null,
+		source: "chainlink_ws",
+	};
 	const chainlinkWsPrice = chainlinkWsTick?.price ?? null;
 
 	const chainlinkPromise: Promise<PriceTick> =
@@ -682,16 +667,12 @@ async function processMarket({
 		poly.ok && (poly.market as AnyRecord | undefined)?.endDate
 			? new Date(String((poly.market as AnyRecord).endDate)).getTime()
 			: null;
-	const settlementLeftMin = settlementMs
-		? (settlementMs - Date.now()) / 60_000
-		: null;
+	const settlementLeftMin = settlementMs ? (settlementMs - Date.now()) / 60_000 : null;
 	const timeLeftMin = settlementLeftMin ?? timing.remainingMinutes;
 	const lastPrice = Number(lastPriceRaw);
 	const spotPrice = wsPrice ?? lastPrice;
 	const currentPrice = chainlink?.price ?? null;
-	const marketSlug = poly.ok
-		? String((poly.market as AnyRecord | undefined)?.slug ?? "")
-		: "";
+	const marketSlug = poly.ok ? String((poly.market as AnyRecord | undefined)?.slug ?? "") : "";
 	const marketStartMs =
 		poly.ok && (poly.market as AnyRecord | undefined)?.eventStartTime
 			? new Date(String((poly.market as AnyRecord).eventStartTime)).getTime()
@@ -699,9 +680,7 @@ async function processMarket({
 
 	const candles = klines1mRaw as Candle[];
 	const closes: number[] = candles.map((c) => Number(c.close));
-	const vwapSeries: number[] = (
-		computeVwapSeries(candles) as Array<number | null>
-	).map((v) => Number(v));
+	const vwapSeries: number[] = (computeVwapSeries(candles) as Array<number | null>).map((v) => Number(v));
 	const vwapNowRaw = vwapSeries[vwapSeries.length - 1];
 	const vwapNow = vwapNowRaw === undefined ? null : vwapNowRaw;
 	const lookback = CONFIG.vwapSlopeLookbackMinutes;
@@ -723,27 +702,18 @@ async function processMarket({
 	sma(rsiSeries, CONFIG.rsiMaPeriod);
 	const rsiSlope = slopeLast(rsiSeries, 3);
 
-	const macd = computeMacd(
-		closes,
-		CONFIG.macdFast,
-		CONFIG.macdSlow,
-		CONFIG.macdSignal,
-	) as MacdResult | null;
+	const macd = computeMacd(closes, CONFIG.macdFast, CONFIG.macdSlow, CONFIG.macdSignal) as MacdResult | null;
 	const ha = computeHeikenAshi(candles);
 	const consec = countConsecutive(ha);
 
 	const vwapCrossCount = countVwapCrosses(closes, vwapSeries, 20);
-	const volumeRecent = candles
-		.slice(-20)
-		.reduce((a, c) => a + Number(c.volume), 0);
-	const volumeAvg =
-		candles.slice(-120).reduce((a, c) => a + Number(c.volume), 0) / 6;
+	const volumeRecent = candles.slice(-20).reduce((a, c) => a + Number(c.volume), 0);
+	const volumeAvg = candles.slice(-120).reduce((a, c) => a + Number(c.volume), 0) / 6;
 
 	const failedVwapReclaim =
 		vwapNow !== null && vwapSeries.length >= 3
 			? Number(closes[closes.length - 1]) < vwapNow &&
-				Number(closes[closes.length - 2]) >
-					Number(vwapSeries[vwapSeries.length - 2])
+				Number(closes[closes.length - 2]) > Number(vwapSeries[vwapSeries.length - 2])
 			: false;
 
 	const regimeInfo = detectRegime({
@@ -757,9 +727,7 @@ async function processMarket({
 
 	if (marketSlug && state.priceToBeatState.slug !== marketSlug) {
 		state.priceToBeatState = { slug: marketSlug, value: null, setAtMs: null };
-		const parsedPrice = poly.ok
-			? priceToBeatFromPolymarketMarket(poly.market)
-			: null;
+		const parsedPrice = poly.ok ? priceToBeatFromPolymarketMarket(poly.market) : null;
 		if (parsedPrice !== null) {
 			state.priceToBeatState = {
 				slug: marketSlug,
@@ -769,11 +737,7 @@ async function processMarket({
 		}
 	}
 
-	if (
-		state.priceToBeatState.slug &&
-		state.priceToBeatState.value === null &&
-		currentPrice !== null
-	) {
+	if (state.priceToBeatState.slug && state.priceToBeatState.value === null && currentPrice !== null) {
 		const nowMs = Date.now();
 		const okToLatch = marketStartMs === null ? true : nowMs >= marketStartMs;
 		if (okToLatch) {
@@ -798,14 +762,9 @@ async function processMarket({
 	});
 
 	const volatility15m = computeRealizedVolatility(closes, 60);
-	const priceToBeat =
-		state.priceToBeatState.slug === marketSlug
-			? state.priceToBeatState.value
-			: null;
+	const priceToBeat = state.priceToBeatState.slug === marketSlug ? state.priceToBeatState.value : null;
 	const binanceChainlinkDelta =
-		spotPrice !== null && currentPrice !== null && currentPrice > 0
-			? (spotPrice - currentPrice) / currentPrice
-			: null;
+		spotPrice !== null && currentPrice !== null && currentPrice > 0 ? (spotPrice - currentPrice) / currentPrice : null;
 	const upBookSummary = poly.ok ? (poly.orderbook?.up ?? null) : null;
 	const orderbookImbalance =
 		upBookSummary?.bidLiquidity != null &&
@@ -834,12 +793,7 @@ async function processMarket({
 	const finalUp =
 		blended.source === "blended"
 			? blended.blendedUp
-			: applyAdaptiveTimeDecay(
-					scored.rawUp,
-					timeLeftMin,
-					CONFIG.candleWindowMinutes,
-					volatility15m,
-				).adjustedUp;
+			: applyAdaptiveTimeDecay(scored.rawUp, timeLeftMin, CONFIG.candleWindowMinutes, volatility15m).adjustedUp;
 	const finalDown = 1 - finalUp;
 
 	const marketUp = poly.ok ? (poly.prices?.up ?? null) : null;
@@ -890,15 +844,9 @@ async function processMarket({
 	state.prevCurrentPrice = currentPrice ?? state.prevCurrentPrice;
 
 	const pLong = Number.isFinite(finalUp) ? (finalUp * 100).toFixed(0) : "-";
-	const pShort = Number.isFinite(finalDown)
-		? (finalDown * 100).toFixed(0)
-		: "-";
+	const pShort = Number.isFinite(finalDown) ? (finalDown * 100).toFixed(0) : "-";
 	const predictNarrative =
-		Number(finalUp) > Number(finalDown)
-			? "LONG"
-			: Number(finalDown) > Number(finalUp)
-				? "SHORT"
-				: "NEUTRAL";
+		Number(finalUp) > Number(finalDown) ? "LONG" : Number(finalDown) > Number(finalUp) ? "SHORT" : "NEUTRAL";
 
 	const actionText =
 		rec.action === "ENTER"
@@ -906,11 +854,7 @@ async function processMarket({
 			: `NO TRADE (${rec.reason || rec.phase})`;
 
 	const signalTimestamp = new Date().toISOString();
-	const signalLabel = edge.arbitrage
-		? "ARBITRAGE"
-		: rec.action === "ENTER"
-			? `BUY ${rec.side}`
-			: "NO TRADE";
+	const signalLabel = edge.arbitrage ? "ARBITRAGE" : rec.action === "ENTER" ? `BUY ${rec.side}` : "NO TRADE";
 	const recommendation = edge.arbitrage
 		? "ARBITRAGE_ALERT"
 		: rec.action === "ENTER"
@@ -919,7 +863,7 @@ async function processMarket({
 
 	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
 		appendCsvRow(
-			`./logs/signals-${market.id}.csv`,
+			`./data/signals-${market.id}.csv`,
 			[
 				"timestamp",
 				"entry_minute",
@@ -1037,10 +981,7 @@ async function processMarket({
 			modelDown: signalPayload.modelDown,
 			edgeUp: signalPayload.edgeUp,
 			edgeDown: signalPayload.edgeDown,
-			recommendation:
-				rec.action === "ENTER"
-					? `${rec.side}:${rec.phase}:${rec.strength}`
-					: (rec.reason ?? null),
+			recommendation: rec.action === "ENTER" ? `${rec.side}:${rec.phase}:${rec.strength}` : (rec.reason ?? null),
 		});
 	}
 
@@ -1075,9 +1016,7 @@ async function processMarket({
 }
 
 async function main(): Promise<void> {
-	applyGlobalProxyFromEnv();
-
-	console.log("[main] Paper mode: ON by default. Live mode: OFF by default.");
+	log.info("Paper mode: ON by default. Live mode: OFF by default.");
 	startApiServer();
 
 	const orderManager = new OrderManager();
@@ -1152,7 +1091,7 @@ async function main(): Promise<void> {
 	let prevWindowStartMs: number | null = null;
 
 	const shutdown = () => {
-		console.log("[main] Shutdown signal received, stopping bot...");
+		log.info("Shutdown signal received, stopping bot...");
 		setPaperRunning(false);
 		setLiveRunning(false);
 		streams.binance.close();
@@ -1169,11 +1108,7 @@ async function main(): Promise<void> {
 		// Check if we should be in the main loop:
 		// - Running (paper or live)
 		// - Pending start (waiting for next cycle)
-		const shouldRunLoop =
-			isPaperRunning() ||
-			isLiveRunning() ||
-			isPaperPendingStart() ||
-			isLivePendingStart();
+		const shouldRunLoop = isPaperRunning() || isLiveRunning() || isPaperPendingStart() || isLivePendingStart();
 		if (!shouldRunLoop) {
 			await sleep(1000);
 			continue;
@@ -1185,21 +1120,17 @@ async function main(): Promise<void> {
 
 			// 1. Handle pending start: transition to running at new cycle
 			if (isPaperPendingStart()) {
-				console.log(
-					"[PAPER] Pending start detected, starting at new cycle boundary",
-				);
+				log.info("Pending start detected, starting at new cycle boundary");
 				setPaperRunning(true);
 				clearPaperPending();
 			}
 			if (isLivePendingStart()) {
 				const status = getClientStatus();
 				if (status.walletLoaded && status.clientReady) {
-					console.log(
-						"[LIVE] Pending start detected, starting at new cycle boundary",
-					);
+					log.info("Pending start detected, starting at new cycle boundary");
 					setLiveRunning(true);
 				} else {
-					console.log("[LIVE] Pending start cancelled - wallet not ready");
+					log.info("Pending start cancelled - wallet not ready");
 				}
 				clearLivePending();
 			}
@@ -1211,10 +1142,7 @@ async function main(): Promise<void> {
 				const finalPrices = new Map<string, number>();
 				for (const market of markets) {
 					const st = states.get(market.id);
-					if (
-						st?.prevCurrentPrice !== null &&
-						st?.prevCurrentPrice !== undefined
-					) {
+					if (st?.prevCurrentPrice !== null && st?.prevCurrentPrice !== undefined) {
 						finalPrices.set(market.id, st.prevCurrentPrice);
 					}
 				}
@@ -1224,44 +1152,36 @@ async function main(): Promise<void> {
 					const stats = getPaperStats();
 					const pnlDelta = stats.totalPnl - prevPnl;
 					updatePnl(pnlDelta, "paper");
-					console.log(
-						`[PAPER] Resolved ${resolved} trade(s) | W:${stats.wins} L:${stats.losses} | WR:${(stats.winRate * 100).toFixed(0)}% | PnL:${stats.totalPnl.toFixed(2)}`,
+					log.info(
+						`Resolved ${resolved} trade(s) | W:${stats.wins} L:${stats.losses} | WR:${(stats.winRate * 100).toFixed(0)}% | PnL:${stats.totalPnl.toFixed(2)}`,
 					);
 				}
 			}
 			if (isLiveRunning()) {
 				const wallet = getWallet();
 				if (wallet) {
-					console.log(
-						"[redeemer] Window changed, checking for redeemable positions...",
-					);
+					log.info("Window changed, checking for redeemable positions...");
 					redeemAll(wallet)
 						.then((results) => {
 							if (results.length) {
-								console.log(
-									`[redeemer] Redeemed ${results.length} position(s)`,
-								);
+								log.info(`Redeemed ${results.length} position(s)`);
 							}
 						})
 						.catch((err: unknown) => {
 							const message = err instanceof Error ? err.message : String(err);
-							console.error("[redeemer] Redemption error:", message);
+							log.error("Redemption error:", message);
 						});
 				}
 			}
 
 			// 3. Handle pending stop: stop AFTER settlement completes
 			if (isPaperPendingStop()) {
-				console.log(
-					"[PAPER] Pending stop detected, stopping after cycle settlement",
-				);
+				log.info("Pending stop detected, stopping after cycle settlement");
 				setPaperRunning(false);
 				clearPaperPending();
 			}
 			if (isLivePendingStop()) {
-				console.log(
-					"[LIVE] Pending stop detected, stopping after cycle settlement",
-				);
+				log.info("Pending stop detected, stopping after cycle settlement");
 				setLiveRunning(false);
 				clearLivePending();
 			}
@@ -1290,22 +1210,15 @@ async function main(): Promise<void> {
 		);
 
 		const maxGlobalTrades = Number(
-			(CONFIG.strategy as { maxGlobalTradesPerWindow?: number })
-				.maxGlobalTradesPerWindow ?? 1,
+			(CONFIG.strategy as { maxGlobalTradesPerWindow?: number }).maxGlobalTradesPerWindow ?? 1,
 		);
 		const candidates = results
 			.filter((r) => r.ok && r.rec?.action === "ENTER" && r.signalPayload)
 			.filter((r) => {
 				const sig = r.signalPayload;
 				if (!sig) return false;
-				if (
-					sig.priceToBeat === null ||
-					sig.priceToBeat === undefined ||
-					sig.priceToBeat === 0
-				)
-					return false;
-				if (sig.currentPrice === null || sig.currentPrice === undefined)
-					return false;
+				if (sig.priceToBeat === null || sig.priceToBeat === undefined || sig.priceToBeat === 0) return false;
+				if (sig.currentPrice === null || sig.currentPrice === undefined) return false;
 				return true;
 			})
 			.filter((r) => {
@@ -1328,7 +1241,7 @@ async function main(): Promise<void> {
 					phase: (r.rec?.phase as "EARLY" | "MID" | "LATE") ?? "EARLY",
 				});
 				if (!result.shouldTrade) {
-					console.log(`[REFINEMENT] Skip ${r.market.id}: ${result.reason}`);
+					log.info(`Skip ${r.market.id}: ${result.reason}`);
 				}
 				return result.shouldTrade;
 			})
@@ -1355,16 +1268,12 @@ async function main(): Promise<void> {
 					affordCheck.canTrade &&
 					paperTracker.canTradeGlobally(maxGlobalTrades)
 				) {
-					const result = await executeTrade(
-						sig,
-						{ marketConfig: mkt, riskConfig: CONFIG.paperRisk },
-						"paper",
-					);
+					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.paperRisk }, "paper");
 					if (result?.success) {
 						paperTracker.record(mkt.id, timing.startMs);
 					}
 				} else if (!affordCheck.canTrade) {
-					console.log(`[PAPER] Trade rejected for ${mkt.id}: ${affordCheck.reason}`);
+					log.warn(`Trade rejected for ${mkt.id}: ${affordCheck.reason}`);
 				}
 			}
 
@@ -1377,11 +1286,7 @@ async function main(): Promise<void> {
 					liveTradesThisWindow < maxGlobalTrades;
 
 				if (canPlace) {
-					const result = await executeTrade(
-						sig,
-						{ marketConfig: mkt, riskConfig: CONFIG.liveRisk },
-						"live",
-					);
+					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
 					if (result?.success) {
 						orderTracker.record(mkt.id, slug);
 						liveTradesThisWindow += 1;
@@ -1405,8 +1310,7 @@ async function main(): Promise<void> {
 				arbitrage: r.arbitrage ?? false,
 				predictLong: r.pLong ? Number(r.pLong) : null,
 				predictShort: r.pShort ? Number(r.pShort) : null,
-				predictDirection:
-					(r.predictNarrative as "LONG" | "SHORT" | "NEUTRAL") ?? "NEUTRAL",
+				predictDirection: (r.predictNarrative as "LONG" | "SHORT" | "NEUTRAL") ?? "NEUTRAL",
 				haColor: r.consec?.color ?? null,
 				haConsecutive: r.consec?.count ?? 0,
 				rsi: r.rsiNow ?? null,
