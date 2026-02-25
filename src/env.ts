@@ -17,7 +17,7 @@ const csvList = z
 
 const envSchema = z.object({
 	// Core
-	PAPER_MODE: z.stringbool().default(false),
+	PAPER_MODE: z.stringbool().default(true),
 	API_PORT: z.coerce.number().int().min(1).max(65535).default(9999),
 	ACTIVE_MARKETS: csvList,
 

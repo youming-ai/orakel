@@ -7,6 +7,7 @@ import type {
 	WsMessage,
 } from "./types.ts";
 import { createLogger } from "./logger.ts";
+import { CONFIG } from "./config.ts";
 
 const log = createLogger("state");
 
@@ -113,7 +114,7 @@ export function getUpdatedAt(): string {
 	return _updatedAt;
 }
 
-let _paperRunning = true;
+let _paperRunning = CONFIG.paperMode !== false;
 let _liveRunning = false;
 // Pending states for cycle-aware start/stop
 let _paperPendingStart = false;
