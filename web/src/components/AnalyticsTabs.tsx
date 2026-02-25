@@ -1,45 +1,5 @@
-import {
-	AlertTriangle,
-	BarChart3,
-	Clock,
-	DollarSign,
-	Hash,
-	LayoutDashboard,
-	List,
-	Save,
-	Settings2,
-	Target,
-	TrendingDown,
-	TrendingUp,
-	Zap,
-} from "lucide-react";
+import { BarChart3, Clock, LayoutDashboard, List, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-	Area,
-	AreaChart,
-	Bar,
-	BarChart,
-	CartesianGrid,
-	Cell,
-	Pie,
-	PieChart,
-	ResponsiveContainer,
-	Tooltip,
-	XAxis,
-	YAxis,
-} from "recharts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
 	ConfigPayload,
@@ -53,16 +13,18 @@ import type {
 	TodayStats,
 	TradeRecord,
 } from "@/lib/api";
-import { SAVE_STATUS_TIMEOUT_MS, TIMING_BUCKETS } from "@/lib/constants";
-import { CHART_COLORS, CHART_HEIGHT, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
-import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
+import { TIMING_BUCKETS } from "@/lib/constants";
+import { CHART_COLORS } from "@/lib/charts";
+import { fmtTime, asNumber } from "@/lib/format";
 import { useConfigMutation, usePaperClearStop } from "@/lib/queries";
+import { toast } from "@/lib/toast";
 import type { ViewMode } from "@/lib/types";
-import { cn } from "@/lib/utils";
-import { MarketCard } from "./MarketCard";
-import { TradeTable } from "./TradeTable";
-import { StatCard } from "./StatCard";
-import { ChartErrorBoundary } from "./ChartErrorBoundary";
+
+import { OverviewTab } from "./analytics/OverviewTab";
+import { MarketsTab } from "./analytics/MarketsTab";
+import { TimingTab } from "./analytics/TimingTab";
+import { TradesTab } from "./analytics/TradesTab";
+import { StrategyTab, type StrategyFormValues } from "./analytics/StrategyTab";
 
 interface AnalyticsTabsProps {
 	stats: PaperStats | null;
@@ -79,25 +41,6 @@ interface AnalyticsTabsProps {
 	stopLoss?: StopLossStatus;
 	todayStats?: TodayStats;
 }
-
-interface StrategyFormValues {
-	edgeThresholdEarly: number;
-	edgeThresholdMid: number;
-	edgeThresholdLate: number;
-	minProbEarly: number;
-	minProbMid: number;
-	minProbLate: number;
-	blendVol: number;
-	blendTa: number;
-	maxTradeSizeUsdc: number;
-	maxOpenPositions: number;
-	dailyMaxLossUsdc: number;
-	regimeCHOP: number;
-	regimeRANGE: number;
-	regimeTREND_ALIGNED: number;
-	regimeTREND_OPPOSED: number;
-}
-
 
 function toStrategyFormValues(
 	strategyRaw: StrategyConfig,
@@ -199,16 +142,6 @@ export function AnalyticsTabs({
 	const [form, setForm] = useState<StrategyFormValues>(() =>
 		toStrategyFormValues(config.strategy, riskConfig),
 	);
-	const [saveStatus, setSaveStatus] = useState<{
-		type: "success" | "error";
-		message: string;
-	} | null>(null);
-
-	useEffect(() => {
-		if (!saveStatus) return;
-		const timer = setTimeout(() => setSaveStatus(null), SAVE_STATUS_TIMEOUT_MS);
-		return () => clearTimeout(timer);
-	}, [saveStatus]);
 
 	useEffect(() => {
 		setForm(
@@ -222,7 +155,6 @@ export function AnalyticsTabs({
 	const derivedStats = useMemo(() => buildStatsFromTrades(trades), [trades]);
 	const mergedStats = useMemo(() => {
 		if (!stats) return derivedStats;
-		// Override totalTrades with derived value (computed from actual trades array)
 		return { ...stats, totalTrades: derivedStats.totalTrades };
 	}, [stats, derivedStats]);
 
@@ -339,13 +271,13 @@ export function AnalyticsTabs({
 
 	function saveConfig() {
 		if (!blendValid) {
-			setSaveStatus({
+			toast({
 				type: "error",
-				message: "Blend weights must sum to 1.00",
+				title: "Configuration Invalid",
+				description: "Blend weights must sum to 1.00",
 			});
 			return;
 		}
-		setSaveStatus(null);
 
 		const payload: ConfigPayload = {
 			strategy: strategyView,
@@ -356,910 +288,97 @@ export function AnalyticsTabs({
 
 		configMutation.mutate(payload, {
 			onSuccess: () => {
-				setSaveStatus({
+				toast({
 					type: "success",
-					message: "Config saved successfully",
+					title: "Config Saved",
+					description: "Configuration preserved for future cycles",
 				});
 			},
 			onError: (error) => {
-				setSaveStatus({
+				toast({
 					type: "error",
-					message:
+					title: "Save Failed",
+					description:
 						error instanceof Error
-							? `Save failed: ${error.message}`
-							: "Save failed",
+							? error.message
+							: "An unknown error occurred",
 				});
 			},
 		});
 	}
 
-	function numberInput(
-		value: number,
-		onValue: (n: number) => void,
-		step = 0.01,
-		min = 0,
-		max?: number,
-	) {
-		return (
-			<input
-				type="number"
-				className="h-8 w-full rounded-md border border-border bg-input/30 px-2 text-xs font-mono outline-none focus:border-emerald-400"
-				value={Number.isFinite(value) ? value : 0}
-				min={min}
-				max={max}
-				step={step}
-				onChange={(e) => {
-					const n = asNumber(e.target.value, 0);
-					onValue(
-						max !== undefined
-							? Math.min(max, Math.max(min, n))
-							: Math.max(min, n),
-					);
-				}}
-			/>
-		);
-	}
-
 	return (
 		<Tabs defaultValue="overview" className="space-y-4">
-			<div className="overflow-x-auto scrollbar-hide -mx-3 px-3 sm:mx-0 sm:px-0">
-				<TabsList className="w-max min-w-full sm:w-auto">
-					<TabsTrigger value="overview">
-						<LayoutDashboard className="size-3.5" /> Overview
-					</TabsTrigger>
-					<TabsTrigger value="markets">
-						<BarChart3 className="size-3.5" /> Markets
-					</TabsTrigger>
-					<TabsTrigger value="timing">
-						<Clock className="size-3.5" /> Timing
-					</TabsTrigger>
-					<TabsTrigger value="trades">
-						<List className="size-3.5" /> Trades
-					</TabsTrigger>
-					<TabsTrigger value="strategy">
-						<Settings2 className="size-3.5" /> Strategy
-					</TabsTrigger>
-				</TabsList>
+			<div className="relative overflow-hidden -mx-3 px-3 sm:mx-0 sm:px-0">
+				<div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none z-10 sm:hidden" />
+				<div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 sm:hidden" />
+				<div className="overflow-x-auto scrollbar-hide py-1">
+					<TabsList className="w-max min-w-full sm:w-auto h-11 border-b-0">
+						<TabsTrigger value="overview">
+							<LayoutDashboard className="size-3.5 mr-1.5" /> Overview
+						</TabsTrigger>
+						<TabsTrigger value="markets">
+							<BarChart3 className="size-3.5 mr-1.5" /> Markets
+						</TabsTrigger>
+						<TabsTrigger value="timing">
+							<Clock className="size-3.5 mr-1.5" /> Timing
+						</TabsTrigger>
+						<TabsTrigger value="trades">
+							<List className="size-3.5 mr-1.5" /> Trades
+						</TabsTrigger>
+						<TabsTrigger value="strategy">
+							<Settings2 className="size-3.5 mr-1.5" /> Strategy
+						</TabsTrigger>
+					</TabsList>
+				</div>
 			</div>
 
-			<TabsContent value="overview" className="space-y-4">
-				{/* Stop Loss Warning */}
-				{stopLoss?.stoppedAt && (
-					<Card className="border-red-500/50 bg-red-500/10">
-						<CardContent className="py-3">
-							<div className="flex items-center gap-3">
-								<AlertTriangle className="w-5 h-5 text-red-400" />
-								<div className="flex-1">
-									<p className="text-sm font-medium text-red-400">Trading Stopped</p>
-									<p className="text-xs text-red-400/70">
-										Reason: {stopLoss.reason} • Since {fmtTime(stopLoss.stoppedAt)}
-									</p>
-								</div>
-								<Button
-									size="sm"
-									variant="outline"
-									className="h-7 text-xs border-red-400/50 text-red-400 hover:bg-red-400/10"
-							onClick={() => clearStopMutation.mutate()}
-							disabled={clearStopMutation.isPending}
-								>
-									Reset & Resume
-								</Button>
-							</div>
-						</CardContent>
-					</Card>
-				)}
-
-				{/* Today Stats & Stop Loss Status */}
-				{viewMode === "paper" && todayStats && (
-					<Card className="border-border/50">
-						<CardContent className="py-3">
-							<div className="flex items-center justify-between">
-								<div className="flex items-center gap-4">
-									<div className="flex items-center gap-2">
-										<Zap className="w-4 h-4 text-amber-400" />
-										<span className="text-xs text-muted-foreground">Today</span>
-									</div>
-									<span className={cn(
-										"font-mono text-sm font-medium",
-										todayStats.pnl >= 0 ? "text-emerald-400" : "text-red-400"
-									)}>
-										{todayStats.pnl >= 0 ? "+" : ""}{todayStats.pnl.toFixed(2)} USDC
-									</span>
-									<span className="text-xs text-muted-foreground">
-										{todayStats.trades} trade{todayStats.trades !== 1 ? "s" : ""}
-									</span>
-								</div>
-								<div className="flex items-center gap-2">
-									<span className="text-xs text-muted-foreground">Daily Limit:</span>
-									<div className="w-24 h-2 bg-muted/30 rounded-full overflow-hidden">
-										<div
-											className={cn(
-												"h-full rounded-full transition-all",
-												todayStats.pnl >= 0 ? "bg-emerald-400" :
-												Math.abs(todayStats.pnl) / todayStats.limit > 0.7 ? "bg-red-400" : "bg-amber-400"
-											)}
-											style={{ 
-												width: `${Math.min(100, (Math.max(0, todayStats.limit + todayStats.pnl) / todayStats.limit) * 100)}%` 
-											}}
-										/>
-									</div>
-									<span className="text-xs text-muted-foreground">
-										{((1 - Math.abs(todayStats.pnl) / todayStats.limit) * 100).toFixed(0)}%
-									</span>
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-				)}
-
-				<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-					<StatCard
-						label="Trades"
-						value={String(mergedStats.totalTrades)}
-						icon={<Hash className="w-3.5 h-3.5" />}
-					/>
-					<StatCard
-						label="Win Rate"
-						value={
-							mergedStats.wins + mergedStats.losses > 0
-								? `${(mergedStats.winRate * 100).toFixed(1)}%`
-								: "-"
-						}
-						color={
-							mergedStats.winRate >= 0.5
-								? "text-emerald-400"
-								: mergedStats.winRate > 0
-									? "text-red-400"
-									: ""
-						}
-						icon={<Target className="w-3.5 h-3.5" />}
-					/>
-					<StatCard
-						label="Wins"
-						value={String(mergedStats.wins)}
-						color="text-emerald-400"
-						icon={<TrendingUp className="w-3.5 h-3.5" />}
-					/>
-					<StatCard
-						label="Losses"
-						value={String(mergedStats.losses)}
-						color="text-red-400"
-						icon={<TrendingDown className="w-3.5 h-3.5" />}
-					/>
-					<StatCard
-						label="Total P&L"
-						value={`${mergedStats.totalPnl >= 0 ? "+" : ""}${mergedStats.totalPnl.toFixed(2)}`}
-						suffix="USDC"
-						color={
-							mergedStats.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"
-						}
-						icon={<DollarSign className="w-3.5 h-3.5" />}
-					/>
-				</div>
-
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-							Cumulative P&L
-						</CardTitle>
-					</CardHeader>
-					<CardContent className={CHART_HEIGHT.responsive}>
-						{pnlTimeline.length === 0 ? (
-							<EmptyPlaceholder />
-						) : (
-							<ChartErrorBoundary>
-							<ResponsiveContainer width="100%" height="100%">
-								<AreaChart data={pnlTimeline}>
-									<defs>
-										<linearGradient
-											id="timelineGrad"
-											x1="0"
-											y1="0"
-											x2="0"
-											y2="1"
-										>
-											<stop
-												offset="5%"
-												stopColor={
-													timelinePositive ? CHART_COLORS.positive : CHART_COLORS.negative
-												}
-												stopOpacity={0.35}
-											/>
-											<stop
-												offset="95%"
-												stopColor={
-													timelinePositive ? CHART_COLORS.positive : CHART_COLORS.negative
-												}
-												stopOpacity={0}
-											/>
-										</linearGradient>
-									</defs>
-									<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-									<XAxis
-										dataKey="time"
-										tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-										minTickGap={24}
-									/>
-									<YAxis
-										tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-										tickFormatter={(v: number) => `${v.toFixed(1)}`}
-										width={52}
-									/>
-									<Tooltip
-										cursor={TOOLTIP_CURSOR_STYLE}
-										contentStyle={TOOLTIP_CONTENT_STYLE}
-										labelFormatter={(_, payload) => {
-											const row = payload?.[0]?.payload as
-												| {
-														ts: string;
-														market: string;
-														side: string;
-														pnl: number;
-												  }
-												| undefined;
-											if (!row) return "-";
-											return `${fmtDateTime(row.ts)}  ${row.market} ${row.side}`;
-										}}
-										formatter={(value, key, item) => {
-											const v = asNumber(value, 0);
-											const payload = item.payload as { pnl: number };
-											if (String(key) === "cumulative")
-												return [
-													`${v >= 0 ? "+" : ""}${v.toFixed(2)} USDC`,
-													"Cumulative P&L",
-												];
-											return [
-												`${payload.pnl >= 0 ? "+" : ""}${payload.pnl.toFixed(2)} USDC`,
-												"Per-Trade P&L",
-											];
-										}}
-									/>
-									<Area
-										type="monotone"
-										dataKey="cumulative"
-										stroke={
-											timelinePositive ? CHART_COLORS.positive : CHART_COLORS.negative
-										}
-										fill="url(#timelineGrad)"
-										strokeWidth={2}
-									/>
-								</AreaChart>
-							</ResponsiveContainer>
-						</ChartErrorBoundary>
-						)}
-					</CardContent>
-				</Card>
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-					{markets.map((m) => (
-						<MarketCard key={m.id} market={m} />
-					))}
-				</div>
+			<TabsContent value="overview" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+				<OverviewTab
+					stopLoss={stopLoss}
+					viewMode={viewMode}
+					todayStats={todayStats}
+					clearStopMutation={clearStopMutation}
+					mergedStats={mergedStats}
+					pnlTimeline={pnlTimeline}
+					timelinePositive={timelinePositive}
+					markets={markets}
+				/>
 			</TabsContent>
 
-			<TabsContent value="markets" className="space-y-4">
-				<div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-								Win Rate by Market
-							</CardTitle>
-						</CardHeader>
-						<CardContent className={CHART_HEIGHT.responsive}>
-							{marketRows.length === 0 ? (
-								<EmptyPlaceholder />
-							) : (
-								<ChartErrorBoundary>
-							<ResponsiveContainer width="100%" height="100%">
-									<BarChart
-										data={marketRows}
-										layout="vertical"
-										margin={{ right: 56 }}
-									>
-										<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-										<XAxis
-											type="number"
-											domain={[0, 100]}
-											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-										/>
-										<YAxis
-											type="category"
-											dataKey="market"
-											tick={{ fontSize: 12, fill: "#d4d4d8" }}
-											width={48}
-										/>
-										<Tooltip
-											contentStyle={TOOLTIP_CONTENT_STYLE}
-											formatter={(value, _, item) => {
-												const v = asNumber(value, 0);
-												const p = item.payload as {
-													wins: number;
-													resolvedCount: number;
-												};
-												return [
-													`${v.toFixed(1)}% (${p.wins}/${p.resolvedCount})`,
-													"Win Rate",
-												];
-											}}
-										/>
-										<Bar
-											dataKey="winRatePct"
-											radius={[4, 4, 4, 4]}
-											label={(props) => {
-												const idx = Number(props.index);
-												const row = marketRows[idx];
-												if (!row) return null;
-												return (
-													<text
-														x={Number(props.x) + Number(props.width) + 8}
-														y={Number(props.y) + Number(props.height) / 2 + 4}
-														fill="#d4d4d8"
-														fontSize={11}
-													>
-														{`${row.wins}/${row.resolvedCount}`}
-													</text>
-												);
-											}}
-										>
-											{marketRows.map((row) => (
-												<Cell
-													key={row.market}
-													fill={
-														row.winRate >= 0.5
-															? CHART_COLORS.positive
-															: CHART_COLORS.negative
-													}
-												/>
-											))}
-										</Bar>
-									</BarChart>
-								</ResponsiveContainer>
-						</ChartErrorBoundary>
-							)}
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-								P&L by Market
-							</CardTitle>
-						</CardHeader>
-						<CardContent className={CHART_HEIGHT.responsive}>
-							{marketRows.length === 0 ? (
-								<EmptyPlaceholder />
-							) : (
-								<ChartErrorBoundary>
-							<ResponsiveContainer width="100%" height="100%">
-									<BarChart data={marketRows}>
-										<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-										<XAxis
-											dataKey="market"
-											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-										/>
-										<YAxis
-											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-											width={52}
-										/>
-										<Tooltip
-											contentStyle={TOOLTIP_CONTENT_STYLE}
-											formatter={(value) => {
-												const v = asNumber(value, 0);
-												return [
-													`${v >= 0 ? "+" : ""}${v.toFixed(2)} USDC`,
-													"Total P&L",
-												];
-											}}
-										/>
-										<Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-											{marketRows.map((row) => (
-												<Cell
-													key={`${row.market}-pnl`}
-													fill={
-														row.pnl >= 0 ? CHART_COLORS.positive : CHART_COLORS.negative
-													}
-												/>
-											))}
-										</Bar>
-									</BarChart>
-								</ResponsiveContainer>
-						</ChartErrorBoundary>
-							)}
-						</CardContent>
-					</Card>
-				</div>
-
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-							Market Comparison
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						{marketRows.length === 0 ? (
-							<EmptyPlaceholder />
-						) : (
-							<div className="rounded-md border">
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Market</TableHead>
-											<TableHead className="text-right hidden sm:table-cell">
-												Trades
-											</TableHead>
-											<TableHead className="text-right hidden sm:table-cell">
-												W
-											</TableHead>
-											<TableHead className="text-right hidden sm:table-cell">
-												L
-											</TableHead>
-											<TableHead className="text-right">WR%</TableHead>
-											<TableHead className="text-right">P&L</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{marketRows.map((row) => (
-											<TableRow key={`table-${row.market}`}>
-												<TableCell className="font-mono text-xs font-medium">
-													{row.market}
-												</TableCell>
-												<TableCell className="font-mono text-xs text-right hidden sm:table-cell">
-													{row.trades}
-												</TableCell>
-												<TableCell className="font-mono text-xs text-right text-emerald-400 hidden sm:table-cell">
-													{row.wins}
-												</TableCell>
-												<TableCell className="font-mono text-xs text-right text-red-400 hidden sm:table-cell">
-													{row.losses}
-												</TableCell>
-												<TableCell className="font-mono text-xs text-right">
-													{row.winRatePct.toFixed(1)}%
-												</TableCell>
-												<TableCell
-													className={cn(
-														"font-mono text-xs text-right",
-														row.pnl >= 0 ? "text-emerald-400" : "text-red-400",
-													)}
-												>
-													{row.pnl >= 0 ? "+" : ""}
-													{row.pnl.toFixed(2)}
-												</TableCell>
-											</TableRow>
-										))}
-									</TableBody>
-								</Table>
-							</div>
-						)}
-					</CardContent>
-				</Card>
+			<TabsContent value="markets" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+				<MarketsTab marketRows={marketRows} />
 			</TabsContent>
 
-			<TabsContent value="timing" className="space-y-4">
-				<div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-								Entry Timing Distribution
-							</CardTitle>
-						</CardHeader>
-						<CardContent className={CHART_HEIGHT.responsive}>
-							{trades.length === 0 ? (
-								<EmptyPlaceholder />
-							) : (
-								<ChartErrorBoundary>
-							<ResponsiveContainer width="100%" height="100%">
-									<BarChart data={timingData}>
-										<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-										<XAxis
-											dataKey="name"
-											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-										/>
-										<YAxis
-											allowDecimals={false}
-											tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-											width={40}
-										/>
-										<Tooltip
-											contentStyle={TOOLTIP_CONTENT_STYLE}
-											formatter={(value, _, item) => {
-												const v = Math.round(asNumber(value, 0));
-												const p = item.payload as {
-													winRate: number;
-													wins: number;
-													resolved: number;
-												};
-												return [
-													`${v} trades, WR ${(p.winRate * 100).toFixed(1)}% (${p.wins}/${p.resolved})`,
-													"Entries",
-												];
-											}}
-										/>
-										<Bar dataKey="count" radius={[4, 4, 0, 0]}>
-											{timingData.map((item) => (
-												<Cell
-													key={`timing-${item.name}`}
-													fill={
-														item.resolved === 0
-															? CHART_COLORS.pending
-															: item.winRate >= 0.5
-																? CHART_COLORS.positive
-																: CHART_COLORS.negative
-													}
-												/>
-											))}
-										</Bar>
-									</BarChart>
-								</ResponsiveContainer>
-						</ChartErrorBoundary>
-							)}
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-								Direction Distribution
-							</CardTitle>
-						</CardHeader>
-						<CardContent className={CHART_HEIGHT.responsive}>
-							{sideTotal === 0 ? (
-								<EmptyPlaceholder />
-							) : (
-								<>
-							<ChartErrorBoundary>
-									<ResponsiveContainer width="100%" height="84%">
-										<PieChart>
-											<Pie
-												data={sideData}
-												dataKey="value"
-												nameKey="name"
-												innerRadius={56}
-												outerRadius={90}
-												paddingAngle={3}
-												label={({ name, percent }) =>
-													`${name} ${(Number(percent) * 100).toFixed(0)}%`
-												}
-												labelLine={false}
-												fontSize={11}
-											>
-												{sideData.map((item) => (
-													<Cell key={`side-${item.name}`} fill={item.color} />
-												))}
-											</Pie>
-											<Tooltip
-												contentStyle={TOOLTIP_CONTENT_STYLE}
-												formatter={(value) => {
-													const v = Math.round(asNumber(value, 0));
-													return [`${v} trades`, "Count"];
-												}}
-											/>
-										</PieChart>
-									</ResponsiveContainer>
-						</ChartErrorBoundary>
-									<div className="mt-2 flex items-center justify-center gap-3 text-xs">
-										<Badge
-											variant="secondary"
-											className="bg-emerald-500/15 text-emerald-400 font-mono"
-										>
-											UP {sideData[0].value}
-										</Badge>
-										<Badge
-											variant="secondary"
-											className="bg-red-500/15 text-red-400 font-mono"
-										>
-											DOWN {sideData[1].value}
-										</Badge>
-									</div>
-								</>
-							)}
-						</CardContent>
-					</Card>
-				</div>
+			<TabsContent value="timing" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+				<TimingTab
+					tradesLength={trades.length}
+					timingData={timingData}
+					sideTotal={sideTotal}
+					sideData={sideData}
+				/>
 			</TabsContent>
 
-			<TabsContent value="trades" className="space-y-4">
-				<div>
-					<h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-						{viewMode === "paper" ? "Paper Trades" : "Live Trades"}
-					</h2>
-					<TradeTable trades={liveTrades} paperMode={viewMode === "paper"} />
-				</div>
+			<TabsContent value="trades" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+				<TradesTab
+					viewMode={viewMode}
+					trades={trades}
+					liveTrades={liveTrades}
+				/>
 			</TabsContent>
 
-			<TabsContent value="strategy" className="space-y-4">
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-							Current Strategy Config
-						</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-							<div className="space-y-1">
-								<span className="text-[11px] text-muted-foreground block">
-									Edge Threshold
-								</span>
-								<div className="font-mono text-xs space-y-0.5">
-									<div>
-										EARLY:{" "}
-										<span className="text-emerald-400">
-											{(strategyView.edgeThresholdEarly * 100).toFixed(1)}%
-										</span>
-									</div>
-									<div>
-										MID:{" "}
-										<span className="text-amber-400">
-											{(strategyView.edgeThresholdMid * 100).toFixed(1)}%
-										</span>
-									</div>
-									<div>
-										LATE:{" "}
-										<span className="text-red-400">
-											{(strategyView.edgeThresholdLate * 100).toFixed(1)}%
-										</span>
-									</div>
-								</div>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[11px] text-muted-foreground block">
-									Min Probability
-								</span>
-								<div className="font-mono text-xs space-y-0.5">
-									<div>
-										EARLY: {(strategyView.minProbEarly * 100).toFixed(1)}%
-									</div>
-									<div>MID: {(strategyView.minProbMid * 100).toFixed(1)}%</div>
-									<div>
-										LATE: {(strategyView.minProbLate * 100).toFixed(1)}%
-									</div>
-								</div>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[11px] text-muted-foreground block">
-									Blend Weights
-								</span>
-								<div className="font-mono text-xs space-y-0.5">
-									<div>
-										Volatility:{" "}
-										{(strategyView.blendWeights.vol * 100).toFixed(1)}%
-									</div>
-									<div>
-										Technical: {(strategyView.blendWeights.ta * 100).toFixed(1)}
-										%
-									</div>
-								</div>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[11px] text-muted-foreground block">
-									Risk Config
-								</span>
-								<div className="font-mono text-xs space-y-0.5">
-									<div>Per Trade: ${riskView.maxTradeSizeUsdc}</div>
-									<div>Max Positions: {riskView.maxOpenPositions}</div>
-									<div>Daily Loss Limit: ${riskView.dailyMaxLossUsdc}</div>
-								</div>
-							</div>
-						</div>
-						<div className="pt-2 border-t border-border">
-							<span className="text-[11px] text-muted-foreground block mb-2">
-								Regime Multipliers
-							</span>
-							<div className="flex flex-wrap gap-3 font-mono text-xs">
-								<span>
-									CHOP:{" "}
-									<span className="text-amber-400">
-										x{strategyView.regimeMultipliers.CHOP}
-									</span>
-								</span>
-								<span>
-									RANGE:{" "}
-									<span className="text-muted-foreground">
-										x{strategyView.regimeMultipliers.RANGE}
-									</span>
-								</span>
-								<span>
-									ALIGNED:{" "}
-									<span className="text-emerald-400">
-										x{strategyView.regimeMultipliers.TREND_ALIGNED}
-									</span>
-								</span>
-								<span>
-									OPPOSED:{" "}
-									<span className="text-red-400">
-										x{strategyView.regimeMultipliers.TREND_OPPOSED}
-									</span>
-								</span>
-							</div>
-						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-							Strategy Tuning
-						</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-							<ParamField label="Edge EARLY">
-								{numberInput(form.edgeThresholdEarly, (v) =>
-									setForm((s) => ({ ...s, edgeThresholdEarly: v })),
-								)}
-							</ParamField>
-							<ParamField label="Edge MID">
-								{numberInput(form.edgeThresholdMid, (v) =>
-									setForm((s) => ({ ...s, edgeThresholdMid: v })),
-								)}
-							</ParamField>
-							<ParamField label="Edge LATE">
-								{numberInput(form.edgeThresholdLate, (v) =>
-									setForm((s) => ({ ...s, edgeThresholdLate: v })),
-								)}
-							</ParamField>
-							<ParamField label="MinProb EARLY">
-								{numberInput(form.minProbEarly, (v) =>
-									setForm((s) => ({ ...s, minProbEarly: v })),
-								)}
-							</ParamField>
-							<ParamField label="MinProb MID">
-								{numberInput(form.minProbMid, (v) =>
-									setForm((s) => ({ ...s, minProbMid: v })),
-								)}
-							</ParamField>
-							<ParamField label="MinProb LATE">
-								{numberInput(form.minProbLate, (v) =>
-									setForm((s) => ({ ...s, minProbLate: v })),
-								)}
-							</ParamField>
-						</div>
-
-						<Separator />
-
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-							<ParamField label="Blend Volatility">
-								{numberInput(
-									form.blendVol,
-									(v) => setForm((s) => ({ ...s, blendVol: v })),
-									0.01,
-									0,
-									1,
-								)}
-							</ParamField>
-							<ParamField label="Blend Technical">
-								{numberInput(
-									form.blendTa,
-									(v) => setForm((s) => ({ ...s, blendTa: v })),
-									0.01,
-									0,
-									1,
-								)}
-							</ParamField>
-							<div className="space-y-1">
-								<span className="text-[11px] text-muted-foreground block">
-									Weight Check
-								</span>
-								<div
-									className={cn(
-										"h-8 rounded-md border px-2 flex items-center text-xs font-mono",
-										blendValid
-											? "border-emerald-500/40 text-emerald-400"
-											: "border-amber-500/40 text-amber-400",
-									)}
-								>
-									vol + ta = {blendSum.toFixed(3)}
-								</div>
-							</div>
-						</div>
-
-						<Separator />
-
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-							<ParamField label="Max Trade USDC">
-								{numberInput(
-									form.maxTradeSizeUsdc,
-									(v) => setForm((s) => ({ ...s, maxTradeSizeUsdc: v })),
-									0.1,
-									0,
-								)}
-							</ParamField>
-							<ParamField label="Max Positions">
-								{numberInput(
-									form.maxOpenPositions,
-									(v) => setForm((s) => ({ ...s, maxOpenPositions: v })),
-									1,
-									0,
-								)}
-							</ParamField>
-							<ParamField label="Daily Loss USDC">
-								{numberInput(
-									form.dailyMaxLossUsdc,
-									(v) => setForm((s) => ({ ...s, dailyMaxLossUsdc: v })),
-									0.1,
-									0,
-								)}
-							</ParamField>
-						</div>
-
-						<Separator />
-
-						<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-							<ParamField label="CHOP">
-								{numberInput(form.regimeCHOP, (v) =>
-									setForm((s) => ({ ...s, regimeCHOP: v })),
-								)}
-							</ParamField>
-							<ParamField label="RANGE">
-								{numberInput(form.regimeRANGE, (v) =>
-									setForm((s) => ({ ...s, regimeRANGE: v })),
-								)}
-							</ParamField>
-							<ParamField label="TREND_ALIGNED">
-								{numberInput(form.regimeTREND_ALIGNED, (v) =>
-									setForm((s) => ({ ...s, regimeTREND_ALIGNED: v })),
-								)}
-							</ParamField>
-							<ParamField label="TREND_OPPOSED">
-								{numberInput(form.regimeTREND_OPPOSED, (v) =>
-									setForm((s) => ({ ...s, regimeTREND_OPPOSED: v })),
-								)}
-							</ParamField>
-						</div>
-
-						<div className="flex flex-wrap items-center gap-3 pt-1">
-							<Button
-								size="sm"
-								className="w-full sm:w-auto"
-								onClick={saveConfig}
-								disabled={configMutation.isPending || !blendValid}
-							>
-								{configMutation.isPending ? (
-									"Saving..."
-								) : (
-									<>
-										<Save className="w-3.5 h-3.5 mr-1.5 inline-block" />
-										Save Config
-									</>
-								)}
-							</Button>
-							{saveStatus && (
-								<span
-									className={cn(
-										"text-xs",
-										saveStatus.type === "success"
-											? "text-emerald-400"
-											: "text-red-400",
-									)}
-								>
-									{saveStatus.message}
-								</span>
-							)}
-						</div>
-					</CardContent>
-				</Card>
+			<TabsContent value="strategy" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+				<StrategyTab
+					strategyView={strategyView}
+					riskView={riskView}
+					form={form}
+					setForm={setForm}
+					blendSum={blendSum}
+					blendValid={blendValid}
+					saveConfig={saveConfig}
+					configMutation={configMutation}
+				/>
 			</TabsContent>
 		</Tabs>
-	);
-}
-
-function ParamField({
-	label,
-	children,
-}: {
-	label: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<div className="space-y-1">
-			<span className="text-[11px] text-muted-foreground block">{label}</span>
-			{children}
-		</div>
-	);
-}
-
-function EmptyPlaceholder() {
-	return (
-		<div className="h-full flex items-center justify-center text-xs text-muted-foreground">
-			No data
-		</div>
 	);
 }

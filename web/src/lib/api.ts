@@ -234,4 +234,7 @@ export type TradeRecord = {
 	amount: string;
 	price: string;
 	status?: string;
+	mode?: string;
+	pnl: number | null;
+	won: number | null;
 };

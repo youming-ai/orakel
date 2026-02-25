@@ -1,10 +1,5 @@
-import {
-	queryOptions,
-	useMutation,
-	useQuery,
-	useQueryClient,
-} from "@tanstack/react-query";
-import type { ConfigPayload, DashboardState, TradeRecord } from "./api";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ConfigPayload, DashboardState } from "./api";
 import { api } from "./api";
 import type { ViewMode } from "./types";
 import type { WsMessage } from "./ws";
@@ -70,7 +65,12 @@ export function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 	return (msg: WsMessage) => {
 		switch (msg.type) {
 			case "state:snapshot": {
-				qc.setQueryData(queries.state().queryKey, msg.data as DashboardState);
+				// Only merge into existing cache — WS snapshots are partial (no config/balance/etc.)
+				// If no prior HTTP data exists, skip to avoid writing incomplete DashboardState.
+				const prev = qc.getQueryData<DashboardState>(queries.state().queryKey);
+				if (prev) {
+					qc.setQueryData(queries.state().queryKey, { ...prev, ...msg.data });
+				}
 				break;
 			}
 			case "trade:executed": {
@@ -103,8 +103,7 @@ export function useDashboardStateWithWs() {
 export function usePaperToggle() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (running: boolean) =>
-			running ? api.paperStop() : api.paperStart(),
+		mutationFn: (running: boolean) => (running ? api.paperStop() : api.paperStart()),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queries.state().queryKey });
 		},
@@ -114,8 +113,7 @@ export function usePaperToggle() {
 export function useLiveToggle() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (running: boolean) =>
-			running ? api.liveStop() : api.liveStart(),
+		mutationFn: (running: boolean) => (running ? api.liveStop() : api.liveStart()),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queries.state().queryKey });
 		},

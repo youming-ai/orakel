@@ -11,15 +11,15 @@ export const CHART_COLORS = {
 	/** Warning/pending values (amber) */
 	pending: "#fbbf24",
 	/** Axis labels and text */
-	axis: "#71717a",
+	axis: "var(--muted-foreground, #71717a)",
 	/** Grid lines */
-	grid: "#2f2f3a",
+	grid: "var(--border, #2f2f3a)",
 	/** Tooltip background */
-	tipBg: "#1a1a2e",
+	tipBg: "var(--card, #1a1a2e)",
 	/** Tooltip border */
-	tipBorder: "#3f3f46",
+	tipBorder: "var(--border, #3f3f46)",
 	/** Cursor stroke */
-	cursor: "#52525b",
+	cursor: "var(--muted-foreground, #52525b)",
 } as const;
 
 /**
@@ -47,9 +47,9 @@ export const TOOLTIP_CURSOR_STYLE = {
  */
 export const CHART_HEIGHT = {
 	/** Default chart height: smaller on mobile, larger on desktop */
-	responsive: "h-48 sm:h-72",
+	responsive: "w-full h-56 sm:h-72",
 	/** Taller chart for detailed views */
-	tall: "h-56 sm:h-72",
+	tall: "w-full h-64 sm:h-80",
 	/** Fixed height for compact displays */
-	compact: "h-48",
+	compact: "w-full h-48",
 } as const;

@@ -1,5 +1,5 @@
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
 interface StatCardProps {
 	label: string;
@@ -7,25 +7,25 @@ interface StatCardProps {
 	color?: string;
 	suffix?: string;
 	icon?: React.ReactNode;
+	trend?: "up" | "down" | "neutral";
 }
 
-export function StatCard({ label, value, color, suffix, icon }: StatCardProps) {
+export function StatCard({ label, value, color, suffix, icon, trend }: StatCardProps) {
 	return (
-		<Card>
-			<CardContent className="py-3 px-4">
-				<span className="text-[11px] text-muted-foreground flex items-center gap-1">
-					{icon}
-					{label}
-				</span>
-				<span className={cn("font-mono text-lg font-bold block", color)}>
+		<div className="flex flex-col gap-1.5 p-4">
+			<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+				{icon && <span className="opacity-70">{icon}</span>}
+				{label}
+			</span>
+			<div className="flex items-center gap-1.5">
+				<span className={cn("font-mono text-xl font-bold tracking-tight block", color || "text-foreground")}>
 					{value}
-					{suffix && (
-						<span className="text-xs font-normal text-muted-foreground ml-1">
-							{suffix}
-						</span>
-					)}
+					{suffix && <span className="text-[10px] font-semibold text-muted-foreground ml-1.5 tracking-wide uppercase">{suffix}</span>}
 				</span>
-			</CardContent>
-		</Card>
+				{trend === "up" && <ArrowUpRight className="size-3.5 text-emerald-400 stroke-[3] ml-1 opacity-80" />}
+				{trend === "down" && <ArrowDownRight className="size-3.5 text-red-400 stroke-[3] ml-1 opacity-80" />}
+				{trend === "neutral" && <Minus className="size-3.5 text-muted-foreground stroke-[3] ml-1 opacity-50" />}
+			</div>
+		</div>
 	);
 }
