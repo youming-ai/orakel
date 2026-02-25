@@ -33,7 +33,7 @@ import { computeSessionVwap, computeVwapSeries } from "./indicators/vwap.ts";
 import { createLogger } from "./logger.ts";
 import { getActiveMarkets } from "./markets.ts";
 import { OrderManager } from "./orderManager.ts";
-import { canAffordTradeWithStopCheck, getPaperStats, resolvePaperTrades } from "./paperStats.ts";
+import { canAffordTradeWithStopCheck, getPaperStats, getPendingPaperTrades, resolvePaperTrades } from "./paperStats.ts";
 import { redeemAll } from "./redeemer.ts";
 import {
 	clearLivePending,
@@ -1165,6 +1165,9 @@ async function main(): Promise<void> {
 						.then((results) => {
 							if (results.length) {
 								log.info(`Redeemed ${results.length} position(s)`);
+								// TODO: Credit PnL from redemption results once CLOB order status
+								// API integration is available. Current approach is conservative:
+								// treats all open trades as worst-case loss until daily reset.
 							}
 						})
 						.catch((err: unknown) => {
@@ -1232,6 +1235,10 @@ async function main(): Promise<void> {
 			.filter((r) => {
 				const sig = r.signalPayload;
 				if (!sig) return false;
+				const priceDelta =
+					sig.priceToBeat != null && sig.currentPrice != null && sig.priceToBeat !== 0
+						? Math.abs(sig.currentPrice - sig.priceToBeat) / sig.priceToBeat
+						: undefined;
 				const result = shouldTakeTrade({
 					market: r.market.id,
 					regime: r.rec?.regime ?? null,
@@ -1239,6 +1246,7 @@ async function main(): Promise<void> {
 					timeLeft: r.timeLeftMin ?? 0,
 					volatility: r.volatility15m ?? 0,
 					phase: (r.rec?.phase as "EARLY" | "MID" | "LATE") ?? "EARLY",
+					priceDelta,
 				});
 				if (!result.shouldTrade) {
 					log.info(`Skip ${r.market.id}: ${result.reason}`);
@@ -1266,7 +1274,8 @@ async function main(): Promise<void> {
 				if (
 					!paperTracker.has(mkt.id, timing.startMs) &&
 					affordCheck.canTrade &&
-					paperTracker.canTradeGlobally(maxGlobalTrades)
+					paperTracker.canTradeGlobally(Math.min(maxGlobalTrades, CONFIG.paperRisk.maxTradesPerWindow)) &&
+					getPendingPaperTrades().length < CONFIG.paperRisk.maxOpenPositions
 				) {
 					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.paperRisk }, "paper");
 					if (result?.success) {
@@ -1283,7 +1292,7 @@ async function main(): Promise<void> {
 					!orderTracker.hasOrder(mkt.id, slug) &&
 					!orderTracker.onCooldown() &&
 					orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
-					liveTradesThisWindow < maxGlobalTrades;
+					liveTradesThisWindow < Math.min(maxGlobalTrades, CONFIG.liveRisk.maxTradesPerWindow);
 
 				if (canPlace) {
 					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
