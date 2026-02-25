@@ -295,7 +295,7 @@ describe("computeVolatilityImpliedProb", () => {
 		).toBe(0.01);
 	});
 
-	it("approaches 1 when current price is far above target", () => {
+	it("is dampened to max 0.85 when current price is far above target (crypto fat tail protection)", () => {
 		const result = computeVolatilityImpliedProb({
 			currentPrice: 120,
 			priceToBeat: 100,
@@ -303,10 +303,11 @@ describe("computeVolatilityImpliedProb", () => {
 			timeLeftMin: 15,
 		});
 
-		expect(result as number).toBeGreaterThan(0.999);
+		expect(result as number).toBeLessThanOrEqual(0.85);
+		expect(result as number).toBeGreaterThan(0.5);
 	});
 
-	it("approaches 0 when current price is far below target", () => {
+	it("is dampened to min 0.15 when current price is far below target (crypto fat tail protection)", () => {
 		const result = computeVolatilityImpliedProb({
 			currentPrice: 80,
 			priceToBeat: 100,
@@ -314,7 +315,8 @@ describe("computeVolatilityImpliedProb", () => {
 			timeLeftMin: 15,
 		});
 
-		expect(result as number).toBeLessThan(0.001);
+		expect(result as number).toBeGreaterThanOrEqual(0.15);
+		expect(result as number).toBeLessThan(0.5);
 	});
 });
 

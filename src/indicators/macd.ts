@@ -1,49 +1,44 @@
 import type { MacdResult } from "../types.ts";
 
-function ema(values: number[], period: number): number | null {
-	if (!Array.isArray(values) || values.length < period) return null;
-
-	const k = 2 / (period + 1);
-	let prev = Number(values[0]);
-	for (let i = 1; i < values.length; i += 1) {
-		prev = Number(values[i]) * k + prev * (1 - k);
-	}
-	return prev;
-}
-
 export function computeMacd(closes: (number | null)[], fast: number, slow: number, signal: number): MacdResult | null {
 	if (!Array.isArray(closes) || closes.length < slow + signal) return null;
 
-	const fastEma = ema(closes as number[], fast);
-	const slowEma = ema(closes as number[], slow);
-	if (fastEma === null || slowEma === null) return null;
+	const kFast = 2 / (fast + 1);
+	const kSlow = 2 / (slow + 1);
+
+	let fastEma = Number(closes[0]);
+	let slowEma = Number(closes[0]);
+	const macdSeries: number[] = [];
+
+	for (let i = 1; i < closes.length; i += 1) {
+		const val = Number(closes[i]);
+		fastEma = val * kFast + fastEma * (1 - kFast);
+		slowEma = val * kSlow + slowEma * (1 - kSlow);
+		if (i >= slow - 1) {
+			macdSeries.push(fastEma - slowEma);
+		}
+	}
 
 	const macdLine = fastEma - slowEma;
 
-	const macdSeries: number[] = [];
-	for (let i = 0; i < closes.length; i += 1) {
-		const sub = closes.slice(0, i + 1) as number[];
-		const f = ema(sub, fast);
-		const s = ema(sub, slow);
-		if (f === null || s === null) continue;
-		macdSeries.push(f - s);
+	if (macdSeries.length < signal) return null;
+
+	const kSignal = 2 / (signal + 1);
+	let signalEma = Number(macdSeries[0]);
+	let prevSignalEma = signalEma;
+	for (let i = 1; i < macdSeries.length; i += 1) {
+		prevSignalEma = signalEma;
+		signalEma = Number(macdSeries[i]) * kSignal + signalEma * (1 - kSignal);
 	}
 
-	const signalLine = ema(macdSeries, signal);
-	if (signalLine === null) return null;
-
-	const hist = macdLine - signalLine;
-
-	const lastHist = hist;
-	const prevHist =
-		macdSeries.length >= signal + 1
-			? Number(macdSeries[macdSeries.length - 2]) - Number(ema(macdSeries.slice(0, macdSeries.length - 1), signal))
-			: null;
+	const hist = macdLine - signalEma;
+	const prevMacd = macdSeries.length >= 2 ? Number(macdSeries[macdSeries.length - 2]) : null;
+	const prevHist = prevMacd !== null ? prevMacd - prevSignalEma : null;
 
 	return {
 		macd: macdLine,
-		signal: signalLine,
+		signal: signalEma,
 		hist,
-		histDelta: prevHist === null ? null : lastHist - prevHist,
+		histDelta: prevHist === null ? null : hist - prevHist,
 	};
 }

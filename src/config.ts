@@ -34,10 +34,10 @@ const STRATEGY_DEFAULTS: {
 } = {
 	edgeThresholdEarly: 0.06,
 	edgeThresholdMid: 0.08,
-	edgeThresholdLate: 0.10,
+	edgeThresholdLate: 0.1,
 	minProbEarly: 0.52,
 	minProbMid: 0.55,
-	minProbLate: 0.60,
+	minProbLate: 0.6,
 	blendWeights: { vol: 0.5, ta: 0.5 },
 	regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 },
 	skipMarkets: [],
@@ -153,7 +153,7 @@ function readJsonConfig(): ConfigFile {
 				return ConfigFileSchema.parse(migrated);
 			} catch (parseErr) {
 				if (parseErr instanceof z.ZodError) {
-					log.warn("Invalid migrated config.json, using defaults:\n" + z.prettifyError(parseErr));
+					log.warn(`Invalid migrated config.json, using defaults:\n${z.prettifyError(parseErr)}`);
 				} else {
 					log.warn("Invalid migrated config.json, using defaults:", parseErr);
 				}
@@ -165,7 +165,7 @@ function readJsonConfig(): ConfigFile {
 			return ConfigFileSchema.parse(config);
 		} catch (parseErr) {
 			if (parseErr instanceof z.ZodError) {
-				log.warn("Invalid config.json, using defaults:\n" + z.prettifyError(parseErr));
+				log.warn(`Invalid config.json, using defaults:\n${z.prettifyError(parseErr)}`);
 			} else {
 				log.warn("Invalid config.json, using defaults:", parseErr);
 			}

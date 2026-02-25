@@ -28,8 +28,8 @@ import {
 import { detectRegime } from "./engines/regime.ts";
 import { computeHeikenAshi, countConsecutive } from "./indicators/heikenAshi.ts";
 import { computeMacd } from "./indicators/macd.ts";
-import { computeRsi, slopeLast, sma } from "./indicators/rsi.ts";
-import { computeSessionVwap, computeVwapSeries } from "./indicators/vwap.ts";
+import { computeRsi, slopeLast } from "./indicators/rsi.ts";
+import { computeVwapSeries } from "./indicators/vwap.ts";
 import { createLogger } from "./logger.ts";
 import { getActiveMarkets } from "./markets.ts";
 import { OrderManager } from "./orderManager.ts";
@@ -134,6 +134,7 @@ interface ProcessMarketResult {
 	volImpliedUp?: number | null;
 	binanceChainlinkDelta?: number | null;
 	orderbookImbalance?: number | null;
+	orderbook?: { up: OrderBookSummary | null; down: OrderBookSummary | null };
 	marketUp?: number | null;
 	marketDown?: number | null;
 	rawSum?: number | null;
@@ -430,7 +431,9 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 	};
 
 	if (clobCircuitBreaker.isOpen()) {
-		log.warn(`CLOB fetch skipped for ${marketDef.id} - circuit breaker open until ${new Date(clobCircuitBreaker.openUntil).toISOString()}`);
+		log.warn(
+			`CLOB fetch skipped for ${marketDef.id} - circuit breaker open until ${new Date(clobCircuitBreaker.openUntil).toISOString()}`,
+		);
 		upBookSummary = {
 			bestBid: Number(marketObj.bestBid) || null,
 			bestAsk: Number(marketObj.bestAsk) || null,
@@ -619,6 +622,35 @@ const paperTracker = {
 	},
 };
 
+const liveTracker = {
+	markets: new Set<string>(),
+	windowStartMs: 0,
+	globalCount: 0,
+	clear() {
+		this.markets.clear();
+		this.globalCount = 0;
+		this.windowStartMs = 0;
+	},
+	setWindow(startMs: number) {
+		if (this.windowStartMs !== startMs) {
+			this.clear();
+			this.windowStartMs = startMs;
+		}
+	},
+	has(marketId: string, startMs: number): boolean {
+		return this.markets.has(`${marketId}:${startMs}`);
+	},
+	record(marketId: string, startMs: number) {
+		this.markets.add(`${marketId}:${startMs}`);
+		this.globalCount++;
+	},
+	canTradeGlobally(maxGlobal: number): boolean {
+		return this.globalCount < maxGlobal;
+	},
+};
+
+const MAX_PRICE_AGE_MS = 60_000;
+
 async function processMarket({
 	market,
 	timing,
@@ -672,6 +704,11 @@ async function processMarket({
 	const lastPrice = Number(lastPriceRaw);
 	const spotPrice = wsPrice ?? lastPrice;
 	const currentPrice = chainlink?.price ?? null;
+	const priceUpdatedAt = chainlink?.updatedAt ?? null;
+	if (priceUpdatedAt !== null && Date.now() - priceUpdatedAt > MAX_PRICE_AGE_MS) {
+		log.warn(`Stale price for ${market.id}: ${(Date.now() - priceUpdatedAt) / 1000}s old — skipping`);
+		return { ok: false, market, error: `stale_price_${(Date.now() - priceUpdatedAt) / 1000}s` };
+	}
 	const marketSlug = poly.ok ? String((poly.market as AnyRecord | undefined)?.slug ?? "") : "";
 	const marketStartMs =
 		poly.ok && (poly.market as AnyRecord | undefined)?.eventStartTime
@@ -680,7 +717,7 @@ async function processMarket({
 
 	const candles = klines1mRaw as Candle[];
 	const closes: number[] = candles.map((c) => Number(c.close));
-	const vwapSeries: number[] = (computeVwapSeries(candles) as Array<number | null>).map((v) => Number(v));
+	const vwapSeries = computeVwapSeries(candles);
 	const vwapNowRaw = vwapSeries[vwapSeries.length - 1];
 	const vwapNow = vwapNowRaw === undefined ? null : vwapNowRaw;
 	const lookback = CONFIG.vwapSlopeLookbackMinutes;
@@ -690,17 +727,17 @@ async function processMarket({
 			? (vwapNow - vwapBack) / lookback
 			: null;
 
-	computeSessionVwap(candles);
-
 	const rsiNow = computeRsi(closes, CONFIG.rsiPeriod);
-	const rsiSeries: number[] = [];
-	for (let i = 0; i < closes.length; i += 1) {
-		const sub = closes.slice(0, i + 1);
-		const r = computeRsi(sub, CONFIG.rsiPeriod);
-		if (r !== null) rsiSeries.push(r);
+	// Only compute last 3 RSI values for slope (O(3×period) instead of O(n×period))
+	const rsiForSlope: number[] = [];
+	for (let offset = 2; offset >= 0; offset--) {
+		const subLen = closes.length - offset;
+		if (subLen >= CONFIG.rsiPeriod + 1) {
+			const r = computeRsi(closes.slice(0, subLen), CONFIG.rsiPeriod);
+			if (r !== null) rsiForSlope.push(r);
+		}
 	}
-	sma(rsiSeries, CONFIG.rsiMaPeriod);
-	const rsiSlope = slopeLast(rsiSeries, 3);
+	const rsiSlope = slopeLast(rsiForSlope, 3);
 
 	const macd = computeMacd(closes, CONFIG.macdFast, CONFIG.macdSlow, CONFIG.macdSignal) as MacdResult | null;
 	const ha = computeHeikenAshi(candles);
@@ -766,13 +803,32 @@ async function processMarket({
 	const binanceChainlinkDelta =
 		spotPrice !== null && currentPrice !== null && currentPrice > 0 ? (spotPrice - currentPrice) / currentPrice : null;
 	const upBookSummary = poly.ok ? (poly.orderbook?.up ?? null) : null;
-	const orderbookImbalance =
+	const downBookSummary = poly.ok ? (poly.orderbook?.down ?? null) : null;
+
+	const upImbalance =
 		upBookSummary?.bidLiquidity != null &&
 		upBookSummary?.askLiquidity != null &&
 		upBookSummary.bidLiquidity + upBookSummary.askLiquidity > 0
 			? (upBookSummary.bidLiquidity - upBookSummary.askLiquidity) /
 				(upBookSummary.bidLiquidity + upBookSummary.askLiquidity)
 			: null;
+	const downImbalance =
+		downBookSummary?.bidLiquidity != null &&
+		downBookSummary?.askLiquidity != null &&
+		downBookSummary.bidLiquidity + downBookSummary.askLiquidity > 0
+			? (downBookSummary.bidLiquidity - downBookSummary.askLiquidity) /
+				(downBookSummary.bidLiquidity + downBookSummary.askLiquidity)
+			: null;
+
+	let netImbalance: number | null = null;
+	if (upImbalance !== null && downImbalance !== null) {
+		netImbalance = upImbalance - downImbalance;
+	} else if (upImbalance !== null) {
+		netImbalance = upImbalance;
+	} else if (downImbalance !== null) {
+		netImbalance = -downImbalance;
+	}
+	const orderbookImbalance = netImbalance;
 
 	const volImplied = computeVolatilityImpliedProb({
 		currentPrice,
@@ -804,7 +860,8 @@ async function processMarket({
 		marketYes: marketUp,
 		marketNo: marketDown,
 		orderbookImbalance,
-		orderbookSpread: upBookSummary?.spread ?? null,
+		orderbookSpreadUp: upBookSummary?.spread ?? null,
+		orderbookSpreadDown: downBookSummary?.spread ?? null,
 	});
 
 	if (edge.vigTooHigh) {
@@ -1006,6 +1063,7 @@ async function processMarket({
 		volImpliedUp: volImplied,
 		binanceChainlinkDelta,
 		orderbookImbalance,
+		orderbook: { up: upBookSummary, down: downBookSummary },
 		marketUp,
 		marketDown,
 		rawSum: edge.rawSum,
@@ -1018,7 +1076,6 @@ async function processMarket({
 }
 
 async function main(): Promise<void> {
-	log.info("Paper mode: ON by default. Live mode: OFF by default.");
 	startApiServer();
 
 	const orderManager = new OrderManager();
@@ -1138,6 +1195,7 @@ async function main(): Promise<void> {
 			}
 
 			paperTracker.setWindow(timing.startMs);
+			liveTracker.setWindow(timing.startMs);
 
 			// 2. Settlement logic (resolve paper trades, redeem live positions)
 			if (isPaperRunning()) {
@@ -1240,10 +1298,7 @@ async function main(): Promise<void> {
 				const result = shouldTakeTrade({
 					market: r.market.id,
 					regime: r.rec?.regime ?? null,
-					edge: Number(r.rec?.edge ?? 0),
-					timeLeft: r.timeLeftMin ?? 0,
 					volatility: r.volatility15m ?? 0,
-					phase: (r.rec?.phase as "EARLY" | "MID" | "LATE") ?? "EARLY",
 				});
 				if (!result.shouldTrade) {
 					log.info(`Skip ${r.market.id}: ${result.reason}`);
@@ -1255,48 +1310,73 @@ async function main(): Promise<void> {
 				const edgeB = Number(b.rec?.edge ?? 0);
 				if (edgeB !== edgeA) return edgeB - edgeA;
 				return Number(a.rawSum ?? 1) - Number(b.rawSum ?? 1);
-			})
-			.slice(0, maxGlobalTrades);
+			});
 
-		let liveTradesThisWindow = 0;
+		let successfulTradesThisTick = 0;
 		for (const candidate of candidates) {
 			const sig = candidate.signalPayload;
 			if (!sig) continue;
 			const mkt = candidate.market;
 			const slug = candidate.marketSlug ?? "";
+			const sideBook = sig.side === "UP" ? (candidate.orderbook?.up ?? null) : (candidate.orderbook?.down ?? null);
+			const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
 
 			if (isPaperRunning()) {
 				const tradeSize = Number(CONFIG.paperRisk.maxTradeSizeUsdc || 0);
 				const affordCheck = canAffordTradeWithStopCheck(tradeSize);
+				const minPaperLiquidity = Number(CONFIG.paperRisk.minLiquidity || 0);
+				const hasPaperLiquidity = sideLiquidity !== null && sideLiquidity >= minPaperLiquidity;
 				if (
 					!paperTracker.has(mkt.id, timing.startMs) &&
 					affordCheck.canTrade &&
+					hasPaperLiquidity &&
 					paperTracker.canTradeGlobally(Math.min(maxGlobalTrades, CONFIG.paperRisk.maxTradesPerWindow)) &&
 					getPendingPaperTrades().length < CONFIG.paperRisk.maxOpenPositions
 				) {
 					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.paperRisk }, "paper");
 					if (result?.success) {
 						paperTracker.record(mkt.id, timing.startMs);
+					} else {
+						log.warn(`Paper trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
 					}
+				} else if (!hasPaperLiquidity) {
+					log.info(
+						`Skip ${mkt.id} paper: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minPaperLiquidity.toFixed(0)}`,
+					);
 				} else if (!affordCheck.canTrade) {
 					log.warn(`Trade rejected for ${mkt.id}: ${affordCheck.reason}`);
 				}
 			}
 
 			if (isLiveRunning()) {
+				const minLiveLiquidity = Number(CONFIG.liveRisk.minLiquidity || 0);
+				const hasLiveLiquidity = sideLiquidity !== null && sideLiquidity >= minLiveLiquidity;
+				if (!hasLiveLiquidity) {
+					log.info(
+						`Skip ${mkt.id} live: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minLiveLiquidity.toFixed(0)}`,
+					);
+					continue;
+				}
+
+				const liveWindowLimit = Math.min(maxGlobalTrades, CONFIG.liveRisk.maxTradesPerWindow);
 				const canPlace =
 					orderTracker &&
 					!orderTracker.hasOrder(mkt.id, slug) &&
 					!orderTracker.onCooldown() &&
 					orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
-					liveTradesThisWindow < Math.min(maxGlobalTrades, CONFIG.liveRisk.maxTradesPerWindow);
+					successfulTradesThisTick < liveWindowLimit &&
+					!liveTracker.has(mkt.id, timing.startMs) &&
+					liveTracker.canTradeGlobally(liveWindowLimit);
 
-				if (canPlace) {
-					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
-					if (result?.success) {
-						orderTracker.record(mkt.id, slug);
-						liveTradesThisWindow += 1;
-					}
+				if (!canPlace) continue;
+
+				const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
+				if (result?.success) {
+					orderTracker.record(mkt.id, slug);
+					liveTracker.record(mkt.id, timing.startMs);
+					successfulTradesThisTick += 1;
+				} else {
+					log.warn(`Live trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
 				}
 			}
 		}

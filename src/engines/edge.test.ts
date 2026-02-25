@@ -26,8 +26,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.72,
 			modelDown: 0.28,
-			edgeUp: 0.1,
-			edgeDown: -0.1,
 			regime: "TREND_UP",
 			volatility15m: 0.005,
 			orderbookImbalance: 0.4,
@@ -45,8 +43,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.6,
 			modelDown: 0.4,
-			edgeUp: 0.1,
-			edgeDown: 0,
 			regime: "RANGE",
 			volatility15m: 0.006,
 			orderbookImbalance: null,
@@ -64,8 +60,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.6,
 			modelDown: 0.4,
-			edgeUp: 0.1,
-			edgeDown: 0,
 			regime: "RANGE",
 			volatility15m: 0.001,
 			orderbookImbalance: null,
@@ -83,8 +77,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.6,
 			modelDown: 0.4,
-			edgeUp: 0.1,
-			edgeDown: 0,
 			regime: "RANGE",
 			volatility15m: 0.02,
 			orderbookImbalance: null,
@@ -102,8 +94,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.62,
 			modelDown: 0.38,
-			edgeUp: 0.1,
-			edgeDown: -0.1,
 			regime: "RANGE",
 			volatility15m: 0.005,
 			orderbookImbalance: 0.7,
@@ -121,8 +111,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.62,
 			modelDown: 0.38,
-			edgeUp: 0.1,
-			edgeDown: -0.1,
 			regime: "RANGE",
 			volatility15m: 0.005,
 			orderbookImbalance: -0.7,
@@ -140,8 +128,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.7,
 			modelDown: 0.3,
-			edgeUp: 0.1,
-			edgeDown: 0,
 			regime: "RANGE",
 			volatility15m: null,
 			orderbookImbalance: null,
@@ -159,8 +145,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.6,
 			modelDown: 0.4,
-			edgeUp: 0.1,
-			edgeDown: 0,
 			regime: "TREND_UP",
 			volatility15m: null,
 			orderbookImbalance: null,
@@ -178,8 +162,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.6,
 			modelDown: 0.4,
-			edgeUp: 0.1,
-			edgeDown: 0,
 			regime: "CHOP",
 			volatility15m: null,
 			orderbookImbalance: null,
@@ -197,8 +179,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.9,
 			modelDown: 0.1,
-			edgeUp: 0.2,
-			edgeDown: -0.2,
 			regime: "TREND_UP",
 			volatility15m: 0.005,
 			orderbookImbalance: 0.8,
@@ -216,14 +196,12 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.6,
 			modelDown: 0.4,
-			edgeUp: 0.05,
-			edgeDown: -0.05,
 			regime: "RANGE",
 			volatility15m: null,
 			orderbookImbalance: null,
 			vwapSlope: 0.1,
 			rsi: 55,
-			macdHist: 0.1,
+			macdHist: -0.1,
 			haColor: null,
 			side: "UP",
 		});
@@ -235,8 +213,6 @@ describe("computeConfidence", () => {
 		const result = computeConfidence({
 			modelUp: 0.51,
 			modelDown: 0.49,
-			edgeUp: 0.01,
-			edgeDown: -0.01,
 			regime: "CHOP",
 			volatility15m: 0.001,
 			orderbookImbalance: -0.8,
@@ -343,7 +319,8 @@ describe("computeEdge", () => {
 			modelDown: 0.4,
 			marketYes: 0.5,
 			marketNo: 0.5,
-			orderbookSpread: 0.06,
+			orderbookSpreadUp: 0.06,
+			orderbookSpreadDown: 0.06,
 		});
 
 		expect(result.effectiveEdgeUp).toBeCloseTo(0.08, 10);
@@ -369,7 +346,8 @@ describe("computeEdge", () => {
 			marketYes: 0.52,
 			marketNo: 0.48,
 			orderbookImbalance: 0.1,
-			orderbookSpread: 0.02,
+			orderbookSpreadUp: 0.02,
+			orderbookSpreadDown: 0.02,
 		});
 
 		expect(result.effectiveEdgeUp).toBeCloseTo(result.edgeUp as number, 10);

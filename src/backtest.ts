@@ -91,7 +91,9 @@ function loadPaperTrades(): PaperTradeEntry[] {
 				settlePrice: r.settle_price === null ? null : Number(r.settle_price),
 			}));
 		}
-	} catch (err) { log.warn("Failed to load paper trades from SQLite:", err); }
+	} catch (err) {
+		log.warn("Failed to load paper trades from SQLite:", err);
+	}
 
 	// Fallback: JSON
 	const statsPath = "./logs/paper-stats.json";
@@ -170,7 +172,9 @@ function loadSignalsForMarket(marketId: string): SignalEntry[] {
 				recommendation: String(r.recommendation ?? ""),
 			}));
 		}
-	} catch (err) { log.warn("Failed to load signals from SQLite:", err); }
+	} catch (err) {
+		log.warn("Failed to load signals from SQLite:", err);
+	}
 
 	// Fallback: CSV
 	return parseSignalsCsv(`./data/signals-${marketId}.csv`);

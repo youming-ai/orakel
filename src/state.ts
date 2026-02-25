@@ -1,4 +1,6 @@
 import { EventEmitter } from "node:events";
+import { CONFIG } from "./config.ts";
+import { createLogger } from "./logger.ts";
 import type {
 	MarketSnapshot,
 	SignalNewPayload,
@@ -6,8 +8,6 @@ import type {
 	TradeExecutedPayload,
 	WsMessage,
 } from "./types.ts";
-import { createLogger } from "./logger.ts";
-import { CONFIG } from "./config.ts";
 
 const log = createLogger("state");
 
@@ -67,7 +67,9 @@ export function emitStateSnapshot(payload: StateSnapshotPayload): void {
 
 	try {
 		botEvents.emit("state:snapshot", message);
-	} catch (err) { log.warn("Failed to emit state:snapshot:", err); }
+	} catch (err) {
+		log.warn("Failed to emit state:snapshot:", err);
+	}
 }
 
 export function emitSignalNew(payload: SignalNewPayload): void {
@@ -81,7 +83,9 @@ export function emitSignalNew(payload: SignalNewPayload): void {
 
 	try {
 		botEvents.emit("signal:new", message);
-	} catch (err) { log.warn("Failed to emit signal:new:", err); }
+	} catch (err) {
+		log.warn("Failed to emit signal:new:", err);
+	}
 }
 
 export function emitTradeExecuted(payload: TradeExecutedPayload): void {
@@ -95,7 +99,9 @@ export function emitTradeExecuted(payload: TradeExecutedPayload): void {
 
 	try {
 		botEvents.emit("trade:executed", message);
-	} catch (err) { log.warn("Failed to emit trade:executed:", err); }
+	} catch (err) {
+		log.warn("Failed to emit trade:executed:", err);
+	}
 }
 
 let _markets: MarketSnapshot[] = [];

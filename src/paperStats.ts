@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import { CONFIG, PAPER_INITIAL_BALANCE } from "./config.ts";
 import { createLogger } from "./logger.ts";
+
 const log = createLogger("paperStats");
+
 import { PERSIST_BACKEND, statements } from "./db.ts";
 import type { PaperStats, PaperTradeEntry, Side } from "./types.ts";
 
@@ -12,7 +14,6 @@ interface DailyPnl {
 	pnl: number;
 	trades: number;
 }
-
 
 interface PersistedPaperState {
 	trades: PaperTradeEntry[];
@@ -202,7 +203,6 @@ export function initPaperStats(): void {
 }
 // Call at module scope for backward compat
 initPaperStats();
-
 
 // ============ Persistence ============
 

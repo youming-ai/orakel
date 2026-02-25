@@ -30,8 +30,6 @@ const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultipli
 export function computeConfidence(params: {
 	modelUp: number;
 	modelDown: number;
-	edgeUp: number | null;
-	edgeDown: number | null;
 	regime: Regime | null;
 	volatility15m: number | null;
 	orderbookImbalance: number | null;
@@ -41,38 +39,33 @@ export function computeConfidence(params: {
 	haColor: string | null;
 	side: Side;
 }): ConfidenceResult {
-	const {
-		modelUp,
-		modelDown,
-		regime,
-		volatility15m,
-		orderbookImbalance,
-		vwapSlope,
-		rsi,
-		macdHist,
-		haColor,
-		side,
-	} = params;
+	const { modelUp, modelDown, regime, volatility15m, orderbookImbalance, vwapSlope, rsi, macdHist, haColor, side } =
+		params;
 
 	const isUp = side === "UP";
 	const modelProb = isUp ? modelUp : modelDown;
 
-	// 1. Indicator alignment (0-1)
+	// 1. Indicator alignment (0-1) — penalize missing data
 	let alignedIndicators = 0;
-	const totalIndicators = 4;
+	let availableIndicators = 0;
 
-	if (isUp) {
-		if ((vwapSlope ?? 0) > 0) alignedIndicators++;
-		if ((rsi ?? 50) > 50 && (rsi ?? 50) < 80) alignedIndicators++;
-		if ((macdHist ?? 0) > 0) alignedIndicators++;
-		if (haColor === "green") alignedIndicators++;
-	} else {
-		if ((vwapSlope ?? 0) < 0) alignedIndicators++;
-		if ((rsi ?? 50) < 50 && (rsi ?? 50) > 20) alignedIndicators++;
-		if ((macdHist ?? 0) < 0) alignedIndicators++;
-		if (haColor === "red") alignedIndicators++;
+	if (vwapSlope !== null) {
+		availableIndicators++;
+		if (isUp ? vwapSlope > 0 : vwapSlope < 0) alignedIndicators++;
 	}
-	const indicatorAlignment = alignedIndicators / totalIndicators;
+	if (rsi !== null) {
+		availableIndicators++;
+		if (isUp ? rsi > 50 && rsi < 80 : rsi < 50 && rsi > 20) alignedIndicators++;
+	}
+	if (macdHist !== null) {
+		availableIndicators++;
+		if (isUp ? macdHist > 0 : macdHist < 0) alignedIndicators++;
+	}
+	if (haColor !== null) {
+		availableIndicators++;
+		if (isUp ? haColor === "green" : haColor === "red") alignedIndicators++;
+	}
+	const indicatorAlignment = availableIndicators > 0 ? alignedIndicators / availableIndicators : 0.5;
 
 	// 2. Volatility score (0-1): optimal range 0.3% - 0.8%
 	let volatilityScore = 0.5;
@@ -186,9 +179,11 @@ export function computeEdge(params: {
 	marketYes: number | null;
 	marketNo: number | null;
 	orderbookImbalance?: number | null;
-	orderbookSpread?: number | null;
+	orderbookSpreadUp?: number | null;
+	orderbookSpreadDown?: number | null;
 }): EdgeResult {
-	const { modelUp, modelDown, marketYes, marketNo, orderbookImbalance, orderbookSpread } = params;
+	const { modelUp, modelDown, marketYes, marketNo, orderbookImbalance, orderbookSpreadUp, orderbookSpreadDown } =
+		params;
 
 	if (marketYes === null || marketNo === null) {
 		return {
@@ -220,7 +215,8 @@ export function computeEdge(params: {
 	let effectiveEdgeDown = edgeDown;
 
 	const imbalance = orderbookImbalance ?? null;
-	const spread = orderbookSpread ?? null;
+	const spreadUp = orderbookSpreadUp ?? null;
+	const spreadDown = orderbookSpreadDown ?? null;
 
 	if (imbalance !== null && Math.abs(imbalance) > 0.2) {
 		// Strong buy pressure → buying UP costs more (less effective edge for UP)
@@ -236,10 +232,13 @@ export function computeEdge(params: {
 		}
 	}
 
-	// Penalize wide spreads
-	if (spread !== null && spread > 0.02) {
-		const spreadPenalty = (spread - 0.02) * 0.5;
+	// Penalize wide spreads (side-specific)
+	if (spreadUp !== null && spreadUp > 0.02) {
+		const spreadPenalty = (spreadUp - 0.02) * 0.5;
 		effectiveEdgeUp -= spreadPenalty;
+	}
+	if (spreadDown !== null && spreadDown > 0.02) {
+		const spreadPenalty = (spreadDown - 0.02) * 0.5;
 		effectiveEdgeDown -= spreadPenalty;
 	}
 
@@ -309,14 +308,14 @@ export function decide(params: {
 			? Number(strategy?.edgeThresholdEarly ?? 0.06)
 			: phase === "MID"
 				? Number(strategy?.edgeThresholdMid ?? 0.08)
-				: Number(strategy?.edgeThresholdLate ?? 0.10);
+				: Number(strategy?.edgeThresholdLate ?? 0.1);
 
 	const minProb =
 		phase === "EARLY"
 			? Number(strategy?.minProbEarly ?? 0.52)
 			: phase === "MID"
 				? Number(strategy?.minProbMid ?? 0.55)
-				: Number(strategy?.minProbLate ?? 0.60);
+				: Number(strategy?.minProbLate ?? 0.6);
 
 	if (edgeUp === null || edgeDown === null) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "missing_market_data" };
@@ -357,6 +356,15 @@ export function decide(params: {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${minProb}` };
 	}
 
+	// Apply BTC-specific probability threshold (Issue #4 fix)
+	const effectiveMinProb = marketId === "BTC" ? Math.max(minProb, 0.58) : minProb;
+	if (bestModel !== null && bestModel < effectiveMinProb) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${effectiveMinProb}_btc_adjusted` };
+	}
+
+	// BTC-specific protection: require higher confidence for poor performer (Issue #4 fix)
+	const effectiveMinConfidence = marketId === "BTC" ? Math.max(minConfidence, 0.6) : minConfidence;
+
 	// Overconfidence checks
 	if (Math.abs(bestEdge) > HARD_CAP_EDGE) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
@@ -372,8 +380,6 @@ export function decide(params: {
 	const confidence = computeConfidence({
 		modelUp: modelUp ?? 0.5,
 		modelDown: modelDown ?? 0.5,
-		edgeUp,
-		edgeDown,
 		regime,
 		volatility15m,
 		orderbookImbalance,
@@ -384,14 +390,14 @@ export function decide(params: {
 		side: bestSide,
 	});
 
-	// Reject low confidence trades
-	if (confidence.score < minConfidence) {
+	// Reject low confidence trades (using BTC-adjusted threshold)
+	if (confidence.score < effectiveMinConfidence) {
 		return {
 			action: "NO_TRADE",
 			side: null,
 			phase,
 			regime,
-			reason: `confidence_${confidence.score.toFixed(2)}_below_${minConfidence}`,
+			reason: `confidence_${confidence.score.toFixed(2)}_below_${effectiveMinConfidence}`,
 			confidence,
 		};
 	}

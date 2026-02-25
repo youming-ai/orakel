@@ -149,11 +149,21 @@ export function computeVolatilityImpliedProb({
 	if (currentPrice === null || priceToBeat === null || priceToBeat === 0) return null;
 	if (volatility15m === null || volatility15m <= 0) return null;
 	if (timeLeftMin === null || timeLeftMin <= 0) return currentPrice > priceToBeat ? 0.99 : 0.01;
-
 	const timeRatio = Math.sqrt(timeLeftMin / windowMin);
 	const d = Math.log(currentPrice / priceToBeat);
 	const z = d / (volatility15m * timeRatio);
-	return normalCDF(z);
+	// Dampen extreme z-scores for crypto fat tails (|z| > 2)
+	const rawProb = normalCDF(z);
+	const absZ = Math.abs(z);
+	if (absZ > 3) {
+		// Severe dampening for extreme moves (|z| > 3): cap at 85% confidence
+		return clamp(0.5 + (rawProb - 0.5) * 0.7, 0.15, 0.85);
+	}
+	if (absZ > 2) {
+		// Moderate dampening for significant moves (|z| > 2): cap at 90% confidence
+		return clamp(0.5 + (rawProb - 0.5) * 0.8, 0.1, 0.9);
+	}
+	return rawProb;
 }
 
 export function blendProbabilities({

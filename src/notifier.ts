@@ -90,7 +90,9 @@ function checkAndPushFile(filePath: string): void {
 
 	try {
 		fs.unlinkSync(filePath);
-	} catch (err) { log.warn("Failed to delete signal file:", filePath, err); }
+	} catch (err) {
+		log.warn("Failed to delete signal file:", filePath, err);
+	}
 }
 
 function checkAndPush(): void {

@@ -14,11 +14,15 @@ export function computeSessionVwap(candles: Candle[]): number | null {
 	return pv / v;
 }
 
-export function computeVwapSeries(candles: Candle[]): (number | null)[] {
-	const series: (number | null)[] = [];
-	for (let i = 0; i < candles.length; i += 1) {
-		const sub = candles.slice(0, i + 1);
-		series.push(computeSessionVwap(sub));
+export function computeVwapSeries(candles: Candle[]): number[] {
+	const series: number[] = [];
+	let pv = 0;
+	let v = 0;
+	for (const c of candles) {
+		const tp = (Number(c.high) + Number(c.low) + Number(c.close)) / 3;
+		pv += tp * Number(c.volume);
+		v += Number(c.volume);
+		series.push(v === 0 ? 0 : pv / v);
 	}
 	return series;
 }

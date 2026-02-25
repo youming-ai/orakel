@@ -64,6 +64,8 @@ interface TradeRowSqlite {
 	order_id: string | null;
 	status: string | null;
 	mode: string;
+	pnl: number | null;
+	won: number | null;
 }
 
 interface SignalRowSqlite {
@@ -134,6 +136,11 @@ botEvents.on("trade:executed", (msg: WsMessage<TradeExecutedPayload>) => {
 // ---------------------------------------------------------------------------
 // CSV helpers (unchanged)
 // ---------------------------------------------------------------------------
+
+/** Convert nullable value to string, defaulting to "" */
+function str(v: string | number | null | undefined): string {
+	return v === null || v === undefined ? "" : String(v);
+}
 
 function parseCsvLine(line: string): string[] {
 	const result: string[] = [];
@@ -242,7 +249,15 @@ function parseSignalCsv(filePath: string, limit = 200): Record<string, string>[]
 const apiRoutes = new Hono()
 
 	.get("/health", (c) => {
-		return c.json({ ok: true as const, timestamp: Date.now() });
+		return c.json({
+			ok: true as const,
+			timestamp: Date.now(),
+			uptime: Math.floor(process.uptime()),
+			memory: {
+				rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
+				heap: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+			},
+		});
 	})
 
 	.get("/state", (c) => {
@@ -301,6 +316,8 @@ const apiRoutes = new Hono()
 					orderId: row.order_id ?? "",
 					status: row.status ?? "",
 					mode: row.mode ?? "",
+					pnl: row.pnl ?? null,
+					won: row.won ?? null,
 				})),
 			);
 		}
@@ -319,7 +336,20 @@ const apiRoutes = new Hono()
 			}
 		}
 		all.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
-		return c.json(all.slice(0, 100));
+		return c.json(
+			all.slice(0, 100).map((row) => ({
+				timestamp: row.timestamp ?? "",
+				market: row.market ?? "",
+				side: row.side ?? "",
+				amount: String(row.amount ?? ""),
+				price: String(row.price ?? ""),
+				orderId: row.order_id ?? row.orderId ?? "",
+				status: row.status ?? "",
+				mode: row.mode ?? "",
+				pnl: row.pnl !== undefined && row.pnl !== "" ? Number(row.pnl) : null,
+				won: row.won !== undefined && row.won !== "" ? Number(row.won) : null,
+			})),
+		);
 	})
 
 	.get("/signals", (c) => {
@@ -331,34 +361,26 @@ const apiRoutes = new Hono()
 			return c.json(
 				rows.map((row) => ({
 					timestamp: row.timestamp ?? "",
-					entry_minute: row.entry_minute === null || row.entry_minute === undefined ? "" : String(row.entry_minute),
-					time_left_min: row.time_left_min === null || row.time_left_min === undefined ? "" : String(row.time_left_min),
+					entry_minute: str(row.entry_minute),
+					time_left_min: str(row.time_left_min),
 					regime: row.regime ?? "",
 					signal: row.signal ?? "",
-					vol_implied_up:
-						row.vol_implied_up === null || row.vol_implied_up === undefined ? "" : String(row.vol_implied_up),
-					ta_raw_up: row.ta_raw_up === null || row.ta_raw_up === undefined ? "" : String(row.ta_raw_up),
-					blended_up: row.blended_up === null || row.blended_up === undefined ? "" : String(row.blended_up),
+					vol_implied_up: str(row.vol_implied_up),
+					ta_raw_up: str(row.ta_raw_up),
+					blended_up: str(row.blended_up),
 					blend_source: row.blend_source ?? "",
-					volatility_15m:
-						row.volatility_15m === null || row.volatility_15m === undefined ? "" : String(row.volatility_15m),
-					price_to_beat: row.price_to_beat === null || row.price_to_beat === undefined ? "" : String(row.price_to_beat),
-					binance_chainlink_delta:
-						row.binance_chainlink_delta === null || row.binance_chainlink_delta === undefined
-							? ""
-							: String(row.binance_chainlink_delta),
-					orderbook_imbalance:
-						row.orderbook_imbalance === null || row.orderbook_imbalance === undefined
-							? ""
-							: String(row.orderbook_imbalance),
-					model_up: row.model_up === null || row.model_up === undefined ? "" : String(row.model_up),
-					model_down: row.model_down === null || row.model_down === undefined ? "" : String(row.model_down),
-					mkt_up: row.mkt_up === null || row.mkt_up === undefined ? "" : String(row.mkt_up),
-					mkt_down: row.mkt_down === null || row.mkt_down === undefined ? "" : String(row.mkt_down),
-					raw_sum: row.raw_sum === null || row.raw_sum === undefined ? "" : String(row.raw_sum),
-					arbitrage: row.arbitrage === null || row.arbitrage === undefined ? "" : String(row.arbitrage),
-					edge_up: row.edge_up === null || row.edge_up === undefined ? "" : String(row.edge_up),
-					edge_down: row.edge_down === null || row.edge_down === undefined ? "" : String(row.edge_down),
+					volatility_15m: str(row.volatility_15m),
+					price_to_beat: str(row.price_to_beat),
+					binance_chainlink_delta: str(row.binance_chainlink_delta),
+					orderbook_imbalance: str(row.orderbook_imbalance),
+					model_up: str(row.model_up),
+					model_down: str(row.model_down),
+					mkt_up: str(row.mkt_up),
+					mkt_down: str(row.mkt_down),
+					raw_sum: str(row.raw_sum),
+					arbitrage: str(row.arbitrage),
+					edge_up: str(row.edge_up),
+					edge_down: str(row.edge_down),
 					recommendation: row.recommendation ?? "",
 					market: row.market ?? "",
 				})),
@@ -485,7 +507,9 @@ const apiRoutes = new Hono()
 
 	.post("/live/connect", async (c) => {
 		if (!env.API_TOKEN) {
-			log.warn("WARNING: /live/connect called without API_TOKEN configured. Set API_TOKEN env var to protect this endpoint.");
+			log.warn(
+				"WARNING: /live/connect called without API_TOKEN configured. Set API_TOKEN env var to protect this endpoint.",
+			);
 		}
 		try {
 			const body = await c.req.json();
@@ -574,10 +598,17 @@ const RATE_WINDOW_MS = 60_000;
 
 const rateLimit = createMiddleware(async (c, next) => {
 	// Use real socket IP, but trust x-forwarded-for when request comes from local/Docker network
-	const socketIp = (c.env as { requestIP?: (req: Request) => { address: string } | null })?.requestIP?.(c.req.raw)?.address ?? "";
-	const isLocalSocket = !socketIp || socketIp === "127.0.0.1" || socketIp === "::1" || socketIp === "::ffff:127.0.0.1" || socketIp.startsWith("172.") || socketIp.startsWith("10.");
+	const socketIp =
+		(c.env as { requestIP?: (req: Request) => { address: string } | null })?.requestIP?.(c.req.raw)?.address ?? "";
+	const isLocalSocket =
+		!socketIp ||
+		socketIp === "127.0.0.1" ||
+		socketIp === "::1" ||
+		socketIp === "::ffff:127.0.0.1" ||
+		socketIp.startsWith("172.") ||
+		socketIp.startsWith("10.");
 	const key = isLocalSocket
-		? (c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || socketIp || "local")
+		? c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || socketIp || "local"
 		: socketIp;
 	const now = Date.now();
 	let bucket = rateBuckets.get(key);
