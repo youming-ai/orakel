@@ -1,7 +1,11 @@
 import type { ClobClient } from "@polymarket/clob-client";
 import { createLogger } from "./logger.ts";
+import type { TradeSignal } from "./types.ts";
 
 const log = createLogger("orders");
+
+// Callback type for order status changes
+type OrderStatusCallback = (orderId: string, status: TrackedOrder["status"]) => void;
 
 export interface TrackedOrder {
 	orderId: string;
@@ -14,6 +18,7 @@ export interface TrackedOrder {
 	status: "placed" | "live" | "matched" | "filled" | "cancelled" | "expired";
 	sizeMatched: number;
 	lastChecked: number;
+	orderType?: "GTD" | "FOK"; // Track order type for heartbeat management
 }
 
 export class OrderManager {
@@ -21,9 +26,15 @@ export class OrderManager {
 	private client: ClobClient | null = null;
 	private pollIntervalMs: number = 5_000;
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
+	private onStatusChange: OrderStatusCallback | null = null;
 
 	setClient(client: ClobClient): void {
 		this.client = client;
+	}
+
+	/** Register callback for order status changes (e.g., to update heartbeat tracking) */
+	onOrderStatusChange(callback: OrderStatusCallback): void {
+		this.onStatusChange = callback;
 	}
 
 	addOrder(order: Omit<TrackedOrder, "status" | "sizeMatched" | "lastChecked">): void {
@@ -32,6 +43,20 @@ export class OrderManager {
 			status: "placed",
 			sizeMatched: 0,
 			lastChecked: Date.now(),
+		});
+	}
+
+	/** Add order with type tracking (GTD orders need heartbeat, FOK orders don't) */
+	addOrderWithTracking(
+		order: Omit<TrackedOrder, "status" | "sizeMatched" | "lastChecked" | "orderType">,
+		isGtdOrder: boolean,
+	): void {
+		this.orders.set(order.orderId, {
+			...order,
+			status: "placed",
+			sizeMatched: 0,
+			lastChecked: Date.now(),
+			orderType: isGtdOrder ? "GTD" : "FOK",
 		});
 	}
 
@@ -59,6 +84,7 @@ export class OrderManager {
 
 				const status = String(orderResult.status ?? "").toLowerCase();
 				const sizeMatched = Number(orderResult.size_matched ?? orderResult.sizeMatched ?? 0);
+				const previousStatus = order.status;
 
 				if (status === "matched" || (sizeMatched > 0 && sizeMatched >= order.size * 0.99)) {
 					order.status = "filled";
@@ -73,6 +99,11 @@ export class OrderManager {
 				}
 
 				order.lastChecked = Date.now();
+
+				// Notify callback if status changed (for heartbeat tracking)
+				if (this.onStatusChange && order.status !== previousStatus) {
+					this.onStatusChange(order.orderId, order.status);
+				}
 			} catch (err: unknown) {
 				const msg = err instanceof Error ? err.message : String(err);
 				log.error(`Poll error for ${order.orderId.slice(0, 8)}:`, msg);

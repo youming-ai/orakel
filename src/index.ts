@@ -15,6 +15,8 @@ import {
 	pickLatestLiveMarket,
 	summarizeOrderBook,
 } from "./data/polymarket.ts";
+import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
+import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
 import { PERSIST_BACKEND, statements } from "./db.ts";
 import { computeEdge, decide } from "./engines/edge.ts";
@@ -32,7 +34,7 @@ import { computeRsi, slopeLast } from "./indicators/rsi.ts";
 import { computeVwapSeries } from "./indicators/vwap.ts";
 import { createLogger } from "./logger.ts";
 import { getActiveMarkets } from "./markets.ts";
-import { OrderManager } from "./orderManager.ts";
+import { OrderManager, type TrackedOrder } from "./orderManager.ts";
 import { canAffordTradeWithStopCheck, getPaperStats, getPendingPaperTrades, resolvePaperTrades } from "./paperStats.ts";
 import { redeemAll } from "./redeemer.ts";
 import {
@@ -52,7 +54,16 @@ import {
 	updateMarkets,
 } from "./state.ts";
 import { shouldTakeTrade } from "./strategyRefinement.ts";
-import { executeTrade, getClientStatus, getWallet, updatePnl } from "./trader.ts";
+import {
+	executeTrade,
+	getClientStatus,
+	getWallet,
+	registerOpenGtdOrder,
+	startHeartbeat,
+	stopHeartbeat,
+	unregisterOpenGtdOrder,
+	updatePnl,
+} from "./trader.ts";
 import type {
 	Candle,
 	CandleWindowTiming,
@@ -1079,7 +1090,14 @@ async function main(): Promise<void> {
 	startApiServer();
 
 	const orderManager = new OrderManager();
-	void orderManager;
+
+	// Set up order status change callback for heartbeat tracking
+	orderManager.onOrderStatusChange((orderId: string, status: TrackedOrder["status"]) => {
+		// Unregister from heartbeat tracking when order is filled, cancelled, or expired
+		if (status === "filled" || status === "cancelled" || status === "expired") {
+			unregisterOpenGtdOrder(orderId);
+		}
+	});
 
 	const markets = getActiveMarkets();
 	const binanceSymbols = markets.map((m) => m.binanceSymbol);
@@ -1104,6 +1122,10 @@ async function main(): Promise<void> {
 			}),
 		);
 	}
+
+	// CLOB WebSocket for real-time best_bid_ask, tick_size_change, and market_resolved events
+	const clobWs: ClobWsHandle = startClobMarketWs();
+	// Token IDs are subscribed dynamically as markets are resolved in fetchPolymarketSnapshot
 
 	const states = new Map<string, MarketState>(
 		markets.map((m) => [
@@ -1151,10 +1173,13 @@ async function main(): Promise<void> {
 
 	const shutdown = () => {
 		log.info("Shutdown signal received, stopping bot...");
+		orderManager.stopPolling();
+		stopHeartbeat();
 		setPaperRunning(false);
 		setLiveRunning(false);
 		streams.binance.close();
 		streams.polymarket.close();
+		clobWs.close();
 		for (const [, handle] of streams.chainlink) {
 			handle.close();
 		}
@@ -1186,8 +1211,22 @@ async function main(): Promise<void> {
 			if (isLivePendingStart()) {
 				const status = getClientStatus();
 				if (status.walletLoaded && status.clientReady) {
-					log.info("Pending start detected, starting at new cycle boundary");
-					setLiveRunning(true);
+					// Set up orderManager with client
+					const wallet = getWallet();
+					if (wallet) {
+						const { ClobClient } = await import("@polymarket/clob-client");
+						const client = new ClobClient(CONFIG.clobBaseUrl, 137, wallet);
+						orderManager.setClient(client);
+						orderManager.startPolling(5_000);
+						log.info("OrderManager started polling");
+					}
+					const heartbeatOk = startHeartbeat();
+					if (heartbeatOk) {
+						log.info("Pending start detected, starting at new cycle boundary");
+						setLiveRunning(true);
+					} else {
+						log.error("Live start aborted: heartbeat failed to start");
+					}
 				} else {
 					log.info("Pending start cancelled - wallet not ready");
 				}
@@ -1246,6 +1285,8 @@ async function main(): Promise<void> {
 			if (isLivePendingStop()) {
 				log.info("Pending stop detected, stopping after cycle settlement");
 				setLiveRunning(false);
+				stopHeartbeat();
+				orderManager.stopPolling();
 				clearLivePending();
 			}
 		}
@@ -1271,6 +1312,17 @@ async function main(): Promise<void> {
 				}
 			}),
 		);
+
+		// Subscribe discovered token IDs to CLOB WebSocket for real-time events
+		const newTokenIds = results
+			.filter((r) => r.ok && r.signalPayload?.tokens)
+			.flatMap((r) => {
+				const t = r.signalPayload?.tokens;
+				return t ? [t.upTokenId, t.downTokenId] : [];
+			});
+		if (newTokenIds.length > 0) {
+			clobWs.subscribe(newTokenIds);
+		}
 
 		const maxGlobalTrades = Number(
 			(CONFIG.strategy as { maxGlobalTradesPerWindow?: number }).maxGlobalTradesPerWindow ?? 1,
