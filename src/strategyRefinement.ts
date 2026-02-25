@@ -12,37 +12,6 @@
 
 import type { StrategyConfig } from "./types.ts";
 
-// Refined strategy configuration based on backtest results
-export const REFINED_STRATEGY: StrategyConfig = {
-	// Edge thresholds - LOWERED based on finding that high edge = overconfidence
-	// Original: Early 0.08, Mid 0.1, Late 0.12
-	// Refined: Early 0.05, Mid 0.08, Late 0.12 (late stays same, high confidence needed)
-	edgeThresholdEarly: 0.05,
-	edgeThresholdMid: 0.08,
-	edgeThresholdLate: 0.12,
-
-	// Minimum probability thresholds - INCREASED for better confidence
-	// Original: Early 0.58, Mid 0.6, Late 0.7
-	// Refined: Early 0.6, Mid 0.65, Late 0.72
-	minProbEarly: 0.6,
-	minProbMid: 0.65,
-	minProbLate: 0.72,
-
-	// Blend weights - shift MORE toward TA for better accuracy
-	// Original: vol 0.7, ta 0.3
-	// Refined: vol 0.5, ta 0.5 - more balanced approach
-	blendWeights: { vol: 0.5, ta: 0.5 },
-
-	// Regime multipliers - adjusted based on performance
-	// Original: CHOP 1.5, RANGE 1.0, TREND_ALIGNED 0.8, TREND_OPP 1.3
-	// Refined: CHOP 2.0 (stricter filtering), RANGE 1.0, TREND_ALIGNED 0.9, TREND_OPP 1.4
-	regimeMultipliers: {
-		CHOP: 2.0, // Higher = harder to trade in CHOP (avoid choppy markets)
-		RANGE: 1.0, // Keep same for range-bound markets
-		TREND_ALIGNED: 0.9, // Slightly relaxed for trend following
-		TREND_OPPOSED: 1.4, // Stricter for counter-trend trades
-	},
-};
 
 // Market-specific adjustments based on backtest
 // NOTE: edgeMultiplier is authoritative in edge.ts (MARKET_PERFORMANCE).
@@ -67,7 +36,8 @@ export const BACKTEST_INSIGHTS = {
 
 	// Edge insights (critical finding: high edge = overconfidence)
 	maxExpectedEdge: 0.25, // Cap maximum expected edge to avoid overconfidence
-	optimalEdgeRange: { min: 0.05, max: 0.18 }, // Sweet spot based on backtest
+	optimalEdgeRange: { min: 0.05, max: 0.15 }, // Sweet spot based on backtest
+	minPriceToBeatDelta: 0.001, // Skip trades where price is within 0.1% of PTB (noise)
 
 	// Volatility insights
 	maxVolatility15m: 0.004, // Skip if vol > 0.4% (losing trades showed high vol)
@@ -89,12 +59,17 @@ export function shouldTakeTrade(params: {
 	timeLeft: number;
 	volatility: number;
 	phase: "EARLY" | "MID" | "LATE";
+	priceDelta?: number;
 }): { shouldTrade: boolean; reason?: string } {
-	const { market, regime, edge, timeLeft, volatility, phase } = params;
+	const { market, regime, edge, timeLeft, volatility, phase, priceDelta } = params;
 	const marketAdj = MARKET_ADJUSTMENTS[market] || { skipChop: false };
 	// Skip CHOP entirely for underperforming markets
 	if (regime === "CHOP" && (marketAdj.skipChop || BACKTEST_INSIGHTS.skipChop)) {
 		return { shouldTrade: false, reason: "skip_chop_regime" };
+	}
+	// PTB delta filter: skip trades where price is within noise range of PTB
+	if (priceDelta !== undefined && priceDelta < BACKTEST_INSIGHTS.minPriceToBeatDelta) {
+		return { shouldTrade: false, reason: "ptb_delta_too_small" };
 	}
 	// Time filters
 	if (phase === "EARLY" && timeLeft > BACKTEST_INSIGHTS.earlyEntryMaxTime) {
@@ -121,41 +96,3 @@ export function shouldTakeTrade(params: {
 	return { shouldTrade: true };
 }
 
-// Export refined parameters summary for display
-export function getRefinementSummary(): string {
-	return `
-╔════════════════════════════════════════════════════════════╗
-║          STRATEGY REFINEMENT SUMMARY                       ║
-╚════════════════════════════════════════════════════════════╝
-
-Based on 383 resolved paper trades:
-
-KEY LEARNINGS:
-• High edge (≥20%) predictions are OVERCONFIDENT (43.6% WR)
-• Low edge (5-18%) is the SWEET SPOT (57.9% WR)
-• CHOP regime is unprofitable (38.9% WR) - SKIP IT
-• BTC needs special handling (42.1% WR) vs XRP/SOL good (54%+)
-
-REFINED PARAMETERS:
-┌──────────────────────────────────────────────────────────┐
-│ Phase    │ Edge Threshold │ Min Probability │ Time Range │
-├──────────────────────────────────────────────────────────┤
-│ EARLY    │ 5% (was 8%)   │ 60% (was 58%)   │ 5-13 min   │
-│ MID      │ 8% (was 10%)  │ 65% (was 60%)   │ 5-10 min   │
-│ LATE     │ 12% (same)    │ 72% (was 70%)   │ 3-5 min    │
-└──────────────────────────────────────────────────────────┘
-
-MARKET-SPECIFIC:
-• BTC: Lower edge threshold (-20%), skip CHOP completely
-• ETH: Slightly relaxed, skip CHOP
-• SOL/XRP: Standard parameters (perform well)
-
-FILTERS ADDED:
-• Skip trades with edge > 25% (overconfidence)
-• Skip CHOP regime for BTC/ETH
-• Skip if volatility > 0.4% or < 0.05%
-• Skip if < 3 min remaining
-
-Blend weights: 50/50 vol/TA (was 70/30) - more balanced
-`;
-}
