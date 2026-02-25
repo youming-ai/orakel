@@ -21,12 +21,12 @@
     }
   },
   "strategy": {
-    "edgeThresholdEarly": 0.09,
-    "edgeThresholdMid": 0.11,
-    "edgeThresholdLate": 0.14,
+    "edgeThresholdEarly": 0.07,
+    "edgeThresholdMid": 0.09,
+    "edgeThresholdLate": 0.12,
     "minProbEarly": 0.60,
-    "minProbMid": 0.62,
-    "minProbLate": 0.65,
+    "minProbMid": 0.64,
+    "minProbLate": 0.70,
     "blendWeights": {
       "vol": 0.50,
       "ta": 0.50
@@ -39,6 +39,7 @@
     },
     "maxGlobalTradesPerWindow": 1,
     "minConfidence": 0.50,
-    "skipMarkets": ["BTC"]
+    "skipMarkets": ["BTC", "SOL"],
+    "downBiasMultiplier": 0.03
   }
 }
