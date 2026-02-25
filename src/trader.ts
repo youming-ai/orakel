@@ -233,7 +233,7 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 
 	const daily = mode === "paper" ? paperDailyState : liveDailyState;
 	if (daily.pnl <= -Number(riskConfig.dailyMaxLossUsdc || 0)) {
-		log.error(`${mode} daily loss limit reached`);
+		log.error(`${mode} daily ${mode === "live" ? "spending cap" : "loss limit"} reached`);
 		return false;
 	}
 
@@ -466,6 +466,10 @@ export async function executeTrade(
 			});
 			liveDailyState.trades++;
 			saveDailyState("live");
+			// Conservative PnL: debit full trade cost as worst-case loss.
+			// Daily loss limit in canTrade() now acts as a spending cap for live mode.
+			const liveTradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+			updatePnl(-liveTradeSize * price, "live");
 		}
 
 		return {
