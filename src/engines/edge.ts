@@ -21,7 +21,7 @@ const REGIME_DISABLED = 999;
 const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultiplier: number }> = {
 	BTC: { winRate: 0.421, edgeMultiplier: 1.5 }, // Worst performer → require 50% more edge
 	ETH: { winRate: 0.469, edgeMultiplier: 1.2 }, // Below avg → require 20% more edge
-	SOL: { winRate: 0.51, edgeMultiplier: 1.5 }, // Degraded to 20% live WR → require 50% more edge
+	SOL: { winRate: 0.51, edgeMultiplier: 1.0 }, // Good performer → standard
 	XRP: { winRate: 0.542, edgeMultiplier: 1.0 }, // Best performer → standard
 };
 
@@ -163,7 +163,7 @@ function regimeMultiplier(
 		if (marketPerf && marketPerf.winRate < 0.45) {
 			return REGIME_DISABLED;
 		}
-		return Number(multipliers?.CHOP ?? 2.0);
+		return Number(multipliers?.CHOP ?? 1.3);
 	}
 
 	if (regime === "RANGE") return Number(multipliers?.RANGE ?? 1.0);
@@ -172,7 +172,7 @@ function regimeMultiplier(
 	const trendDown = regime === "TREND_DOWN";
 	if (trendUp || trendDown) {
 		const aligned = (trendUp && side === "UP") || (trendDown && side === "DOWN");
-		return aligned ? Number(multipliers?.TREND_ALIGNED ?? 0.9) : Number(multipliers?.TREND_OPPOSED ?? 1.4);
+		return aligned ? Number(multipliers?.TREND_ALIGNED ?? 0.8) : Number(multipliers?.TREND_OPPOSED ?? 1.2);
 	}
 
 	return 1;
@@ -243,7 +243,7 @@ export function computeEdge(params: {
 		effectiveEdgeDown -= spreadPenalty;
 	}
 
-	const maxVig = 0.03;
+	const maxVig = 0.04;
 	const vigTooHigh = rawSum > 1 + maxVig;
 
 	return {
@@ -306,17 +306,17 @@ export function decide(params: {
 	// Refined thresholds based on backtest (lowered for better performance)
 	const baseThreshold =
 		phase === "EARLY"
-			? Number(strategy?.edgeThresholdEarly ?? 0.05)
+			? Number(strategy?.edgeThresholdEarly ?? 0.06)
 			: phase === "MID"
 				? Number(strategy?.edgeThresholdMid ?? 0.08)
-				: Number(strategy?.edgeThresholdLate ?? 0.12);
+				: Number(strategy?.edgeThresholdLate ?? 0.10);
 
 	const minProb =
 		phase === "EARLY"
-			? Number(strategy?.minProbEarly ?? 0.6)
+			? Number(strategy?.minProbEarly ?? 0.52)
 			: phase === "MID"
-				? Number(strategy?.minProbMid ?? 0.65)
-				: Number(strategy?.minProbLate ?? 0.72);
+				? Number(strategy?.minProbMid ?? 0.55)
+				: Number(strategy?.minProbLate ?? 0.60);
 
 	if (edgeUp === null || edgeDown === null) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "missing_market_data" };
@@ -342,9 +342,7 @@ export function decide(params: {
 	const adjustedThreshold = baseThreshold * marketMult;
 
 	const multiplier = regimeMultiplier(regime, bestSide, strategy?.regimeMultipliers, marketId);
-	const downBias = strategy.downBiasMultiplier ?? 0;
-	const biasMultiplier = bestSide === "UP" ? (1 + downBias) : (1 - downBias);
-	const threshold = adjustedThreshold * multiplier * biasMultiplier;
+	const threshold = adjustedThreshold * multiplier;
 
 	// Skip regime entirely when multiplier is the disabled sentinel
 	if (multiplier >= REGIME_DISABLED) {

@@ -10,7 +10,6 @@
  * - XRP/SOL: 54%+ WR (best performers)
  */
 
-import type { StrategyConfig } from "./types.ts";
 
 
 // Market-specific adjustments based on backtest
@@ -36,15 +35,14 @@ export const BACKTEST_INSIGHTS = {
 
 	// Edge insights (critical finding: high edge = overconfidence)
 	maxExpectedEdge: 0.25, // Cap maximum expected edge to avoid overconfidence
-	optimalEdgeRange: { min: 0.05, max: 0.15 }, // Sweet spot based on backtest
-	minPriceToBeatDelta: 0.001, // Skip trades where price is within 0.1% of PTB (noise)
+	optimalEdgeRange: { min: 0.05, max: 0.18 }, // Sweet spot based on backtest
 
 	// Volatility insights
 	maxVolatility15m: 0.004, // Skip if vol > 0.4% (losing trades showed high vol)
 	minVolatility15m: 0.0005, // Skip if vol < 0.05% (not enough movement)
 
 	// Regime insights
-	skipChop: true, // Skip CHOP entirely (38.9% WR is unprofitable after vig)
+	skipChop: false, // Disabled globally — per-market skipChop in MARKET_ADJUSTMENTS takes precedence
 	trendAlignedBonus: 0.02, // Extra edge requirement for trend-opposed trades
 };
 
@@ -59,17 +57,12 @@ export function shouldTakeTrade(params: {
 	timeLeft: number;
 	volatility: number;
 	phase: "EARLY" | "MID" | "LATE";
-	priceDelta?: number;
 }): { shouldTrade: boolean; reason?: string } {
-	const { market, regime, edge, timeLeft, volatility, phase, priceDelta } = params;
+	const { market, regime, edge, timeLeft, volatility, phase } = params;
 	const marketAdj = MARKET_ADJUSTMENTS[market] || { skipChop: false };
 	// Skip CHOP entirely for underperforming markets
 	if (regime === "CHOP" && (marketAdj.skipChop || BACKTEST_INSIGHTS.skipChop)) {
 		return { shouldTrade: false, reason: "skip_chop_regime" };
-	}
-	// PTB delta filter: skip trades where price is within noise range of PTB
-	if (priceDelta !== undefined && priceDelta < BACKTEST_INSIGHTS.minPriceToBeatDelta) {
-		return { shouldTrade: false, reason: "ptb_delta_too_small" };
 	}
 	// Time filters
 	if (phase === "EARLY" && timeLeft > BACKTEST_INSIGHTS.earlyEntryMaxTime) {

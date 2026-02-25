@@ -803,6 +803,8 @@ async function processMarket({
 		modelDown: finalDown,
 		marketYes: marketUp,
 		marketNo: marketDown,
+		orderbookImbalance,
+		orderbookSpread: upBookSummary?.spread ?? null,
 	});
 
 	if (edge.vigTooHigh) {
@@ -1235,10 +1237,6 @@ async function main(): Promise<void> {
 			.filter((r) => {
 				const sig = r.signalPayload;
 				if (!sig) return false;
-				const priceDelta =
-					sig.priceToBeat != null && sig.currentPrice != null && sig.priceToBeat !== 0
-						? Math.abs(sig.currentPrice - sig.priceToBeat) / sig.priceToBeat
-						: undefined;
 				const result = shouldTakeTrade({
 					market: r.market.id,
 					regime: r.rec?.regime ?? null,
@@ -1246,7 +1244,6 @@ async function main(): Promise<void> {
 					timeLeft: r.timeLeftMin ?? 0,
 					volatility: r.volatility15m ?? 0,
 					phase: (r.rec?.phase as "EARLY" | "MID" | "LATE") ?? "EARLY",
-					priceDelta,
 				});
 				if (!result.shouldTrade) {
 					log.info(`Skip ${r.market.id}: ${result.reason}`);
