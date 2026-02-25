@@ -104,7 +104,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 		// Derive WebSocket URL from VITE_API_BASE when deployed separately
 		const apiBase = import.meta.env.VITE_API_BASE;
 		if (apiBase) {
-			const u = new URL(apiBase);
+			const u = new URL(apiBase, window.location.origin);
 			const wsProto = u.protocol === 'https:' ? 'wss:' : 'ws:';
 			return `${wsProto}//${u.host}/ws`;
 		}
