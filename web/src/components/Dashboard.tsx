@@ -61,6 +61,8 @@ function DashboardContent() {
 
 	// Convert TradeRecord (live trades) to PaperTradeEntry format for AnalyticsTabs
 	const liveTradesAsPaper = useMemo<PaperTradeEntry[]>(() => {
+		// Ensure trades is an array before mapping
+		if (!Array.isArray(trades)) return [];
 		return trades.map((t: TradeRecord) => ({
 			id: t.orderId,
 			marketId: t.market,
@@ -175,8 +177,8 @@ function DashboardContent() {
 					stats={viewMode === "paper" ? state.paperStats : null}
 					trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
 					byMarket={viewMode === "paper" ? paperByMarket : undefined}
-					config={state.config}
-					markets={state.markets}
+					config={state.config ?? { strategy: { edgeThresholdEarly: 0.06, edgeThresholdMid: 0.08, edgeThresholdLate: 0.1, minProbEarly: 0.52, minProbMid: 0.55, minProbLate: 0.6, blendWeights: { vol: 0.5, ta: 0.5 }, regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 } }, paperRisk: { maxTradeSizeUsdc: 1, limitDiscount: 0.05, dailyMaxLossUsdc: 10, maxOpenPositions: 2, minLiquidity: 15000, maxTradesPerWindow: 1 }, liveRisk: { maxTradeSizeUsdc: 1, limitDiscount: 0.05, dailyMaxLossUsdc: 10, maxOpenPositions: 2, minLiquidity: 15000, maxTradesPerWindow: 1 } }}
+					markets={state.markets ?? []}
 					liveTrades={trades}
 					viewMode={viewMode}
 					stopLoss={viewMode === "paper" ? state.stopLoss : undefined}

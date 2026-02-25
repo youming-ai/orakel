@@ -12,7 +12,7 @@ interface StatCardProps {
 
 export function StatCard({ label, value, color, suffix, icon, trend }: StatCardProps) {
 	return (
-		<div className="flex flex-col gap-1.5 p-4">
+		<div className="flex flex-col gap-1.5 p-4 bg-card">
 			<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
 				{icon && <span className="opacity-70">{icon}</span>}
 				{label}

@@ -163,8 +163,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 				}
 			};
 
-			ws.onerror = (err) => {
-				console.error("[ws] Error:", err);
+			ws.onerror = () => {
+				console.error(`[ws] Connection error (readyState=${ws.readyState})`);
 			};
 
 			ws.onmessage = (event) => {

@@ -248,7 +248,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					)}
 				>
 					{isEntry ? (
-						<span className="flex items-center justify-center gap-2">
+						<span className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap">
 							<span className="font-bold tracking-wide">BUY {m.side}</span>
 							<span className="text-muted-foreground/30">|</span>
 							<span className="font-mono">Edge {((m.edge ?? 0) * 100).toFixed(1)}%</span>

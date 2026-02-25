@@ -112,7 +112,7 @@ export function Header({
 
 	return (
 		<div className="sticky top-3 z-50 flex justify-center px-3 pointer-events-none">
-			<header className="pointer-events-auto flex items-center justify-between px-3 sm:px-4 py-2 rounded-2xl backdrop-blur-xl bg-background/70 border border-border/50 shadow-lg w-full max-w-2xl">
+			<header className="pointer-events-auto flex items-center justify-between px-3 sm:px-4 py-2 rounded-2xl backdrop-blur-xl bg-background/70 border border-border/50 shadow-lg w-full max-w-2xl overflow-hidden">
 				{/* Left: Logo */}
 				<div className="flex items-center gap-1.5 cursor-default select-none shrink-0">
 					<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20">
@@ -122,20 +122,20 @@ export function Header({
 				</div>
 
 				{/* Right: Countdown + Status + Wallet + Mode + Theme */}
-				<div className="flex items-center gap-2 shrink-0">
+				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
 					<div className="flex items-center gap-1.5 shrink-0" title="Time until next 15-minute cycle boundary">
 						<Clock className="size-3 text-muted-foreground" />
 						<span className="font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
 					</div>
 
-					<div className="h-4 w-px bg-border/60 shrink-0" />
+					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
 
 					<button
 						type="button"
 						onClick={canToggle ? handleToggle : undefined}
 						disabled={!canToggle}
 						className={cn(
-							"flex items-center gap-1.5 h-7 px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-lg transition-all shrink-0 border outline-none",
+						"flex items-center gap-1.5 h-7 px-2 sm:px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-lg transition-all shrink-0 border outline-none",
 							!canToggle
 								? "bg-muted text-muted-foreground border-transparent cursor-not-allowed opacity-50"
 								: cfg.className,
@@ -148,14 +148,14 @@ export function Header({
 					</button>
 					{viewMode === "live" && <ConnectWallet />}
 
-					<div className="h-4 w-px bg-border/60 shrink-0" />
+					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
 
 					<div className="flex items-center rounded-lg border border-border overflow-hidden h-7 bg-muted/20 shrink-0">
 						<button
 							type="button"
 							onClick={() => onViewModeChange("paper")}
 							className={cn(
-								"px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
+							"px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
 								viewMode === "paper"
 									? "bg-amber-500/20 text-amber-500"
 									: "bg-transparent text-muted-foreground hover:text-foreground",
@@ -168,7 +168,7 @@ export function Header({
 							type="button"
 							onClick={() => onViewModeChange("live")}
 							className={cn(
-								"px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
+							"px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
 								viewMode === "live"
 									? "bg-emerald-500/20 text-emerald-500"
 									: "bg-transparent text-muted-foreground hover:text-foreground",

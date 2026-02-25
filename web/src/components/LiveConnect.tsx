@@ -39,12 +39,12 @@ export function LiveConnect({ clientReady, walletAddress }: LiveConnectProps) {
 	if (clientReady && walletAddress) {
 		return (
 			<div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-3">
-						<Wallet className="size-4 text-emerald-400" />
-						<div className="flex items-center gap-2">
+				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+					<div className="flex items-center gap-3 min-w-0">
+						<Wallet className="size-4 text-emerald-400 shrink-0" />
+						<div className="flex flex-wrap items-center gap-2 min-w-0">
 							<span className="text-sm text-muted-foreground">Trading client:</span>
-							<span className="font-mono text-sm">{truncateAddress(walletAddress)}</span>
+							<span className="font-mono text-sm truncate">{truncateAddress(walletAddress)}</span>
 							<Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600 text-[11px]">
 								Connected
 							</Badge>
@@ -53,7 +53,7 @@ export function LiveConnect({ clientReady, walletAddress }: LiveConnectProps) {
 					<Button
 						variant="outline"
 						size="sm"
-						className="h-7 px-3 text-xs text-red-400 border-red-500/30 hover:bg-red-500/10"
+						className="h-7 px-3 text-xs text-red-400 border-red-500/30 hover:bg-red-500/10 shrink-0 w-full sm:w-auto"
 						onClick={handleDisconnect}
 						disabled={liveDisconnect.isPending}
 					>

@@ -16,24 +16,25 @@ export const queries = {
 			queryKey: ["state"] as const,
 			queryFn: api.getState,
 			// Only poll if WebSocket is not connected
-			refetchInterval: wsConnected ? false : 2_000,
-			staleTime: wsConnected ? 30_000 : 0,
+			// When WS is connected, rely on real-time updates
+			refetchInterval: wsConnected ? false : 5_000, // Increased from 2_000 to 5_000
+			staleTime: wsConnected ? 30_000 : 1_000, // Increased staleTime when WS connected
 		}),
 
 	trades: (mode: ViewMode) =>
 		queryOptions({
 			queryKey: ["trades", mode] as const,
 			queryFn: () => api.getTrades(mode),
-			refetchInterval: 10_000,
-			staleTime: 8_000,
+			refetchInterval: 15_000, // Increased from 10_000 to 15_000
+			staleTime: 12_000, // Increased from 8_000 to 12_000
 		}),
 
 	paperStats: () =>
 		queryOptions({
 			queryKey: ["paper-stats"] as const,
 			queryFn: api.getPaperStats,
-			refetchInterval: 10_000,
-			staleTime: 8_000,
+			refetchInterval: 15_000, // Increased from 10_000 to 15_000
+			staleTime: 12_000, // Increased from 8_000 to 12_000
 		}),
 };
 

@@ -95,9 +95,9 @@ export function OverviewTab({
             {viewMode === "paper" && todayStats && (
                 <Card className="border-border/50">
                     <CardContent className="py-3">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
+                            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                                <div className="flex items-center gap-2 shrink-0">
                                     <Zap className="size-4 text-amber-400" />
                                     <span className="text-xs text-muted-foreground">Today</span>
                                 </div>
@@ -114,9 +114,9 @@ export function OverviewTab({
                                     {todayStats.trades} trade{todayStats.trades !== 1 ? "s" : ""}
                                 </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">Daily Limit:</span>
-                                <div className="w-24 h-2 bg-muted/30 rounded-full overflow-hidden">
+                            <div className="flex items-center gap-2 pl-6 sm:pl-0">
+                                <span className="text-xs text-muted-foreground shrink-0">Daily Limit:</span>
+                                <div className="w-24 h-2 bg-muted/30 rounded-full overflow-hidden shrink-0">
                                     <div
                                         className={cn(
                                             "h-full rounded-full transition-all",
@@ -161,7 +161,7 @@ export function OverviewTab({
 
                 {/* Standard Stats */}
                 <Card className="flex-1 overflow-hidden border-border/60 shadow-sm">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border/60 bg-card h-full">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-px sm:gap-0 bg-border/60 sm:bg-card sm:divide-x sm:divide-border/60 h-full">
                         <StatCard
                             label="Trades"
                             value={String(mergedStats.totalTrades)}
