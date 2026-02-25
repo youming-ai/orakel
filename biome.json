@@ -1,7 +1,8 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
 	"files": {
-		"includes": ["src/**", "web/src/**"]
+		"includes": ["src/**", "web/src/**"],
+		"ignoreUnknown": false
 	},
 	"formatter": {
 		"enabled": true,
@@ -17,6 +18,12 @@
 			"arrowParentheses": "always"
 		}
 	},
+	"css": {
+		"parser": {
+			"cssModules": false,
+			"tailwindDirectives": true
+		}
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {
@@ -27,7 +34,7 @@
 			},
 			"suspicious": {
 				"noExplicitAny": "warn",
-				"noConsole": "off"
+				"noConsole": "warn"
 			},
 			"style": {
 				"useConst": "error",

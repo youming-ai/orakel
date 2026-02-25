@@ -10,19 +10,9 @@ services:
       - ./data:/app/data
       - ./config.json:/app/config.json:ro
     restart: unless-stopped
-    stdin_open: false
-    tty: true
-
-  web:
-    build: ./web
-    environment:
-      - API_URL=http://bot:9999
-    ports:
-      - "9998:4321"
-    volumes:
-      - ./web/src:/app/src
-      - ./web/public:/app/public
-    depends_on:
-      - bot
-    restart: unless-stopped
-
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9999/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

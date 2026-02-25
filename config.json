@@ -39,6 +39,6 @@
     },
     "maxGlobalTradesPerWindow": 1,
     "minConfidence": 0.50,
-    "skipMarkets": ["BTC"]
+    "skipMarkets": []
   }
 }
