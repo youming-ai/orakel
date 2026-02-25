@@ -484,21 +484,8 @@ const apiRoutes = new Hono()
 	})
 
 	.post("/live/connect", async (c) => {
-		const remoteIp = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "";
-		const isLocal =
-			remoteIp === "" ||
-			remoteIp === "127.0.0.1" ||
-			remoteIp === "::1" ||
-			remoteIp.startsWith("172.") ||
-			remoteIp.startsWith("10.");
-		if (!isLocal) {
-			return c.json(
-				{
-					ok: false as const,
-					error: "Forbidden: wallet connect only allowed from local/Docker network",
-				},
-				403,
-			);
+		if (!env.API_TOKEN) {
+			log.warn("WARNING: /live/connect called without API_TOKEN configured. Set API_TOKEN env var to protect this endpoint.");
 		}
 		try {
 			const body = await c.req.json();
@@ -586,7 +573,12 @@ const RATE_LIMIT = 60;
 const RATE_WINDOW_MS = 60_000;
 
 const rateLimit = createMiddleware(async (c, next) => {
-	const key = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "anon";
+	// Use real socket IP, but trust x-forwarded-for when request comes from local/Docker network
+	const socketIp = (c.env as { requestIP?: (req: Request) => { address: string } | null })?.requestIP?.(c.req.raw)?.address ?? "";
+	const isLocalSocket = !socketIp || socketIp === "127.0.0.1" || socketIp === "::1" || socketIp === "::ffff:127.0.0.1" || socketIp.startsWith("172.") || socketIp.startsWith("10.");
+	const key = isLocalSocket
+		? (c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || socketIp || "local")
+		: socketIp;
 	const now = Date.now();
 	let bucket = rateBuckets.get(key);
 	if (!bucket || now - bucket.lastRefill >= RATE_WINDOW_MS) {
