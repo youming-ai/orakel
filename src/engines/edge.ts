@@ -21,7 +21,7 @@ const REGIME_DISABLED = 999;
 const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultiplier: number }> = {
 	BTC: { winRate: 0.421, edgeMultiplier: 1.5 }, // Worst performer → require 50% more edge
 	ETH: { winRate: 0.469, edgeMultiplier: 1.2 }, // Below avg → require 20% more edge
-	SOL: { winRate: 0.51, edgeMultiplier: 1.0 }, // Good performer → standard
+	SOL: { winRate: 0.51, edgeMultiplier: 1.5 }, // Degraded to 20% live WR → require 50% more edge
 	XRP: { winRate: 0.542, edgeMultiplier: 1.0 }, // Best performer → standard
 };
 
@@ -342,7 +342,9 @@ export function decide(params: {
 	const adjustedThreshold = baseThreshold * marketMult;
 
 	const multiplier = regimeMultiplier(regime, bestSide, strategy?.regimeMultipliers, marketId);
-	const threshold = adjustedThreshold * multiplier;
+	const downBias = strategy.downBiasMultiplier ?? 0;
+	const biasMultiplier = bestSide === "UP" ? (1 + downBias) : (1 - downBias);
+	const threshold = adjustedThreshold * multiplier * biasMultiplier;
 
 	// Skip regime entirely when multiplier is the disabled sentinel
 	if (multiplier >= REGIME_DISABLED) {

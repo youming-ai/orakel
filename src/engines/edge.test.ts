@@ -606,13 +606,13 @@ describe("decide", () => {
 			marketId: "SOL",
 		});
 
-		expect(result.reason).toBe("edge_below_0.160");
+		expect(result.reason).toBe("edge_below_0.240");
 	});
 
 	it.each([
 		["BTC", "edge_below_0.120"],
 		["ETH", "edge_below_0.096"],
-		["SOL", "edge_below_0.080"],
+		["SOL", "edge_below_0.120"],
 		["XRP", "edge_below_0.080"],
 	])("applies market multipliers for %s", (marketId, reason) => {
 		const result = decide({
@@ -644,5 +644,61 @@ describe("decide", () => {
 		});
 
 		expect(result.reason).toBe(reason);
+	});
+});
+
+describe("decide downBiasMultiplier", () => {
+	it("raises threshold for UP trades when downBiasMultiplier is set", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.081,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			regime: "RANGE",
+			strategy: makeStrategy({ downBiasMultiplier: 0.03 }),
+		});
+		// UP threshold = 0.08 * 1.0 * 1.03 = 0.0824 → 0.081 < 0.0824 → NO_TRADE
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toContain("edge_below");
+	});
+
+	it("lowers threshold for DOWN trades when downBiasMultiplier is set", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeDown: 0.078,
+			edgeUp: 0.01,
+			modelUp: 0.2,
+			modelDown: 0.8,
+			regime: "RANGE",
+			strategy: makeStrategy({ downBiasMultiplier: 0.03 }),
+		});
+		// DOWN threshold = 0.08 * 1.0 * 0.97 = 0.0776 → 0.078 > 0.0776 → ENTER
+		expect(result.action).toBe("ENTER");
+		expect(result.side).toBe("DOWN");
+	});
+
+	it("has no effect when downBiasMultiplier is zero or absent", () => {
+		const withZero = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.081,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			regime: "RANGE",
+			strategy: makeStrategy({ downBiasMultiplier: 0 }),
+		});
+		const withoutField = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.081,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+		});
+		// Both should ENTER since threshold is 0.08 and edge is 0.081
+		expect(withZero.action).toBe("ENTER");
+		expect(withoutField.action).toBe("ENTER");
 	});
 });
