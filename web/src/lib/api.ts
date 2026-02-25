@@ -11,6 +11,15 @@ async function post<T>(path: string): Promise<T> {
 	return res.json();
 }
 
+async function postJson<T>(path: string, data: unknown): Promise<T> {
+	const res = await fetch(`${API_BASE}${path}`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(data),
+	});
+	return res.json();
+}
+
 async function put<T>(path: string, data: unknown): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, {
 		method: "PUT",
@@ -32,6 +41,9 @@ export const api = {
 	liveStop: () => post<{ ok: boolean }>("/live/stop"),
 	liveCancel: () => post<{ ok: boolean }>("/live/cancel"),
 	paperClearStop: () => post<{ ok: boolean }>("/paper/clear-stop"),
+	liveConnect: (privateKey: string) =>
+		postJson<{ ok: boolean; address?: string; error?: string }>("/live/connect", { privateKey }),
+	liveDisconnect: () => post<{ ok: boolean }>("/live/disconnect"),
 };
 
 // ============ Stop Loss Types ============

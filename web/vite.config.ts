@@ -15,6 +15,10 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": apiTarget,
+      "/ws": {
+        target: apiTarget,
+        ws: true,
+      },
     },
     host: true,
     allowedHosts: true,

@@ -7,6 +7,7 @@ import { useWebSocket } from "@/lib/ws";
 import { AnalyticsTabs } from "./AnalyticsTabs";
 import { Header } from "./Header";
 import { Web3Provider } from "./Web3Provider";
+import { LiveConnect } from "./LiveConnect";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -132,6 +133,12 @@ function DashboardContent() {
         onLiveToggle={handleLiveToggle}
       />
       <main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
+        {viewMode === "live" && (
+          <LiveConnect
+            clientReady={state.liveWallet?.clientReady ?? false}
+            walletAddress={state.liveWallet?.address ?? null}
+          />
+        )}
         <AnalyticsTabs
           stats={viewMode === "paper" ? state.paperStats : null}
           trades={viewMode === "paper" ? paperTrades : []}
