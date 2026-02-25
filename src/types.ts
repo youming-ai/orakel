@@ -59,6 +59,7 @@ export interface StrategyConfig {
 	};
 	skipMarkets?: string[];
 	minConfidence?: number;
+	downBiasMultiplier?: number;
 }
 
 export interface AppConfig {

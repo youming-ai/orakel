@@ -31,6 +31,7 @@ const STRATEGY_DEFAULTS: {
 	regimeMultipliers: { CHOP: number; RANGE: number; TREND_ALIGNED: number; TREND_OPPOSED: number };
 	skipMarkets: string[];
 	minConfidence: number;
+	downBiasMultiplier: number;
 } = {
 	edgeThresholdEarly: 0.08,
 	edgeThresholdMid: 0.1,
@@ -42,6 +43,7 @@ const STRATEGY_DEFAULTS: {
 	regimeMultipliers: { CHOP: 1.5, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.3 },
 	skipMarkets: [],
 	minConfidence: 0.5,
+	downBiasMultiplier: 0.03,
 };
 
 const RiskConfigSchema = z
@@ -82,6 +84,7 @@ const StrategyConfigSchema = z
 			.optional(),
 		skipMarkets: z.array(z.string()).optional(),
 		minConfidence: z.coerce.number().optional(),
+		downBiasMultiplier: z.coerce.number().optional(),
 	})
 	.partial()
 	.transform((value) => ({
@@ -247,6 +250,7 @@ export const CONFIG: AppConfig = {
 		regimeMultipliers: FILE_STRATEGY.regimeMultipliers,
 		skipMarkets: FILE_STRATEGY.skipMarkets,
 		minConfidence: FILE_STRATEGY.minConfidence,
+		downBiasMultiplier: FILE_STRATEGY.downBiasMultiplier,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -276,6 +280,7 @@ export function reloadConfig(): AppConfig {
 		regimeMultipliers: fileStrategy.regimeMultipliers,
 		skipMarkets: fileStrategy.skipMarkets,
 		minConfidence: fileStrategy.minConfidence,
+		downBiasMultiplier: fileStrategy.downBiasMultiplier,
 	};
 
 	CONFIG.risk = buildRiskConfig(filePaperRisk, fileRisk);
