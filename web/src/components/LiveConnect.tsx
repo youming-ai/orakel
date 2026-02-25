@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLiveConnect, useLiveDisconnect } from "@/lib/queries";
+import { ConnectWallet } from "./ConnectWallet";
 
 interface LiveConnectProps {
 	clientReady: boolean;
@@ -38,27 +39,33 @@ export function LiveConnect({ clientReady, walletAddress }: LiveConnectProps) {
 
 	if (clientReady && walletAddress) {
 		return (
-			<div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-				<div className="flex items-center gap-3">
-					<Wallet className="size-4 text-emerald-400" />
-					<div className="flex items-center gap-2">
-						<span className="text-sm text-muted-foreground">Live wallet:</span>
-						<span className="font-mono text-sm">{truncateAddress(walletAddress)}</span>
-						<Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600 text-[11px]">
-							Connected
-						</Badge>
+			<div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 space-y-2">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-3">
+						<Wallet className="size-4 text-emerald-400" />
+						<div className="flex items-center gap-2">
+							<span className="text-sm text-muted-foreground">Trading client:</span>
+							<span className="font-mono text-sm">{truncateAddress(walletAddress)}</span>
+							<Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600 text-[11px]">
+								Connected
+							</Badge>
+						</div>
 					</div>
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-7 px-3 text-xs text-red-400 border-red-500/30 hover:bg-red-500/10"
+						onClick={handleDisconnect}
+						disabled={liveDisconnect.isPending}
+					>
+						<LogOut className="size-3" />
+						{liveDisconnect.isPending ? "Disconnecting..." : "Disconnect"}
+					</Button>
 				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					className="h-7 px-3 text-xs text-red-400 border-red-500/30 hover:bg-red-500/10"
-					onClick={handleDisconnect}
-					disabled={liveDisconnect.isPending}
-				>
-					<LogOut className="size-3" />
-					{liveDisconnect.isPending ? "Disconnecting..." : "Disconnect"}
-				</Button>
+				<div className="flex items-center justify-between pt-2 border-t border-emerald-500/10">
+					<span className="text-xs text-muted-foreground">Browser wallet</span>
+					<ConnectWallet />
+				</div>
 			</div>
 		);
 	}
@@ -101,6 +108,10 @@ export function LiveConnect({ clientReady, walletAddress }: LiveConnectProps) {
 			{liveConnect.data && !liveConnect.data.ok && (
 				<p className="text-xs text-red-400">{liveConnect.data.error ?? "Connection failed"}</p>
 			)}
+			<div className="flex items-center justify-between pt-2 border-t border-border/50">
+				<span className="text-xs text-muted-foreground">Browser wallet</span>
+				<ConnectWallet />
+			</div>
 		</div>
 	);
 }

@@ -2,7 +2,6 @@ import { Activity, Clock, Loader2, Moon, Play, Sun, Wallet, Zap } from "lucide-r
 import { useEffect, useState } from "react";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { ConnectWallet } from "./ConnectWallet";
 
 interface HeaderProps {
 	viewMode: "paper" | "live";
@@ -153,16 +152,8 @@ export function Header({
 					</div>
 				</div>
 
-				{/* Right: Countdown + Status + Wallet */}
+				{/* Right: Countdown + Status + Theme */}
 				<div className="flex items-center gap-2 shrink-0">
-					<button
-						type="button"
-						onClick={toggleTheme}
-						className="flex items-center justify-center size-7 rounded-lg border border-border bg-muted/20 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors outline-none shrink-0"
-						title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-					>
-						{theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
-					</button>
 					<div className="flex items-center gap-1.5 shrink-0" title="Time until next 15-minute cycle boundary">
 						<Clock className="size-3 text-muted-foreground" />
 						<span className="font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
@@ -187,12 +178,16 @@ export function Header({
 						<span>{!canToggle ? "No Wallet" : cfg.label}</span>
 					</button>
 
-					{viewMode === "live" && (
-						<>
-							<div className="h-4 w-px bg-border/60 shrink-0" />
-							<ConnectWallet />
-						</>
-					)}
+					<div className="h-4 w-px bg-border/60 shrink-0" />
+
+					<button
+						type="button"
+						onClick={toggleTheme}
+						className="flex items-center justify-center size-7 rounded-lg border border-border bg-muted/20 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors outline-none shrink-0"
+						title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+					>
+						{theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+					</button>
 				</div>
 			</header>
 		</div>

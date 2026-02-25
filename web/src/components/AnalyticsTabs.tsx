@@ -1,4 +1,4 @@
-import { BarChart3, Clock, LayoutDashboard, List, Settings2 } from "lucide-react";
+import { BarChart3, LayoutDashboard, List, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
@@ -22,7 +22,6 @@ import type { ViewMode } from "@/lib/types";
 
 import { OverviewTab } from "./analytics/OverviewTab";
 import { MarketsTab } from "./analytics/MarketsTab";
-import { TimingTab } from "./analytics/TimingTab";
 import { TradesTab } from "./analytics/TradesTab";
 import { StrategyTab, type StrategyFormValues } from "./analytics/StrategyTab";
 
@@ -320,9 +319,6 @@ export function AnalyticsTabs({
 						<TabsTrigger value="markets">
 							<BarChart3 className="size-3.5 mr-1.5" /> Markets
 						</TabsTrigger>
-						<TabsTrigger value="timing">
-							<Clock className="size-3.5 mr-1.5" /> Timing
-						</TabsTrigger>
 						<TabsTrigger value="trades">
 							<List className="size-3.5 mr-1.5" /> Trades
 						</TabsTrigger>
@@ -350,20 +346,15 @@ export function AnalyticsTabs({
 				<MarketsTab marketRows={marketRows} />
 			</TabsContent>
 
-			<TabsContent value="timing" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
-				<TimingTab
-					tradesLength={trades.length}
-					timingData={timingData}
-					sideTotal={sideTotal}
-					sideData={sideData}
-				/>
-			</TabsContent>
-
 			<TabsContent value="trades" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
 				<TradesTab
 					viewMode={viewMode}
 					trades={trades}
 					liveTrades={liveTrades}
+					tradesLength={trades.length}
+					timingData={timingData}
+					sideTotal={sideTotal}
+					sideData={sideData}
 				/>
 			</TabsContent>
 
