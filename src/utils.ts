@@ -78,3 +78,18 @@ export function appendCsvRow(filePath: string, header: string[], row: (string | 
 
 	fs.appendFileSync(filePath, `${line}\n`, "utf8");
 }
+
+/**
+ * Estimate Polymarket taker fee for 15-minute crypto markets.
+ * Formula: feeRate × (p × (1 - p))^exponent
+ * For 15-min/5-min crypto: feeRate = 0.25, exponent = 2
+ * @param price - Market price (0-1)
+ * @param makerRebate - Maker rebate fraction (0.2 = 20% for 15-min markets)
+ * @returns Fee as a fraction of trade amount
+ */
+export function estimatePolymarketFee(price: number, makerRebate: number = 0): number {
+	const FEE_RATE = 0.25;
+	const EXPONENT = 2;
+	if (price <= 0 || price >= 1) return 0;
+	return FEE_RATE * (price * (1 - price)) ** EXPONENT * (1 - makerRebate);
+}

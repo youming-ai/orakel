@@ -108,6 +108,8 @@ export interface EdgeResult {
 	arbitrage: boolean;
 	overpriced: boolean;
 	vigTooHigh?: boolean;
+	feeEstimateUp?: number;
+	feeEstimateDown?: number;
 }
 
 export type Phase = "EARLY" | "MID" | "LATE";

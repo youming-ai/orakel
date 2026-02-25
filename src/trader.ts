@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import type { ApiKeyCreds } from "@polymarket/clob-client";
-import { ClobClient, Side } from "@polymarket/clob-client";
+import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
 import { CONFIG } from "./config.ts";
 import { PERSIST_BACKEND, statements } from "./db.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
 import { addPaperTrade } from "./paperStats.ts";
-import { emitTradeExecuted } from "./state.ts";
+import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "./state.ts";
 import type { DailyState, MarketConfig, RiskConfig, TradeResult, TradeSignal } from "./types.ts";
 import { getCandleWindowTiming } from "./utils.ts";
 
@@ -39,6 +39,115 @@ let liveDailyState: DailyState = {
 	pnl: 0,
 	trades: 0,
 };
+
+// ============ Heartbeat & Open Order Management ============
+// Polymarket cancels all open orders if no heartbeat received within 10s (5s buffer).
+// We send heartbeats every 5 seconds while live trading has active GTD orders.
+// FOK orders fill immediately and don't need heartbeat.
+const openGtdOrders = new Set<string>(); // Track open GTD order IDs
+let heartbeatId: string | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatFailures = 0;
+const MAX_HEARTBEAT_FAILURES = 3;
+
+// Reconnection state for heartbeat
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+
+export function startHeartbeat(): boolean {
+	if (heartbeatTimer) return true; // already running
+	if (!client) {
+		log.warn("Cannot start heartbeat: client not initialized");
+		return false;
+	}
+	heartbeatFailures = 0;
+	reconnectAttempts = 0;
+	heartbeatTimer = setInterval(async () => {
+		if (!client) {
+			stopHeartbeat();
+			return;
+		}
+		// Only send heartbeat if we have open GTD orders
+		if (openGtdOrders.size === 0) {
+			return;
+		}
+		try {
+			const resp = await client.postHeartbeat(heartbeatId ?? undefined);
+			heartbeatId = resp.heartbeat_id;
+			heartbeatFailures = 0;
+			reconnectAttempts = 0; // Reset reconnect attempts on success
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			heartbeatFailures++;
+			if (heartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+				log.error(`Heartbeat failed ${heartbeatFailures} consecutive times, stopping live trading:`, msg);
+				stopHeartbeat();
+				// Stop live trading to prevent further orders from being cancelled
+				setLiveRunning(false);
+
+				// Attempt reconnection with exponential backoff
+				if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+					const backoffMs = Math.min(30_000, 5_000 * 2 ** reconnectAttempts);
+					reconnectAttempts++;
+					log.info(`Attempting heartbeat reconnection ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${backoffMs}ms`);
+					reconnectTimer = setTimeout(async () => {
+						if (client && isLiveRunning()) {
+							log.info("Attempting to restart heartbeat...");
+							const success = startHeartbeat();
+							if (success) {
+								log.info("Heartbeat reconnection successful");
+								reconnectAttempts = 0;
+							}
+						}
+					}, backoffMs);
+				} else {
+					log.error("Max heartbeat reconnection attempts reached, giving up");
+				}
+			} else {
+				log.warn(`Heartbeat failed (${heartbeatFailures}/${MAX_HEARTBEAT_FAILURES}):`, msg);
+			}
+		}
+	}, 5_000);
+	log.info("Heartbeat started");
+	return true;
+}
+
+export function stopHeartbeat(): void {
+	const wasRunning = heartbeatTimer !== null;
+	if (heartbeatTimer) {
+		clearInterval(heartbeatTimer);
+		heartbeatTimer = null;
+	}
+	if (reconnectTimer) {
+		clearTimeout(reconnectTimer);
+		reconnectTimer = null;
+	}
+	heartbeatId = null;
+	heartbeatFailures = 0;
+	reconnectAttempts = 0;
+	openGtdOrders.clear(); // Clear open order tracking
+	if (wasRunning) log.info("Heartbeat stopped");
+}
+
+/** Register a GTD order for heartbeat tracking (FOK orders should not be tracked) */
+export function registerOpenGtdOrder(orderId: string): void {
+	openGtdOrders.add(orderId);
+	log.debug(`Registered GTD order ${orderId.slice(0, 12)}... (total open: ${openGtdOrders.size})`);
+}
+
+/** Unregister a GTD order (e.g., when filled, cancelled, or expired) */
+export function unregisterOpenGtdOrder(orderId: string): void {
+	const deleted = openGtdOrders.delete(orderId);
+	if (deleted) {
+		log.debug(`Unregistered GTD order ${orderId.slice(0, 12)}... (total open: ${openGtdOrders.size})`);
+	}
+}
+
+/** Get count of currently open GTD orders */
+export function getOpenGtdOrderCount(): number {
+	return openGtdOrders.size;
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
 	if (value && typeof value === "object") {
@@ -172,6 +281,7 @@ export async function connectWallet(privateKey: string): Promise<{ address: stri
 }
 
 export function disconnectWallet(): void {
+	stopHeartbeat();
 	wallet = null;
 	client = null;
 	log.info("Wallet disconnected");
@@ -416,22 +526,67 @@ export async function executeTrade(
 	}
 
 	try {
-		const orderArgs = {
-			tokenID: tokenId,
-			price,
-			size: Number(riskConfig.maxTradeSizeUsdc || 0),
-			side: Side.BUY,
-		};
-
-		const tickSize = "0.01";
 		const negRisk = false;
+		const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+		const isLatePhase = signal.phase === "LATE";
+		const isHighConfidence = signal.strength === "STRONG" || signal.strength === "GOOD";
 
-		log.info("Posting order:", JSON.stringify(orderArgs));
+		let result: unknown;
 
-		const result: unknown = await client.createAndPostOrder(orderArgs, {
-			tickSize,
-			negRisk,
-		});
+		if (isLatePhase && isHighConfidence) {
+			// LATE phase + high confidence → FOK for immediate fill
+			log.info(`Posting FOK market order: ${side} amount=${tradeSize} worst-price=${price} (token: ${tokenId})`);
+			result = await client.createAndPostMarketOrder(
+				{
+					tokenID: tokenId,
+					side: Side.BUY,
+					amount: tradeSize,
+					price, // worst-price limit (slippage protection)
+				},
+				{ negRisk },
+				OrderType.FOK,
+			);
+			// FOK is fill-or-kill: if no liquidity at worst-price, order is rejected.
+			// Check for empty result indicating rejection.
+			const fokResult = asRecord(result);
+			if (!fokResult.orderID && !fokResult.id) {
+				log.warn(`FOK order rejected (no fill): ${side} amount=${tradeSize} worst-price=${price}`);
+				return { success: false, reason: "fok_no_fill" };
+			}
+		} else {
+			// EARLY/MID phase → GTD with post-only for maker rebate.
+			// postOnly guarantees maker status; if order would take, it is rejected.
+			// No taker fallback — conservative: skip rather than pay taker fees.
+			const timing = getCandleWindowTiming(15);
+			// Dynamic expiration buffer: minimum 10s, max 50% of remaining time
+			// This ensures orders don't expire too early in LATE phase
+			const bufferMs = Math.max(10_000, Math.min(timing.remainingMs / 2, 60_000));
+			const expiration = Math.floor((timing.endMs - bufferMs) / 1000);
+			const nowSec = Math.floor(Date.now() / 1000);
+			if (expiration <= nowSec) {
+				log.warn(`GTD expiration in the past (${expiration} <= ${nowSec}), skipping trade`);
+				return { success: false, reason: "gtd_expiration_invalid" };
+			}
+
+			const orderArgs = {
+				tokenID: tokenId,
+				price,
+				size: tradeSize,
+				side: Side.BUY,
+				expiration,
+			};
+
+			log.info(
+				`Posting GTD+postOnly order: ${side} size=${tradeSize} price=${price} exp=${expiration}s (token: ${tokenId})`,
+			);
+			result = await client.createAndPostOrder(
+				orderArgs,
+				{ negRisk }, // tickSize auto-resolved by SDK
+				OrderType.GTD,
+				false, // deferExec
+				true, // postOnly — guarantee maker, get 20% fee rebate
+			);
+		}
 		const resultObj = asRecord(result);
 		const resultOrderId = typeof resultObj.orderID === "string" ? resultObj.orderID : undefined;
 		const resultId = typeof resultObj.id === "string" ? resultObj.id : undefined;
@@ -454,6 +609,7 @@ export async function executeTrade(
 		);
 
 		if (resultOrderId || resultId) {
+			const finalOrderId = resultOrderId || resultId || "unknown";
 			emitTradeExecuted({
 				marketId: signal.marketId,
 				mode,
@@ -461,11 +617,19 @@ export async function executeTrade(
 				price,
 				size: Number(riskConfig.maxTradeSizeUsdc || 0),
 				timestamp: liveTradeTimestamp,
-				orderId: resultOrderId || resultId || "unknown",
+				orderId: finalOrderId,
 				status: resultStatus || "placed",
 			});
 			liveDailyState.trades++;
 			saveDailyState("live");
+
+			// Start heartbeat and track order ONLY for GTD orders
+			// FOK orders fill immediately and don't need heartbeat
+			if (!isLatePhase || !isHighConfidence) {
+				registerOpenGtdOrder(finalOrderId);
+				startHeartbeat();
+			}
+
 			// Conservative PnL: debit full trade cost as worst-case loss.
 			// Daily loss limit in canTrade() now acts as a spending cap for live mode.
 			const liveTradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);

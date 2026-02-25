@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clamp, formatNumber, formatPct, normalCDF } from "./utils.ts";
+import { clamp, estimatePolymarketFee, formatNumber, formatPct, getCandleWindowTiming, normalCDF } from "./utils.ts";
 
 describe("clamp", () => {
 	it("should return value when within range", () => {
@@ -148,5 +148,136 @@ describe("formatPct", () => {
 
 	it("should format with default digits=2", () => {
 		expect(formatPct(0.12345)).toBe("12.35%");
+	});
+});
+
+describe("getCandleWindowTiming", () => {
+	it("should return all expected timing fields", () => {
+		const result = getCandleWindowTiming(15);
+
+		expect(result).toHaveProperty("startMs");
+		expect(result).toHaveProperty("endMs");
+		expect(result).toHaveProperty("elapsedMs");
+		expect(result).toHaveProperty("remainingMs");
+		expect(result).toHaveProperty("elapsedMinutes");
+		expect(result).toHaveProperty("remainingMinutes");
+	});
+
+	it("should align 15-minute windows to exact boundaries", () => {
+		const result = getCandleWindowTiming(15);
+		const windowMs = 15 * 60_000;
+
+		expect(result.startMs % windowMs).toBe(0);
+		expect(result.endMs % windowMs).toBe(0);
+		expect(result.endMs - result.startMs).toBe(windowMs);
+	});
+
+	it("should align 1-minute windows to exact boundaries", () => {
+		const result = getCandleWindowTiming(1);
+		const windowMs = 60_000;
+
+		expect(result.startMs % windowMs).toBe(0);
+		expect(result.endMs % windowMs).toBe(0);
+		expect(result.endMs - result.startMs).toBe(windowMs);
+	});
+
+	it("should always have start before end", () => {
+		const result = getCandleWindowTiming(15);
+		expect(result.startMs).toBeLessThan(result.endMs);
+	});
+
+	it("should have elapsed and remaining adding up to window length", () => {
+		const result = getCandleWindowTiming(15);
+		expect(result.elapsedMs + result.remainingMs).toBeCloseTo(15 * 60_000, -2);
+	});
+
+	it("should never return negative elapsed time", () => {
+		const result = getCandleWindowTiming(15);
+		expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
+	});
+
+	it("should never return negative remaining time", () => {
+		const result = getCandleWindowTiming(15);
+		expect(result.remainingMs).toBeGreaterThanOrEqual(0);
+	});
+
+	it("should convert elapsed milliseconds to minutes consistently", () => {
+		const result = getCandleWindowTiming(15);
+		expect(result.elapsedMinutes).toBe(result.elapsedMs / 60_000);
+	});
+
+	it("should convert remaining milliseconds to minutes consistently", () => {
+		const result = getCandleWindowTiming(15);
+		expect(result.remainingMinutes).toBe(result.remainingMs / 60_000);
+	});
+
+	it("should ensure current time is inside [startMs, endMs)", () => {
+		const result = getCandleWindowTiming(15);
+		const nowMs = Date.now();
+
+		expect(nowMs).toBeGreaterThanOrEqual(result.startMs);
+		expect(nowMs).toBeLessThan(result.endMs);
+	});
+
+	it("should keep elapsed and remaining within valid bounds", () => {
+		const result = getCandleWindowTiming(15);
+		const windowMs = 15 * 60_000;
+
+		expect(result.elapsedMs).toBeLessThan(windowMs);
+		expect(result.remainingMs).toBeLessThanOrEqual(windowMs);
+	});
+
+	it("should produce correct window width for custom window sizes", () => {
+		const cases = [2, 5, 7, 30];
+
+		for (const minutes of cases) {
+			const result = getCandleWindowTiming(minutes);
+			expect(result.endMs - result.startMs).toBe(minutes * 60_000);
+		}
+	});
+});
+
+describe("estimatePolymarketFee", () => {
+	it("returns 0 for price at boundary 0", () => {
+		expect(estimatePolymarketFee(0)).toBe(0);
+	});
+
+	it("returns 0 for price at boundary 1", () => {
+		expect(estimatePolymarketFee(1)).toBe(0);
+	});
+
+	it("computes taker fee at price 0.5 (max fee point)", () => {
+		// 0.25 × (0.5 × 0.5)^2 = 0.25 × 0.0625 = 0.015625
+		expect(estimatePolymarketFee(0.5)).toBeCloseTo(0.015625, 10);
+	});
+
+	it("computes maker fee with 20% rebate at price 0.5", () => {
+		// 0.25 × (0.5 × 0.5)^2 × 0.8 = 0.0125
+		expect(estimatePolymarketFee(0.5, 0.2)).toBeCloseTo(0.0125, 10);
+	});
+
+	it("computes fee at asymmetric price 0.8", () => {
+		// 0.25 × (0.8 × 0.2)^2 = 0.25 × 0.0256 = 0.0064
+		expect(estimatePolymarketFee(0.8)).toBeCloseTo(0.0064, 10);
+	});
+
+	it("computes fee at asymmetric price 0.2", () => {
+		// Symmetric with price 0.8
+		expect(estimatePolymarketFee(0.2)).toBeCloseTo(estimatePolymarketFee(0.8), 10);
+	});
+
+	it("fee is symmetric around 0.5", () => {
+		expect(estimatePolymarketFee(0.3)).toBeCloseTo(estimatePolymarketFee(0.7), 10);
+		expect(estimatePolymarketFee(0.1)).toBeCloseTo(estimatePolymarketFee(0.9), 10);
+	});
+
+	it("fee decreases as price moves away from 0.5", () => {
+		expect(estimatePolymarketFee(0.5)).toBeGreaterThan(estimatePolymarketFee(0.6));
+		expect(estimatePolymarketFee(0.6)).toBeGreaterThan(estimatePolymarketFee(0.7));
+		expect(estimatePolymarketFee(0.7)).toBeGreaterThan(estimatePolymarketFee(0.8));
+	});
+
+	it("returns 0 for negative prices", () => {
+		expect(estimatePolymarketFee(-0.1)).toBe(0);
 	});
 });
