@@ -296,8 +296,8 @@ describe("computeEdge", () => {
 			orderbookImbalance: 0.5,
 		});
 
-		expect(result.effectiveEdgeUp).toBeCloseTo(0.19, 10);
-		expect(result.effectiveEdgeDown).toBeCloseTo(-0.2, 10);
+		expect(result.effectiveEdgeUp).toBeCloseTo(0.174375, 4);
+		expect(result.effectiveEdgeDown).toBeCloseTo(-0.215625, 4);
 	});
 
 	it("reduces effective DOWN edge on strong negative imbalance", () => {
@@ -309,8 +309,8 @@ describe("computeEdge", () => {
 			orderbookImbalance: -0.5,
 		});
 
-		expect(result.effectiveEdgeDown).toBeCloseTo(0.19, 10);
-		expect(result.effectiveEdgeUp).toBeCloseTo(-0.2, 10);
+		expect(result.effectiveEdgeDown).toBeCloseTo(0.174375, 4);
+		expect(result.effectiveEdgeUp).toBeCloseTo(-0.215625, 4);
 	});
 
 	it("applies spread penalty to both sides when spread is wide", () => {
@@ -323,8 +323,8 @@ describe("computeEdge", () => {
 			orderbookSpreadDown: 0.06,
 		});
 
-		expect(result.effectiveEdgeUp).toBeCloseTo(0.08, 10);
-		expect(result.effectiveEdgeDown).toBeCloseTo(-0.12, 10);
+		expect(result.effectiveEdgeUp).toBeCloseTo(0.064375, 4);
+		expect(result.effectiveEdgeDown).toBeCloseTo(-0.135625, 4);
 	});
 
 	it("clamps market prices into [0, 1]", () => {
@@ -339,7 +339,7 @@ describe("computeEdge", () => {
 		expect(result.marketDown).toBe(0);
 	});
 
-	it("keeps effective edges unchanged without orderbook penalties", () => {
+	it("deducts fee from effective edges even without orderbook penalties", () => {
 		const result = computeEdge({
 			modelUp: 0.62,
 			modelDown: 0.38,
@@ -350,8 +350,13 @@ describe("computeEdge", () => {
 			orderbookSpreadDown: 0.02,
 		});
 
-		expect(result.effectiveEdgeUp).toBeCloseTo(result.edgeUp as number, 10);
-		expect(result.effectiveEdgeDown).toBeCloseTo(result.edgeDown as number, 10);
+		// Fee deducted: effectiveEdge = rawEdge - takerFee (no maker rebate)
+		const feeUp = 0.25 * (0.52 * 0.48) ** 2;
+		const feeDown = 0.25 * (0.48 * 0.52) ** 2;
+		expect(result.effectiveEdgeUp).toBeCloseTo((result.edgeUp as number) - feeUp, 10);
+		expect(result.effectiveEdgeDown).toBeCloseTo((result.edgeDown as number) - feeDown, 10);
+		expect(result.feeEstimateUp).toBeCloseTo(feeUp, 10);
+		expect(result.feeEstimateDown).toBeCloseTo(feeDown, 10);
 	});
 });
 

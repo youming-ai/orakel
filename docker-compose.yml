@@ -1,6 +1,10 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        - BUILD_UID=${UID:-1000}
+        - BUILD_GID=${GID:-1000}
     env_file: .env
     environment:
       - PAPER_MODE=${PAPER_MODE:-true}
