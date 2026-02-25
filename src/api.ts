@@ -593,7 +593,7 @@ const requireAuth = createMiddleware(async (c, next) => {
 });
 
 const rateBuckets = new Map<string, { tokens: number; lastRefill: number }>();
-const RATE_LIMIT = 60;
+const RATE_LIMIT = 180;
 const RATE_WINDOW_MS = 60_000;
 
 const rateLimit = createMiddleware(async (c, next) => {

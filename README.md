@@ -102,10 +102,22 @@ cd web && bun run dev
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PAPER_MODE` | `true` | 模拟交易模式（不花真钱）|
-| `POLYGON_RPC_URL` | `https://polygon-rpc.com` | Polygon RPC 端点 |
-| `POLYGON_WSS_URL` | - | Polygon WebSocket RPC |
-| `POLYMARKET_LIVE_WS_URL` | `wss://ws-live-data.polymarket.com` | Polymarket 实时数据 WS |
 | `API_PORT` | `9999` | API 服务端口 |
+| `API_TOKEN` | - | API 认证令牌（保护变更接口）|
+| `ACTIVE_MARKETS` | - | 启用的市场（逗号分隔，如 `BTC,ETH,SOL,XRP`）|
+| `LOG_LEVEL` | `info` | 日志级别（debug/info/warn/error/silent）|
+| `PERSIST_BACKEND` | `sqlite` | 存储后端（sqlite/csv/dual）|
+| `READ_BACKEND` | `sqlite` | 读取后端（sqlite/csv）|
+| `POLYMARKET_SLUG` | - | Polymarket 市场 slug |
+| `POLYMARKET_AUTO_SELECT_LATEST` | `true` | 自动选择最新市场 |
+| `POLYMARKET_LIVE_WS_URL` | `wss://ws-live-data.polymarket.com` | Polymarket 实时数据 WS |
+| `POLYMARKET_UP_LABEL` | `Up` | UP 结果标签 |
+| `POLYMARKET_DOWN_LABEL` | `Down` | DOWN 结果标签 |
+| `POLYGON_RPC_URL` | `https://polygon-rpc.com` | Polygon RPC 端点 |
+| `POLYGON_RPC_URLS` | - | Polygon RPC 端点列表（逗号分隔）|
+| `POLYGON_WSS_URL` | - | Polygon WebSocket RPC |
+| `POLYGON_WSS_URLS` | - | Polygon WebSocket URL 列表（逗号分隔）|
+| `CHAINLINK_BTC_USD_AGGREGATOR` | - | Chainlink BTC/USD 聚合器地址 |
 | `HTTPS_PROXY` | - | HTTP 代理 |
 
 > **注意**: 实盘交易需要通过 Web 界面连接钱包（不再支持 `PRIVATE_KEY` 环境变量）
@@ -136,22 +148,22 @@ cd web && bun run dev
     }
   },
   "strategy": {
-    "edgeThresholdEarly": 0.09,
-    "edgeThresholdMid": 0.11,
-    "edgeThresholdLate": 0.14,
-    "minProbEarly": 0.60,
-    "minProbMid": 0.62,
-    "minProbLate": 0.65,
+    "edgeThresholdEarly": 0.06,
+    "edgeThresholdMid": 0.08,
+    "edgeThresholdLate": 0.10,
+    "minProbEarly": 0.52,
+    "minProbMid": 0.55,
+    "minProbLate": 0.60,
     "blendWeights": { "vol": 0.50, "ta": 0.50 },
     "regimeMultipliers": {
-      "CHOP": 999,
+      "CHOP": 1.3,
       "RANGE": 1.0,
-      "TREND_ALIGNED": 0.85,
-      "TREND_OPPOSED": 1.5
+      "TREND_ALIGNED": 0.8,
+      "TREND_OPPOSED": 1.2
     },
     "maxGlobalTradesPerWindow": 1,
     "minConfidence": 0.50,
-    "skipMarkets": ["BTC"]
+    "skipMarkets": []
   }
 }
 ```
@@ -174,20 +186,21 @@ cd web && bun run dev
 | `edgeThresholdEarly/Mid/Late` | 各阶段最小边缘要求（>10分钟、5-10分钟、<5分钟）|
 | `minProbEarly/Mid/Late` | 各阶段最小模型概率 |
 | `blendWeights.vol/ta` | 波动率概率 vs TA 概率权重（默认 50/50）|
-| `regimeMultipliers` | 市场状态乘数（CHOP=999 表示跳过震荡市）|
-| `minConfidence` | 最小信心评分阈值 |
+| `regimeMultipliers` | 市场状态乘数（CHOP=1.3 表示需要 30% 更多边缘）|
+| `minConfidence` | 最小信心评分阈值（0-1）|
 | `skipMarkets` | 跳过的市场列表 |
+| `maxGlobalTradesPerWindow` | 所有市场每个窗口最大交易数 |
 
 #### 市场特定调整
 
-基于回测表现，对不同市场应用额外边缘乘数：
+基于回测表现，对不同市场应用额外边缘乘数（硬编码在 [src/engines/edge.ts](src/engines/edge.ts)）：
 
-| 市场 | 历史胜率 | 边缘乘数 |
-|------|----------|----------|
-| BTC | 42.1% | 1.5x（需 50% 更多边缘）|
-| ETH | 46.9% | 1.2x（需 20% 更多边缘）|
-| SOL | 51.0% | 1.0x（标准）|
-| XRP | 54.2% | 1.0x（标准）|
+| 市场 | 历史胜率 | 边缘乘数 | 特殊规则 |
+|------|----------|----------|----------|
+| BTC | 42.1% | 1.5x（需 50% 更多边缘）| 跳过 CHOP 状态，最低概率 0.58，最低信心 0.60 |
+| ETH | 46.9% | 1.2x（需 20% 更多边缘）| 跳过 CHOP 状态 |
+| SOL | 51.0% | 1.0x（标准）| 无 |
+| XRP | 54.2% | 1.0x（标准）| 无 |
 
 
 ## 交易逻辑
@@ -230,13 +243,22 @@ cd web && bun run dev
 6. 边缘计算
    ├─ rawSum = marketYes + marketNo
    ├─ rawSum < 0.98 → 套利机会
-   ├─ rawSum > 1.06 → vig 太高，跳过
+   ├─ rawSum > 1.04 → vig 太高，跳过
    └─ edgeUp = modelUp - marketUp
 
-7. 交易决策
+7. 信心评分（5因子加权）
+   ├─ 指标对齐 (25%)
+   ├─ 波动率分数 (15%)
+   ├─ 订单簿分数 (15%)
+   ├─ 时机分数 (25%)
+   └─ 状态分数 (20%)
+
+8. 交易决策
    ├─ 阶段: EARLY(>10分钟), MID(5-10分钟), LATE(<5分钟)
    ├─ 应用状态乘数到阈值
-   └─ 满足边缘 ≥ 阈值 AND 概率 ≥ minProb → 入场
+   ├─ 应用市场特定乘数（BTC 1.5x, ETH 1.2x）
+   ├─ 检查过度自信保护（软帽 0.22，硬帽 0.3）
+   └─ 满足边缘 ≥ 阈值 AND 概率 ≥ minProb AND 信心 ≥ minConfidence → 入场
 ```
 
 ### 模拟交易结算
@@ -252,18 +274,37 @@ cd web && bun run dev
 
 ## API 接口
 
+### REST API
+
 | 接口 | 说明 |
 |------|------|
+| `GET /api/health` | 健康检查（运行时间、内存使用）|
 | `GET /api/state` | 完整仪表板状态（市场、钱包、配置、模拟统计）|
-| `GET /api/trades` | CSV 中的近期交易（100条）|
-| `GET /api/signals` | CSV 中的近期信号（200条）|
+| `GET /api/trades?mode=paper&limit=100` | 近期交易记录（支持 paper/live 模式筛选）|
+| `GET /api/signals?market=BTC&limit=200` | 近期信号（用于回测分析）|
 | `GET /api/paper-stats` | 模拟交易统计 + 交易详情 |
+| `PUT /api/config` | 更新策略配置（需要认证）|
 | `POST /api/paper/start` | 启动模拟交易 |
-| `POST /api/paper/stop` | 停止模拟交易 |
+| `POST /api/paper/stop` | 停止模拟交易（周期结束后）|
+| `POST /api/paper/cancel` | 取消挂起的启动/停止操作 |
+| `POST /api/paper/clear-stop` | 清除止损标志 |
+| `POST /api/live/connect` | 连接钱包（需要认证）|
+| `POST /api/live/disconnect` | 断开钱包连接 |
 | `POST /api/live/start` | 启动实盘交易（需先连接钱包）|
 | `POST /api/live/stop` | 停止实盘交易 |
-| `POST /api/live/connect` | 连接钱包（通过前端 UI）|
-| `POST /api/live/disconnect` | 断开钱包连接 |
+| `POST /api/live/cancel` | 取消挂起的启动/停止操作 |
+
+> **注意**: 变更接口（`/api/paper/*`, `/api/live/*`, `/api/config`）需要配置 `API_TOKEN` 环境变量进行保护
+
+### WebSocket
+
+`GET /api/ws` - 实时事件推送（可选认证）
+
+| 事件 | 触发条件 |
+|------|----------|
+| `state:snapshot` | 每秒市场状态更新（500ms 节流）|
+| `signal:new` | 新交易信号生成 |
+| `trade:executed` | 交易执行完成 |
 
 ### 示例响应: `/api/state`
 
@@ -271,22 +312,58 @@ cd web && bun run dev
 {
   "markets": [{
     "id": "BTC",
+    "label": "BTC",
+    "ok": true,
     "spotPrice": 68034,
+    "currentPrice": 68034,
     "priceToBeat": 68010,
     "marketUp": 0.66,
     "marketDown": 0.33,
+    "rawSum": 0.99,
+    "arbitrage": false,
+    "predictLong": 0.55,
+    "predictShort": 0.45,
     "predictDirection": "LONG",
     "haColor": "green",
     "haConsecutive": 3,
     "rsi": 51.8,
-    "macd": {"hist": 0.2, "histDelta": 0.05},
+    "macd": {"macd": 12.5, "signal": 10.2, "hist": 2.3, "histDelta": 0.05},
     "vwapSlope": 0.12,
+    "timeLeftMin": 8.5,
+    "phase": "MID",
     "action": "ENTER",
     "side": "UP",
     "edge": 0.082,
-    "strength": "GOOD"
+    "strength": "GOOD",
+    "reason": null,
+    "volatility15m": 0.0045,
+    "blendSource": "blended",
+    "volImpliedUp": 0.52,
+    "binanceChainlinkDelta": 0.001,
+    "orderbookImbalance": 0.1,
+    "confidence": {
+      "score": 0.65,
+      "level": "MEDIUM",
+      "factors": {
+        "indicatorAlignment": 0.75,
+        "volatilityScore": 1.0,
+        "orderbookScore": 0.6,
+        "timingScore": 0.6,
+        "regimeScore": 0.7
+      }
+    }
   }],
-  "paperMode": true,
+  "updatedAt": "2026-02-26T00:00:00.000Z",
+  "wallet": {"address": "0x123...", "connected": false},
+  "paperDaily": {"date": "2026-02-26", "pnl": 5.2, "trades": 3},
+  "liveDaily": {"date": "2026-02-26", "pnl": 0, "trades": 0},
+  "config": {
+    "strategy": { "edgeThresholdEarly": 0.06, ... },
+    "paperRisk": { "maxTradeSizeUsdc": 5, ... },
+    "liveRisk": { "maxTradeSizeUsdc": 5, ... }
+  },
+  "paperRunning": true,
+  "liveRunning": false,
   "paperStats": {
     "totalTrades": 5,
     "wins": 3,
@@ -294,6 +371,25 @@ cd web && bun run dev
     "pending": 0,
     "winRate": 0.6,
     "totalPnl": 1.45
+  },
+  "paperBalance": {
+    "initialBalance": 1000,
+    "currentBalance": 1001.45,
+    "maxDrawdown": 5.2
+  },
+  "liveWallet": {
+    "address": null,
+    "connected": false,
+    "clientReady": false
+  },
+  "paperPendingStart": false,
+  "paperPendingStop": false,
+  "livePendingStart": false,
+  "livePendingStop": false,
+  "stopLoss": null,
+  "todayStats": {
+    "paper": {"date": "2026-02-26", "pnl": 5.2, "trades": 3},
+    "live": {"date": "2026-02-26", "pnl": 0, "trades": 0}
   }
 }
 ```
@@ -302,13 +398,12 @@ cd web && bun run dev
 
 ### 功能
 
-- **标题栏**: 模式徽章（模拟/实盘）、钱包状态
-- **模拟统计卡片**: 交易数、胜率、盈利、亏损、P&L
-- **累计 P&L 图表**: 面积图显示盈利随时间变化
-- **市场分类图表**: 按市场分组的堆叠柱状图
-- **市场卡片**: 实时价格、预测、8个指标、交易决策
-- **交易表格**: 近期交易记录（含模拟标识）
-- **策略配置面板**: 当前阈值和风险参数
+- **顶部导航栏**: 模式徽章（模拟/实盘）、钱包连接、实盘交易控制
+- **统计卡片**: 交易数、胜率、累计盈亏、最大回撤、今日表现
+- **分析标签页**: 累计 P&L 面积图、市场分类柱状图、交易详细记录
+- **市场卡片**: 实时价格、预测方向、8个技术指标、交易决策、信心评分
+- **交易表格**: 近期交易记录（含模式标识、盈亏状态）
+- **实时更新**: WebSocket 连接自动刷新状态
 
 ### 技术栈
 
@@ -324,16 +419,20 @@ cd web && bun run dev
 ```
 ├── src/                      # Bot 源代码
 │   ├── index.ts              # 主循环, processMarket()
-│   ├── trader.ts             # executeTrade(), 模拟模式
-│   ├── paperStats.ts         # 模拟交易跟踪
+│   ├── trader.ts             # executeTrade(), 钱包连接
+│   ├── paperStats.ts         # 模拟交易跟踪 + 结算
 │   ├── api.ts                # Hono API 服务器
 │   ├── state.ts              # 共享状态管理
 │   ├── config.ts             # 配置加载器
+│   ├── env.ts                # 环境变量验证（Zod）
 │   ├── types.ts              # TypeScript 接口
 │   ├── markets.ts            # 市场定义
 │   ├── orderManager.ts       # 订单生命周期管理
 │   ├── redeemer.ts           # 链上赎回
-│   ├── utils.ts              # 辅助函数
+│   ├── logger.ts             # 结构化日志
+│   ├── db.ts                 # SQLite 数据库
+│   ├── strategyRefinement.ts # 回测洞察
+│   ├── backtest.ts           # 回测分析工具
 │   ├── data/                 # 数据源
 │   │   ├── binance.ts        # REST API
 │   │   ├── binanceWs.ts      # WebSocket
@@ -343,7 +442,7 @@ cd web && bun run dev
 │   │   └── chainlinkWs.ts
 │   ├── engines/              # 交易逻辑
 │   │   ├── probability.ts    # 评分 + 融合
-│   │   ├── edge.ts           # 边缘 + 决策
+│   │   ├── edge.ts           # 边缘 + 决策 + 信心评分
 │   │   └── regime.ts         # 市场状态检测
 │   └── indicators/           # TA 指标
 │       ├── rsi.ts
@@ -354,11 +453,17 @@ cd web && bun run dev
 │   ├── src/
 │   │   ├── main.tsx          # 入口
 │   │   ├── components/       # UI 组件
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── Header.tsx
-│   │   │   ├── MarketCard.tsx
-│   │   │   └── TradeTable.tsx
-│   │   └── lib/              # 工具函数
+│   │   │   ├── Dashboard.tsx       # 主仪表板
+│   │   │   ├── Header.tsx          # 顶部导航栏
+│   │   │   ├── MarketCard.tsx      # 单市场卡片
+│   │   │   ├── TradeTable.tsx      # 交易记录表格
+│   │   │   ├── AnalyticsTabs.tsx   # 分析标签页
+│   │   │   ├── StatCard.tsx        # 统计卡片
+│   │   │   ├── ConnectWallet.tsx   # 钱包连接
+│   │   │   ├── LiveConnect.tsx     # 实盘交易控制
+│   │   │   ├── Web3Provider.tsx    # Web3 Provider
+│   │   │   └── ChartErrorBoundary.tsx # 图表错误边界
+│   │   └── lib/              # 工具函数 + stores
 │   ├── index.html
 │   ├── vite.config.ts
 │   └── package.json
@@ -397,7 +502,23 @@ services:
 ### 类型检查
 
 ```bash
-bun run typecheck
+bun run typecheck      # TypeScript 类型检查
+bun run typecheck:ci   # CI 模式类型检查
+```
+
+### 测试
+
+```bash
+bun run test           # 运行测试
+bun run test:watch     # 监听模式运行测试
+```
+
+### 代码风格
+
+```bash
+bun run lint           # 检查代码风格
+bun run lint:fix       # 自动修复代码风格问题
+bun run format         # 格式化代码
 ```
 
 ### 构建 Web

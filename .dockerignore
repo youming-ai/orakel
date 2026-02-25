@@ -6,5 +6,6 @@ web/.astro
 .env.*
 .git
 logs/
+data/
 *.md
 .DS_Store

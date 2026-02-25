@@ -1,3 +1,4 @@
+import { ConnectWallet } from "./ConnectWallet";
 import { Activity, Clock, Loader2, Moon, Play, Sun, Wallet, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUIStore } from "@/lib/store";
@@ -112,14 +113,40 @@ export function Header({
 	return (
 		<div className="sticky top-3 z-50 flex justify-center px-3 pointer-events-none">
 			<header className="pointer-events-auto flex items-center justify-between px-3 sm:px-4 py-2 rounded-2xl backdrop-blur-xl bg-background/70 border border-border/50 shadow-lg w-full max-w-2xl">
-				{/* Left: Logo + Mode toggle */}
-				<div className="flex items-center gap-2 shrink-0">
-					<div className="flex items-center gap-1.5 cursor-default select-none shrink-0">
-						<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20">
-							<Zap className="size-3.5" />
-						</div>
-						<span className="text-sm font-bold tracking-tight text-foreground hidden sm:block">Orakel</span>
+				{/* Left: Logo */}
+				<div className="flex items-center gap-1.5 cursor-default select-none shrink-0">
+					<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20">
+						<Zap className="size-3.5" />
 					</div>
+					<span className="text-sm font-bold tracking-tight text-foreground hidden sm:block">Orakel</span>
+				</div>
+
+				{/* Right: Countdown + Status + Wallet + Mode + Theme */}
+				<div className="flex items-center gap-2 shrink-0">
+					<div className="flex items-center gap-1.5 shrink-0" title="Time until next 15-minute cycle boundary">
+						<Clock className="size-3 text-muted-foreground" />
+						<span className="font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
+					</div>
+
+					<div className="h-4 w-px bg-border/60 shrink-0" />
+
+					<button
+						type="button"
+						onClick={canToggle ? handleToggle : undefined}
+						disabled={!canToggle}
+						className={cn(
+							"flex items-center gap-1.5 h-7 px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-lg transition-all shrink-0 border outline-none",
+							!canToggle
+								? "bg-muted text-muted-foreground border-transparent cursor-not-allowed opacity-50"
+								: cfg.className,
+							isPending && "animate-pulse",
+						)}
+						title={!canToggle ? "Connect wallet first" : isPending ? "Click to cancel" : undefined}
+					>
+						{!canToggle ? <Wallet className="size-3" /> : <StatusIcon status={status} />}
+						<span>{!canToggle ? "No Wallet" : cfg.label}</span>
+					</button>
+					{viewMode === "live" && <ConnectWallet />}
 
 					<div className="h-4 w-px bg-border/60 shrink-0" />
 
@@ -150,36 +177,6 @@ export function Header({
 							Live
 						</button>
 					</div>
-				</div>
-
-				{/* Right: Countdown + Status + Theme */}
-				<div className="flex items-center gap-2 shrink-0">
-					<div className="flex items-center gap-1.5 shrink-0" title="Time until next 15-minute cycle boundary">
-						<Clock className="size-3 text-muted-foreground" />
-						<span className="font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
-					</div>
-
-					<div className="h-4 w-px bg-border/60 shrink-0" />
-
-					<button
-						type="button"
-						onClick={canToggle ? handleToggle : undefined}
-						disabled={!canToggle}
-						className={cn(
-							"flex items-center gap-1.5 h-7 px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-lg transition-all shrink-0 border outline-none",
-							!canToggle
-								? "bg-muted text-muted-foreground border-transparent cursor-not-allowed opacity-50"
-								: cfg.className,
-							isPending && "animate-pulse",
-						)}
-						title={!canToggle ? "Connect wallet first" : isPending ? "Click to cancel" : undefined}
-					>
-						{!canToggle ? <Wallet className="size-3" /> : <StatusIcon status={status} />}
-						<span>{!canToggle ? "No Wallet" : cfg.label}</span>
-					</button>
-
-					<div className="h-4 w-px bg-border/60 shrink-0" />
-
 					<button
 						type="button"
 						onClick={toggleTheme}
