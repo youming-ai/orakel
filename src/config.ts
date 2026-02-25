@@ -6,6 +6,18 @@ import { MARKETS } from "./markets.ts";
 
 const log = createLogger("config");
 
+// Config reload listeners
+type ConfigReloadListener = () => void;
+const reloadListeners: Set<ConfigReloadListener> = new Set();
+
+export function onConfigReload(listener: ConfigReloadListener): void {
+	reloadListeners.add(listener);
+}
+
+export function offConfigReload(listener: ConfigReloadListener): void {
+	reloadListeners.delete(listener);
+}
+
 import type { AppConfig, RiskConfig } from "./types.ts";
 
 export const PERSIST_BACKEND = env.PERSIST_BACKEND;
@@ -82,6 +94,14 @@ const StrategyConfigSchema = z
 			.optional(),
 		skipMarkets: z.array(z.string()).optional(),
 		minConfidence: z.coerce.number().optional(),
+		marketPerformance: z
+			.record(
+				z.object({
+					winRate: z.coerce.number(),
+					edgeMultiplier: z.coerce.number(),
+				}),
+			)
+			.optional(),
 	})
 	.partial()
 	.transform((value) => ({
@@ -90,6 +110,7 @@ const StrategyConfigSchema = z
 		blendWeights: { ...STRATEGY_DEFAULTS.blendWeights, ...value.blendWeights },
 		regimeMultipliers: { ...STRATEGY_DEFAULTS.regimeMultipliers, ...value.regimeMultipliers },
 		skipMarkets: value.skipMarkets ?? [],
+		marketPerformance: value.marketPerformance ?? {},
 	}));
 
 const ConfigFileSchema = z
@@ -247,6 +268,7 @@ export const CONFIG: AppConfig = {
 		regimeMultipliers: FILE_STRATEGY.regimeMultipliers,
 		skipMarkets: FILE_STRATEGY.skipMarkets,
 		minConfidence: FILE_STRATEGY.minConfidence,
+		marketPerformance: FILE_STRATEGY.marketPerformance,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -282,5 +304,38 @@ export function reloadConfig(): AppConfig {
 	CONFIG.paperRisk = buildRiskConfig(filePaperRisk, fileRisk);
 	CONFIG.liveRisk = buildRiskConfig(fileLiveRisk, fileRisk);
 
+	// Notify all listeners that config has been reloaded
+	for (const listener of reloadListeners) {
+		try {
+			listener();
+		} catch (err) {
+			log.error("Config reload listener error:", err);
+		}
+	}
+
 	return CONFIG;
+}
+
+// Start watching config.json for changes
+let configWatcherInitialized = false;
+export function startConfigWatcher(): void {
+	if (configWatcherInitialized) return;
+	configWatcherInitialized = true;
+
+	try {
+		fs.watch("./config.json", { persistent: false }, (eventType) => {
+			if (eventType === "change") {
+				log.info("config.json changed, reloading...");
+				try {
+					reloadConfig();
+					log.info("Config reloaded successfully");
+				} catch (err) {
+					log.error("Failed to reload config:", err);
+				}
+			}
+		});
+		log.info("Config watcher started for config.json");
+	} catch (err) {
+		log.warn("Failed to start config watcher (file may not exist yet):", err);
+	}
 }

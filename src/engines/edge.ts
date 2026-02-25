@@ -8,14 +8,15 @@ import type {
 	Strength,
 	TradeDecision,
 } from "../types.ts";
-import { clamp } from "../utils.ts";
+import { CONFIG } from "../config.ts";
+import { clamp, estimatePolymarketFee } from "../utils.ts";
 
 const SOFT_CAP_EDGE = 0.22;
 const HARD_CAP_EDGE = 0.3;
 /** Sentinel multiplier: any regime multiplier >= this value means "skip trade entirely" */
 const REGIME_DISABLED = 999;
 
-// Market-specific performance from backtest
+// Market-specific performance from backtest (can be overridden in config.json)
 // edgeMultiplier > 1.0 = RAISE threshold (harder to trade) for poor performers
 // Use strategy.skipMarkets in config.json to skip markets entirely
 const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultiplier: number }> = {
@@ -24,6 +25,15 @@ const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultipli
 	SOL: { winRate: 0.51, edgeMultiplier: 1.0 }, // Good performer → standard
 	XRP: { winRate: 0.542, edgeMultiplier: 1.0 }, // Best performer → standard
 };
+
+/** Get market performance from config or use defaults */
+function getMarketPerformance(marketId: string): { winRate: number; edgeMultiplier: number } {
+	const configPerf = CONFIG.strategy.marketPerformance?.[marketId];
+	if (configPerf) {
+		return configPerf;
+	}
+	return DEFAULT_MARKET_PERFORMANCE[marketId] ?? { winRate: 0.5, edgeMultiplier: 1.0 };
+}
 
 // ============ Confidence Scoring ============
 
@@ -152,7 +162,7 @@ function regimeMultiplier(
 ): number {
 	// Skip CHOP completely for underperforming markets
 	if (regime === "CHOP") {
-		const marketPerf = DEFAULT_MARKET_PERFORMANCE[marketId];
+		const marketPerf = getMarketPerformance(marketId);
 		if (marketPerf && marketPerf.winRate < 0.45) {
 			return REGIME_DISABLED;
 		}
@@ -241,6 +251,13 @@ export function computeEdge(params: {
 		const spreadPenalty = (spreadDown - 0.02) * 0.5;
 		effectiveEdgeDown -= spreadPenalty;
 	}
+	// Deduct estimated Polymarket fees from effective edge
+	// Use taker fee (no rebate) as conservative worst-case estimate.
+	// If order executes as maker (postOnly GTD), actual fee is lower (bonus).
+	const feeEstimateUp = estimatePolymarketFee(marketUp);
+	const feeEstimateDown = estimatePolymarketFee(marketDown);
+	effectiveEdgeUp -= feeEstimateUp;
+	effectiveEdgeDown -= feeEstimateDown;
 
 	const maxVig = 0.04;
 	const vigTooHigh = rawSum > 1 + maxVig;
@@ -256,6 +273,8 @@ export function computeEdge(params: {
 		arbitrage,
 		overpriced,
 		vigTooHigh,
+		feeEstimateUp,
+		feeEstimateDown,
 	};
 }
 
@@ -336,7 +355,7 @@ export function decide(params: {
 	const bestModel = bestSide === "UP" ? modelUp : modelDown;
 
 	// Apply market-specific edge multiplier
-	const marketPerf = DEFAULT_MARKET_PERFORMANCE[marketId];
+	const marketPerf = getMarketPerformance(marketId);
 	const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
 	const adjustedThreshold = baseThreshold * marketMult;
 
