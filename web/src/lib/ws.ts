@@ -86,6 +86,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 	const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const mountedRef = useRef(true);
 
+	// Store callbacks in refs so connect() stays stable across renders
+	const onConnectRef = useRef(onConnect);
+	const onDisconnectRef = useRef(onDisconnect);
+	useEffect(() => {
+		onConnectRef.current = onConnect;
+	}, [onConnect]);
+	useEffect(() => {
+		onDisconnectRef.current = onDisconnect;
+	}, [onDisconnect]);
+
 	// Add handler if provided
 	useEffect(() => {
 		if (onMessage) {
@@ -125,25 +135,22 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 		if (!mountedRef.current) return;
 
 		const wsUrl = getWsUrl();
-		console.log("[ws] Connecting to", wsUrl);
 
 		try {
 			const ws = new WebSocket(wsUrl);
 
 			ws.onopen = () => {
 				if (!mountedRef.current) return;
-				console.log("[ws] Connected");
 				setIsConnected(true);
 				reconnectCountRef.current = 0;
-				onConnect?.();
+				onConnectRef.current?.();
 			};
 
 			ws.onclose = (event) => {
 				if (!mountedRef.current) return;
-				console.log("[ws] Disconnected:", event.code, event.reason);
 				setIsConnected(false);
 				wsRef.current = null;
-				onDisconnect?.();
+				onDisconnectRef.current?.();
 
 				// Auto-reconnect with exponential backoff
 				if (reconnectCountRef.current < reconnectAttempts) {
@@ -155,16 +162,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 						: reconnectInterval;
 
 					reconnectCountRef.current++;
-					console.log(`[ws] Reconnecting in ${delay}ms (attempt ${reconnectCountRef.current}/${reconnectAttempts})`);
-
 					reconnectTimeoutRef.current = setTimeout(connect, delay);
-				} else {
-					console.warn("[ws] Max reconnect attempts reached");
 				}
 			};
 
 			ws.onerror = () => {
-				console.error(`[ws] Connection error (readyState=${ws.readyState})`);
+				// Silent error handling - UI shows connection state via isConnected
 			};
 
 			ws.onmessage = (event) => {
@@ -187,7 +190,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 		} catch (e) {
 			console.error("[ws] Connection failed:", e);
 		}
-	}, [getWsUrl, onConnect, onDisconnect, reconnectAttempts, reconnectInterval, useExponentialBackoff]);
+	}, [getWsUrl, reconnectAttempts, reconnectInterval, useExponentialBackoff]);
 
 	const disconnect = useCallback(() => {
 		if (reconnectTimeoutRef.current) {

@@ -5,7 +5,7 @@ import { createBunWebSocket, serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { CONFIG, reloadConfig } from "./config.ts";
-import { READ_BACKEND, statements } from "./db.ts";
+import { getDbDiagnostics, READ_BACKEND, statements } from "./db.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
 import {
@@ -257,6 +257,13 @@ const apiRoutes = new Hono()
 				rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
 				heap: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
 			},
+		});
+	})
+
+	.get("/db/diagnostics", (c) => {
+		return c.json({
+			ok: true as const,
+			diagnostics: getDbDiagnostics(),
 		});
 	})
 

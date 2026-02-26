@@ -1,8 +1,12 @@
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
+import path from "node:path";
 import { PERSIST_BACKEND, READ_BACKEND } from "./config.ts";
+import { createLogger } from "./logger.ts";
 
 export { PERSIST_BACKEND, READ_BACKEND };
+
+const log = createLogger("db");
 
 const DB_PATH = "./data/bot.sqlite";
 
@@ -10,9 +14,55 @@ let dbInstance: Database | null = null;
 
 export function getDb(): Database {
 	if (!dbInstance) {
-		fs.mkdirSync("./data", { recursive: true });
+		const cwd = process.cwd();
+		const fullPath = path.resolve(cwd, DB_PATH);
+		const dataDir = path.dirname(fullPath);
 
-		dbInstance = new Database(DB_PATH, { create: true });
+		// Log diagnostic information
+		log.info("Initializing database:");
+		log.info("  Current working directory:", cwd);
+		log.info("  Database path:", fullPath);
+		log.info("  Data directory:", dataDir);
+
+		// Create data directory with error handling
+		try {
+			fs.mkdirSync(dataDir, { recursive: true });
+			log.info("  Directory created/verified:", dataDir);
+		} catch (err) {
+			const errno = (err as NodeJS.ErrnoException).errno;
+			const code = (err as NodeJS.ErrnoException).code;
+			throw new Error(
+				`Failed to create data directory at "${dataDir}". ` +
+					`Error: ${err} ` +
+					`(errno: ${errno}, code: ${code}). ` +
+					`Ensure the user has write permissions to "${cwd}"`,
+			);
+		}
+
+		// Verify directory is writable
+		try {
+			const testFile = path.join(dataDir, ".write_test");
+			fs.writeFileSync(testFile, "test");
+			fs.unlinkSync(testFile);
+			log.info("  Directory is writable:", dataDir);
+		} catch (err) {
+			throw new Error(
+				`Directory "${dataDir}" is not writable. ` + `Error: ${err}. ` + `Check file permissions and ownership.`,
+			);
+		}
+
+		// Open database with error handling
+		try {
+			dbInstance = new Database(DB_PATH, { create: true });
+			log.info("  Database opened successfully");
+		} catch (err) {
+			throw new Error(
+				`Failed to open database at "${fullPath}". ` +
+					`Error: ${err}. ` +
+					`Ensure the directory exists and is writable.`,
+			);
+		}
+
 		dbInstance.run("PRAGMA journal_mode = WAL");
 		dbInstance.run("PRAGMA synchronous = NORMAL");
 		dbInstance.run("PRAGMA cache_size = -64000");
@@ -20,9 +70,85 @@ export function getDb(): Database {
 		dbInstance.run("PRAGMA foreign_keys = ON");
 
 		runMigrations(dbInstance);
+		log.info("  Database initialized and migrations completed");
 	}
 
 	return dbInstance;
+}
+
+/**
+ * Get database diagnostic information for debugging
+ * Can be exposed via API endpoint
+ */
+export function getDbDiagnostics(): {
+	cwd: string;
+	dbPath: string;
+	dataDir: string;
+	dirExists: boolean;
+	dirWritable: boolean;
+	dbExists: boolean;
+	dbSize: number;
+	dbWritable: boolean;
+	userInfo: { uid: number; gid: number; username: string };
+	error?: string;
+} {
+	const cwd = process.cwd();
+	const fullPath = path.resolve(cwd, DB_PATH);
+	const dataDir = path.dirname(fullPath);
+
+	const diagnostics = {
+		cwd,
+		dbPath: fullPath,
+		dataDir,
+		dirExists: false,
+		dirWritable: false,
+		dbExists: false,
+		dbSize: 0,
+		dbWritable: false,
+		userInfo: {
+			uid: process.getuid?.() ?? -1,
+			gid: process.getgid?.() ?? -1,
+			username: process.env.USER || process.env.USERNAME || "unknown",
+		},
+		error: undefined as string | undefined,
+	};
+
+	try {
+		// Check if directory exists
+		diagnostics.dirExists = fs.existsSync(dataDir);
+
+		if (diagnostics.dirExists) {
+			// Check if directory is writable
+			try {
+				const testFile = path.join(dataDir, ".write_test_diagnostics");
+				fs.writeFileSync(testFile, "test");
+				fs.unlinkSync(testFile);
+				diagnostics.dirWritable = true;
+			} catch {
+				diagnostics.dirWritable = false;
+			}
+
+			// Check if database exists
+			diagnostics.dbExists = fs.existsSync(fullPath);
+			if (diagnostics.dbExists) {
+				const stats = fs.statSync(fullPath);
+				diagnostics.dbSize = stats.size;
+
+				// Try to open database in read-only mode
+				try {
+					const testDb = new Database(fullPath, { readonly: true });
+					testDb.close();
+					diagnostics.dbWritable = true;
+				} catch {
+					diagnostics.dbWritable = false;
+				}
+			}
+		}
+	} catch (err) {
+		diagnostics.error = String(err);
+	}
+
+	return diagnostics;
 }
 
 function runMigrations(db: Database): void {

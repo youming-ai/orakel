@@ -44,8 +44,12 @@ function DashboardContent() {
 	// WebSocket connection
 	useWebSocket({
 		onMessage: wsCacheHandler,
-		onConnect: () => console.log("[Dashboard] WebSocket connected"),
-		onDisconnect: () => console.log("[Dashboard] WebSocket disconnected"),
+		onConnect: () => {
+			// Connection state tracked by useWebSocket hook
+		},
+		onDisconnect: () => {
+			// Connection state tracked by useWebSocket hook
+		},
 	});
 
 	const { data: state, error: stateError } = useDashboardState();

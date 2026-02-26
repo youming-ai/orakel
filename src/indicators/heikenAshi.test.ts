@@ -6,6 +6,20 @@ function makeCandle(o: number, h: number, l: number, c: number, v: number): Cand
 	return { openTime: 0, open: o, high: h, low: l, close: c, volume: v, closeTime: 0 };
 }
 
+function getFirst<T>(arr: T[]): T {
+	if (arr.length === 0) {
+		throw new Error("Array is empty");
+	}
+	return arr[0]!;
+}
+
+function getAt<T>(arr: T[], index: number): T {
+	if (arr.length <= index) {
+		throw new Error(`Array index ${index} out of bounds`);
+	}
+	return arr[index]!;
+}
+
 function makeHa(isGreen: boolean): HaCandle {
 	return isGreen
 		? { open: 100, close: 105, high: 106, low: 99, isGreen: true, body: 5 }
@@ -30,7 +44,7 @@ describe("computeHeikenAshi", () => {
 		const candle = makeCandle(100, 110, 90, 105, 1000);
 		const result = computeHeikenAshi([candle]);
 		expect(result).toHaveLength(1);
-		const ha = result[0];
+		const ha = getFirst(result);
 		expect(ha.close).toBeCloseTo((100 + 110 + 90 + 105) / 4, 5);
 		expect(ha.open).toBeCloseTo((100 + 105) / 2, 5);
 		expect(ha.high).toBe(Math.max(110, ha.open, ha.close));
@@ -44,17 +58,18 @@ describe("computeHeikenAshi", () => {
 		const result = computeHeikenAshi([bullish, bearish]);
 		// First candle: haClose = (100+110+90+105)/4 = 101.25, haOpen = (100+105)/2 = 102.5
 		// So isGreen = false (haClose < haOpen)
-		expect(result[0].isGreen).toBe(false);
+		expect(getFirst(result).isGreen).toBe(false);
 		// Second candle: haOpen is chained from first
-		expect(result[1].isGreen).toBeDefined();
+		expect(getAt(result, 1).isGreen).toBeDefined();
 	});
 
 	// body: abs(haClose - haOpen)
 	it("calculates body as absolute difference between haClose and haOpen", () => {
 		const candle = makeCandle(100, 110, 90, 105, 1000);
 		const result = computeHeikenAshi([candle]);
-		const expectedBody = Math.abs(result[0].close - result[0].open);
-		expect(result[0].body).toBeCloseTo(expectedBody, 5);
+		const ha = getFirst(result);
+		const expectedBody = Math.abs(ha.close - ha.open);
+		expect(ha.body).toBeCloseTo(expectedBody, 5);
 	});
 
 	// Subsequent candles: haOpen = (prevHaOpen + prevHaClose) / 2
@@ -62,8 +77,10 @@ describe("computeHeikenAshi", () => {
 		const candles = [makeCandle(100, 110, 90, 105, 1000), makeCandle(105, 115, 95, 110, 1000)];
 		const result = computeHeikenAshi(candles);
 		expect(result).toHaveLength(2);
-		const expectedSecondOpen = (result[0].open + result[0].close) / 2;
-		expect(result[1].open).toBeCloseTo(expectedSecondOpen, 5);
+		const first = getFirst(result);
+		const second = getAt(result, 1);
+		const expectedSecondOpen = (first.open + first.close) / 2;
+		expect(second.open).toBeCloseTo(expectedSecondOpen, 5);
 	});
 
 	// Length preserved: N candles → N HaCandles
@@ -81,8 +98,11 @@ describe("computeHeikenAshi", () => {
 			makeCandle(110, 120, 100, 115, 1000),
 		];
 		const result = computeHeikenAshi(candles);
-		expect(result[1].open).toBeCloseTo((result[0].open + result[0].close) / 2, 5);
-		expect(result[2].open).toBeCloseTo((result[1].open + result[1].close) / 2, 5);
+		const first = getFirst(result);
+		const second = getAt(result, 1);
+		const third = getAt(result, 2);
+		expect(second.open).toBeCloseTo((first.open + first.close) / 2, 5);
+		expect(third.open).toBeCloseTo((second.open + second.close) / 2, 5);
 	});
 
 	// Bullish candles (O<C consistently) → mostly isGreen=true
@@ -97,7 +117,7 @@ describe("computeHeikenAshi", () => {
 	it("haHigh is max of candle high, haOpen, and haClose", () => {
 		const candle = makeCandle(100, 110, 90, 105, 1000);
 		const result = computeHeikenAshi([candle]);
-		const ha = result[0];
+		const ha = getFirst(result);
 		const expectedHigh = Math.max(110, ha.open, ha.close);
 		expect(ha.high).toBe(expectedHigh);
 	});
@@ -106,7 +126,7 @@ describe("computeHeikenAshi", () => {
 	it("haLow is min of candle low, haOpen, and haClose", () => {
 		const candle = makeCandle(100, 110, 90, 105, 1000);
 		const result = computeHeikenAshi([candle]);
-		const ha = result[0];
+		const ha = getFirst(result);
 		const expectedLow = Math.min(90, ha.open, ha.close);
 		expect(ha.low).toBe(expectedLow);
 	});
@@ -123,7 +143,7 @@ describe("computeHeikenAshi", () => {
 	it("first candle uses (O+C)/2 for haOpen", () => {
 		const candle = makeCandle(100, 110, 90, 105, 1000);
 		const result = computeHeikenAshi([candle]);
-		expect(result[0].open).toBeCloseTo((100 + 105) / 2, 5);
+		expect(getFirst(result).open).toBeCloseTo((100 + 105) / 2, 5);
 	});
 
 	// Null values in candle properties
@@ -139,7 +159,7 @@ describe("computeHeikenAshi", () => {
 		};
 		const result = computeHeikenAshi([candle]);
 		expect(result).toHaveLength(1);
-		expect(result[0].close).toBeDefined();
+		expect(getFirst(result).close).toBeDefined();
 	});
 });
 

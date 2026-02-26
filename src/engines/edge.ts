@@ -1,3 +1,4 @@
+import { CONFIG } from "../config.ts";
 import type {
 	ConfidenceResult,
 	EdgeResult,
@@ -8,7 +9,6 @@ import type {
 	Strength,
 	TradeDecision,
 } from "../types.ts";
-import { CONFIG } from "../config.ts";
 import { clamp, estimatePolymarketFee } from "../utils.ts";
 
 const SOFT_CAP_EDGE = 0.22;

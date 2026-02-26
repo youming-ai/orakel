@@ -23,4 +23,6 @@ export default defineConfig({
     host: true,
     allowedHosts: true,
   },
+  // Reduce log verbosity
+  logLevel: "warn",
 });

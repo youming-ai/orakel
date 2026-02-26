@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "start": "bun run src/index.ts",
+    "dev": "concurrently \"bun run start\" \"cd web && bun run dev\"",
     "typecheck": "tsc --noEmit",
     "typecheck:ci": "tsc --noEmit -p tsconfig.check.json",
     "test": "vitest run",
@@ -26,6 +27,7 @@
     "@biomejs/biome": "^2.4.4",
     "@types/bun": "latest",
     "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }

@@ -43,6 +43,11 @@ export interface RiskConfig {
 	maxTradesPerWindow: number;
 }
 
+export interface MarketPerformance {
+	winRate: number;
+	edgeMultiplier: number;
+}
+
 export interface StrategyConfig {
 	edgeThresholdEarly: number;
 	edgeThresholdMid: number;
@@ -59,6 +64,7 @@ export interface StrategyConfig {
 	};
 	skipMarkets?: string[];
 	minConfidence?: number;
+	marketPerformance?: Record<string, MarketPerformance>;
 }
 
 export interface AppConfig {

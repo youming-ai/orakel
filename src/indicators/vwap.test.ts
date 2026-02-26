@@ -6,6 +6,13 @@ function makeCandle(o: number, h: number, l: number, c: number, v: number): Cand
 	return { openTime: 0, open: o, high: h, low: l, close: c, volume: v, closeTime: 0 };
 }
 
+function getFirst<T>(arr: T[]): T {
+	if (arr.length === 0) {
+		throw new Error("Array is empty");
+	}
+	return arr[0]!;
+}
+
 describe("computeSessionVwap", () => {
 	// Empty array → null
 	it("returns null for empty array", () => {
@@ -119,8 +126,8 @@ describe("computeVwapSeries", () => {
 	it("first element equals vwap of first candle only", () => {
 		const candles = [makeCandle(100, 110, 90, 105, 1000), makeCandle(105, 115, 95, 110, 1000)];
 		const result = computeVwapSeries(candles);
-		const expectedFirst = computeSessionVwap([candles[0]]);
-		expect(result[0]).toBeCloseTo(expectedFirst!, 5);
+		const expectedFirst = computeSessionVwap([getFirst(candles)]);
+		expect(getFirst(result)).toBeCloseTo(expectedFirst!, 5);
 	});
 
 	// Last element = computeSessionVwap(allCandles)

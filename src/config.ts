@@ -96,6 +96,7 @@ const StrategyConfigSchema = z
 		minConfidence: z.coerce.number().optional(),
 		marketPerformance: z
 			.record(
+				z.string(),
 				z.object({
 					winRate: z.coerce.number(),
 					edgeMultiplier: z.coerce.number(),
