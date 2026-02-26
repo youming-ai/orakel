@@ -1,6 +1,5 @@
 import type { ClobClient } from "@polymarket/clob-client";
 import { createLogger } from "./logger.ts";
-import type { TradeSignal } from "./types.ts";
 
 const log = createLogger("orders");
 
@@ -19,6 +18,7 @@ export interface TrackedOrder {
 	sizeMatched: number;
 	lastChecked: number;
 	orderType?: "GTD" | "FOK"; // Track order type for heartbeat management
+	tokenId?: string;
 }
 
 export class OrderManager {

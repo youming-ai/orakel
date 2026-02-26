@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { CONFIG } from "./config.ts";
 import { createLogger } from "./logger.ts";
 import type {
+	BalanceSnapshotPayload,
 	MarketSnapshot,
 	SignalNewPayload,
 	StateSnapshotPayload,
@@ -104,6 +105,22 @@ export function emitTradeExecuted(payload: TradeExecutedPayload): void {
 	}
 }
 
+export function emitBalanceSnapshot(payload: BalanceSnapshotPayload): void {
+	const version = incrementStateVersion();
+	const message = {
+		type: "balance:snapshot",
+		data: payload,
+		ts: Date.now(),
+		version,
+	} satisfies WsMessage<BalanceSnapshotPayload>;
+
+	try {
+		botEvents.emit("balance:snapshot", message);
+	} catch (err) {
+		log.warn("Failed to emit balance:snapshot:", err);
+	}
+}
+
 let _markets: MarketSnapshot[] = [];
 let _updatedAt: string = new Date().toISOString();
 
@@ -118,6 +135,16 @@ export function getMarkets(): MarketSnapshot[] {
 
 export function getUpdatedAt(): string {
 	return _updatedAt;
+}
+
+let _onchainBalance: BalanceSnapshotPayload | null = null;
+
+export function setOnchainBalance(payload: BalanceSnapshotPayload): void {
+	_onchainBalance = payload;
+}
+
+export function getOnchainBalance(): BalanceSnapshotPayload | null {
+	return _onchainBalance;
 }
 
 let _paperRunning = CONFIG.paperMode !== false;

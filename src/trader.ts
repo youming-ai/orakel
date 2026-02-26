@@ -2,8 +2,9 @@ import fs from "node:fs";
 import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
+import { enrichPosition } from "./accountState.ts";
 import { CONFIG } from "./config.ts";
-import { PERSIST_BACKEND, statements } from "./db.ts";
+import { onchainStatements, PERSIST_BACKEND, statements } from "./db.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
 import { addPaperTrade } from "./paperStats.ts";
@@ -40,6 +41,18 @@ let liveDailyState: DailyState = {
 	trades: 0,
 };
 
+// ============ Pending Live Trade Settlement ============
+interface PendingLiveTrade {
+	orderId: string;
+	marketId: string;
+	side: "UP" | "DOWN";
+	buyPrice: number;
+	size: number;
+	priceToBeat: number;
+	windowStartMs: number;
+}
+const pendingLiveTrades: PendingLiveTrade[] = [];
+
 // ============ Heartbeat & Open Order Management ============
 // Polymarket cancels all open orders if no heartbeat received within 10s (5s buffer).
 // We send heartbeats every 5 seconds while live trading has active GTD orders.
@@ -54,6 +67,7 @@ const MAX_HEARTBEAT_FAILURES = 3;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
+let heartbeatReconnecting = false;
 
 export function startHeartbeat(): boolean {
 	if (heartbeatTimer) return true; // already running
@@ -63,6 +77,7 @@ export function startHeartbeat(): boolean {
 	}
 	heartbeatFailures = 0;
 	reconnectAttempts = 0;
+	heartbeatReconnecting = false;
 	heartbeatTimer = setInterval(async () => {
 		if (!client) {
 			stopHeartbeat();
@@ -83,16 +98,17 @@ export function startHeartbeat(): boolean {
 			if (heartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
 				log.error(`Heartbeat failed ${heartbeatFailures} consecutive times, stopping live trading:`, msg);
 				stopHeartbeat();
-				// Stop live trading to prevent further orders from being cancelled
-				setLiveRunning(false);
 
 				// Attempt reconnection with exponential backoff
 				if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+					heartbeatReconnecting = true;
 					const backoffMs = Math.min(30_000, 5_000 * 2 ** reconnectAttempts);
 					reconnectAttempts++;
 					log.info(
 						`Attempting heartbeat reconnection ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${backoffMs}ms`,
 					);
+					// Keep liveRunning flag true during reconnection so the
+					// reconnect callback can actually proceed.
 					reconnectTimer = setTimeout(async () => {
 						if (client && isLiveRunning()) {
 							log.info("Attempting to restart heartbeat...");
@@ -104,7 +120,10 @@ export function startHeartbeat(): boolean {
 						}
 					}, backoffMs);
 				} else {
-					log.error("Max heartbeat reconnection attempts reached, giving up");
+					// All reconnect attempts exhausted — NOW stop live trading
+					heartbeatReconnecting = false;
+					setLiveRunning(false);
+					log.error("Max heartbeat reconnection attempts reached, stopping live trading");
 				}
 			} else {
 				log.warn(`Heartbeat failed (${heartbeatFailures}/${MAX_HEARTBEAT_FAILURES}):`, msg);
@@ -129,6 +148,7 @@ export function stopHeartbeat(): void {
 	heartbeatFailures = 0;
 	reconnectAttempts = 0;
 	openGtdOrders.clear(); // Clear open order tracking
+	heartbeatReconnecting = false;
 	if (wasRunning) log.info("Heartbeat stopped");
 }
 
@@ -149,6 +169,11 @@ export function unregisterOpenGtdOrder(orderId: string): void {
 /** Get count of currently open GTD orders */
 export function getOpenGtdOrderCount(): number {
 	return openGtdOrders.size;
+}
+
+/** Check if heartbeat is in reconnection — live trades should be blocked */
+export function isHeartbeatReconnecting(): boolean {
+	return heartbeatReconnecting;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -347,15 +372,17 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 			log.error("No wallet available");
 			return false;
 		}
+
+		if (heartbeatReconnecting) {
+			log.warn("Heartbeat reconnecting — blocking live trade");
+			return false;
+		}
 	}
 
-	const daily = mode === "paper" ? paperDailyState : liveDailyState;
-	if (daily.pnl <= -Number(riskConfig.dailyMaxLossUsdc || 0)) {
-		log.error(`${mode} daily ${mode === "live" ? "spending cap" : "loss limit"} reached`);
-		return false;
-	}
-
+	// Reset daily state before checking limits — otherwise yesterday's exceeded
+	// limit would block the first trade of a new day
 	const today = new Date().toDateString();
+	const daily = mode === "paper" ? paperDailyState : liveDailyState;
 	if (daily.date !== today) {
 		if (mode === "paper") {
 			paperDailyState = { date: today, pnl: 0, trades: 0 };
@@ -363,6 +390,12 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 			liveDailyState = { date: today, pnl: 0, trades: 0 };
 		}
 		saveDailyState(mode);
+	}
+
+	const currentDaily = mode === "paper" ? paperDailyState : liveDailyState;
+	if (currentDaily.pnl <= -Number(riskConfig.dailyMaxLossUsdc || 0)) {
+		log.error(`${mode} daily ${mode === "live" ? "spending cap" : "loss limit"} reached`);
+		return false;
 	}
 
 	return true;
@@ -641,6 +674,20 @@ export async function executeTrade(
 			liveDailyState.trades++;
 			saveDailyState("live");
 
+			if (tokenId && tokenId.length > 0) {
+				try {
+					onchainStatements.upsertKnownCtfToken().run({
+						$tokenId: tokenId,
+						$marketId: signal.marketId ?? "",
+						$side: side,
+						$conditionId: null,
+					});
+					enrichPosition(tokenId, signal.marketId ?? "", side);
+				} catch (err) {
+					log.warn("Failed to persist known CTF token:", err);
+				}
+			}
+
 			// Start heartbeat and track order ONLY for GTD orders
 			// FOK orders fill immediately and don't need heartbeat
 			if (!isLatePhase || !isHighConfidence) {
@@ -652,11 +699,29 @@ export async function executeTrade(
 			// Daily loss limit in canTrade() now acts as a spending cap for live mode.
 			const liveTradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
 			updatePnl(-liveTradeSize * price, "live");
+
+			// Track for settlement at window boundary
+			if (signal.priceToBeat && signal.priceToBeat > 0) {
+				const liveTiming = getCandleWindowTiming(15);
+				pendingLiveTrades.push({
+					orderId: finalOrderId,
+					marketId: signal.marketId ?? "",
+					side,
+					buyPrice: price,
+					size: liveTradeSize,
+					priceToBeat: signal.priceToBeat,
+					windowStartMs: liveTiming.startMs,
+				});
+			}
 		}
 
+		const isGtdOrder = !isLatePhase || !isHighConfidence;
 		return {
 			success: !!(resultOrderId || resultId),
 			order: result,
+			orderId: resultOrderId || resultId,
+			tradePrice: price,
+			isGtdOrder,
 		};
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -733,6 +798,62 @@ export function updatePnl(amount: number, mode: "paper" | "live"): void {
 		liveDailyState.pnl += amount;
 	}
 	saveDailyState(mode);
+}
+
+/**
+ * Resolve pending live trades for a completed window.
+ * Mirrors paper trade settlement logic: compare finalPrice vs priceToBeat,
+ * determine win/loss, calculate PnL, and update the DB.
+ * Returns the number of trades resolved.
+ */
+export function resolveLiveTrades(windowStartMs: number, finalPrices: Map<string, number>): number {
+	let resolved = 0;
+	const remaining: PendingLiveTrade[] = [];
+
+	for (const trade of pendingLiveTrades) {
+		if (trade.windowStartMs !== windowStartMs) {
+			remaining.push(trade);
+			continue;
+		}
+
+		const finalPrice = finalPrices.get(trade.marketId);
+		if (finalPrice === undefined || trade.priceToBeat <= 0) {
+			remaining.push(trade);
+			continue;
+		}
+
+		// Polymarket rule: price === PTB → DOWN wins
+		const upWon = finalPrice > trade.priceToBeat;
+		const downWon = finalPrice <= trade.priceToBeat;
+		const won = trade.side === "UP" ? upWon : downWon;
+		const pnl = won ? trade.size * (1 - trade.buyPrice) : -(trade.size * trade.buyPrice);
+
+		try {
+			statements.updateTradeOutcome().run({
+				$pnl: pnl,
+				$won: won ? 1 : 0,
+				$orderId: trade.orderId,
+				$mode: "live",
+			});
+		} catch (err) {
+			log.warn(`Failed to update trade outcome for ${trade.orderId}:`, err);
+		}
+
+		// Correct daily PnL: at trade time we debited worst-case (-size*price).
+		// If won, actual PnL is +size*(1-price). Correction = actual - worstCase = size.
+		if (won) {
+			updatePnl(trade.size, "live");
+		}
+
+		log.info(
+			`Live settle: ${trade.marketId} ${trade.side} ${won ? "WON" : "LOST"} | PnL: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} | final=${finalPrice.toFixed(2)} ptb=${trade.priceToBeat.toFixed(2)}`,
+		);
+		resolved++;
+	}
+
+	pendingLiveTrades.length = 0;
+	pendingLiveTrades.push(...remaining);
+	return resolved;
 }
 
 export function getLiveStats(): {

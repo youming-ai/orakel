@@ -1,20 +1,26 @@
+import { applyEvent, enrichPosition, initAccountState, resetAccountState, updateFromSnapshot } from "./accountState.ts";
 import { startApiServer } from "./api.ts";
 import { CONFIG } from "./config.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
+import { startBalancePolling } from "./data/polygonBalance.ts";
+import { startOnChainEventStream } from "./data/polygonEvents.ts";
 import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
 import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
+import { onchainStatements } from "./db.ts";
 import { createLogger } from "./logger.ts";
 import { getActiveMarkets } from "./markets.ts";
 import { OrderManager, type TrackedOrder } from "./orderManager.ts";
 import { canAffordTradeWithStopCheck, getPaperStats, getPendingPaperTrades, resolvePaperTrades } from "./paperStats.ts";
 import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
 import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
+import { startReconciler } from "./reconciler.ts";
 import { redeemAll } from "./redeemer.ts";
 import {
 	clearLivePending,
 	clearPaperPending,
+	emitBalanceSnapshot,
 	emitStateSnapshot,
 	getUpdatedAt,
 	isLivePendingStart,
@@ -24,6 +30,7 @@ import {
 	isPaperPendingStop,
 	isPaperRunning,
 	setLiveRunning,
+	setOnchainBalance,
 	setPaperRunning,
 	updateMarkets,
 } from "./state.ts";
@@ -35,6 +42,7 @@ import {
 	getLiveStats,
 	getLiveTodayStats,
 	getWallet,
+	resolveLiveTrades,
 	startHeartbeat,
 	stopHeartbeat,
 	unregisterOpenGtdOrder,
@@ -91,6 +99,10 @@ function createTradeTracker() {
 
 const paperTracker = createTradeTracker();
 const liveTracker = createTradeTracker();
+
+let balancePollingHandle: { getLast(): unknown; close(): void } | null = null;
+let eventStreamHandle: { close(): void } | null = null;
+let reconcilerHandle: { runNow(): Promise<number>; close(): void } | null = null;
 
 async function main(): Promise<void> {
 	startApiServer();
@@ -181,6 +193,18 @@ async function main(): Promise<void> {
 		for (const [, handle] of streams.chainlink) {
 			handle.close();
 		}
+		if (balancePollingHandle) {
+			balancePollingHandle.close();
+			balancePollingHandle = null;
+		}
+		if (eventStreamHandle) {
+			eventStreamHandle.close();
+			eventStreamHandle = null;
+		}
+		if (reconcilerHandle) {
+			reconcilerHandle.close();
+			reconcilerHandle = null;
+		}
 		setTimeout(() => process.exit(0), 2000);
 	};
 	process.on("SIGTERM", shutdown);
@@ -211,15 +235,92 @@ async function main(): Promise<void> {
 						const { ClobClient } = await import("@polymarket/clob-client");
 						const client = new ClobClient(CONFIG.clobBaseUrl, 137, wallet);
 						orderManager.setClient(client);
-						orderManager.startPolling(5_000);
-						log.info("OrderManager started polling");
 					}
 					const heartbeatOk = startHeartbeat();
 					if (heartbeatOk) {
+						if (wallet) {
+							orderManager.startPolling(5_000);
+							log.info("OrderManager started polling");
+						}
 						log.info("Pending start detected, starting at new cycle boundary");
 						setLiveRunning(true);
+
+						if (wallet) {
+							const walletAddr = wallet.address;
+							initAccountState(walletAddr);
+
+							try {
+								const knownTokens = onchainStatements.getKnownCtfTokens().all({}) as unknown[];
+								for (const raw of knownTokens) {
+									if (raw && typeof raw === "object") {
+										const t = raw as Record<string, unknown>;
+										if (
+											typeof t.token_id === "string" &&
+											typeof t.market_id === "string" &&
+											typeof t.side === "string"
+										) {
+											enrichPosition(t.token_id, t.market_id, t.side);
+										}
+									}
+								}
+							} catch (err) {
+								log.warn("Failed to load known CTF tokens:", err);
+							}
+
+							balancePollingHandle = startBalancePolling({
+								wallet: walletAddr,
+								knownTokenIds: () => {
+									try {
+										const rows = onchainStatements.getKnownCtfTokens().all({}) as unknown[];
+										return rows
+											.filter((r): r is Record<string, unknown> => r !== null && typeof r === "object")
+											.map((r) => String(r.token_id ?? ""))
+											.filter(Boolean);
+									} catch {
+										return [];
+									}
+								},
+								onUpdate: (snapshot) => {
+									updateFromSnapshot(snapshot);
+									setOnchainBalance(snapshot);
+									emitBalanceSnapshot(snapshot);
+								},
+							});
+
+							eventStreamHandle = startOnChainEventStream({
+								wallet: walletAddr,
+								onEvent: (event) => {
+									applyEvent(event);
+									try {
+										onchainStatements.insertOnchainEvent().run({
+											$txHash: event.txHash,
+											$logIndex: event.logIndex,
+											$blockNumber: event.blockNumber,
+											$eventType: event.type,
+											$fromAddr: event.from,
+											$toAddr: event.to,
+											$tokenId: event.tokenId,
+											$value: event.value,
+											$rawData: null,
+										});
+									} catch (err) {
+										log.warn("Failed to persist on-chain event", {
+											error: err instanceof Error ? err.message : String(err),
+										});
+									}
+								},
+							});
+
+							reconcilerHandle = startReconciler({
+								wallet: walletAddr,
+								intervalMs: 60_000,
+							});
+
+							log.info("On-chain tracking started", { wallet: walletAddr });
+						}
 					} else {
 						log.error("Live start aborted: heartbeat failed to start");
+						orderManager.stopPolling();
 					}
 				} else {
 					log.info("Pending start cancelled - wallet not ready");
@@ -249,6 +350,23 @@ async function main(): Promise<void> {
 					);
 				}
 			}
+			if (isLiveRunning() && prevWindowStartMs !== null) {
+				// Settle pending live trades from previous window (mirrors paper settlement)
+				const liveFinalPrices = new Map<string, number>();
+				for (const market of markets) {
+					const st = states.get(market.id);
+					if (st?.prevCurrentPrice !== null && st?.prevCurrentPrice !== undefined) {
+						liveFinalPrices.set(market.id, st.prevCurrentPrice);
+					}
+				}
+				const liveResolved = resolveLiveTrades(prevWindowStartMs, liveFinalPrices);
+				if (liveResolved > 0) {
+					const stats = getLiveStats();
+					log.info(
+						`Live settled ${liveResolved} trade(s) | W:${stats.wins} L:${stats.losses} | WR:${(stats.winRate * 100).toFixed(0)}% | PnL:${stats.totalPnl.toFixed(2)}`,
+					);
+				}
+			}
 			if (isLiveRunning()) {
 				const wallet = getWallet();
 				if (wallet) {
@@ -275,6 +393,19 @@ async function main(): Promise<void> {
 				log.info("Pending stop detected, stopping after cycle settlement");
 				setLiveRunning(false);
 				stopHeartbeat();
+				if (balancePollingHandle) {
+					balancePollingHandle.close();
+					balancePollingHandle = null;
+				}
+				if (eventStreamHandle) {
+					eventStreamHandle.close();
+					eventStreamHandle = null;
+				}
+				if (reconcilerHandle) {
+					reconcilerHandle.close();
+					reconcilerHandle = null;
+				}
+				resetAccountState();
 				orderManager.stopPolling();
 				clearLivePending();
 			}
@@ -431,6 +562,28 @@ async function main(): Promise<void> {
 					orderTracker.record(mkt.id, slug);
 					liveTracker.record(mkt.id, timing.startMs);
 					successfulTradesThisTick += 1;
+
+					// Wire order into OrderManager for status polling & lifecycle management
+					if (result.orderId) {
+						const tradeTokenId = sig.tokens
+							? sig.side === "UP"
+								? sig.tokens.upTokenId
+								: sig.tokens.downTokenId
+							: undefined;
+						orderManager.addOrderWithTracking(
+							{
+								orderId: result.orderId,
+								marketId: mkt.id,
+								windowSlug: slug,
+								side: sig.side ?? "UP",
+								tokenId: tradeTokenId,
+								price: result.tradePrice ?? 0,
+								size: Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0),
+								placedAt: Date.now(),
+							},
+							result.isGtdOrder ?? true,
+						);
+					}
 				} else {
 					log.warn(`Live trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
 				}

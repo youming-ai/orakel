@@ -1,11 +1,10 @@
 import type { Wallet } from "ethers";
-import { createLogger } from "./logger.ts";
-
-const log = createLogger("redeemer");
-
 import { Contract, constants } from "ethers";
+import { CTF_ABI, CTF_ADDRESS, USDC_E_ADDRESS } from "./contracts.ts";
+import { createLogger } from "./logger.ts";
 import type { RedeemResult } from "./types.ts";
 
+const log = createLogger("redeemer");
 interface RedeemablePosition {
 	conditionId: string;
 	redeemable?: boolean;
@@ -24,14 +23,7 @@ function toPositions(value: unknown): RedeemablePosition[] {
 	return value.filter(isRedeemablePosition);
 }
 
-const CTF_ADDRESS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
-const USDC_E = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
 const DATA_API = "https://data-api.polymarket.com";
-
-const CTF_ABI = [
-	"function redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets)",
-	"function payoutDenominator(bytes32 conditionId) view returns (uint256)",
-];
 
 const GAS_OVERRIDES = {
 	maxPriorityFeePerGas: 30_000_000_000,
@@ -72,7 +64,7 @@ export async function redeemAll(wallet: Wallet): Promise<RedeemResult[]> {
 				continue;
 			}
 
-			const tx = await ctf.redeemPositions(USDC_E, constants.HashZero, conditionId, [1, 2], GAS_OVERRIDES);
+			const tx = await ctf.redeemPositions(USDC_E_ADDRESS, constants.HashZero, conditionId, [1, 2], GAS_OVERRIDES);
 			log.info(`Redeem tx sent: ${tx.hash} (condition: ${conditionId.slice(0, 10)}...)`);
 			const receipt = await Promise.race([
 				tx.wait(),

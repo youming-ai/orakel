@@ -267,6 +267,12 @@ export interface TradeResult {
 	order?: unknown;
 	reason?: string;
 	error?: string;
+	/** Order ID returned from CLOB (live trades only) */
+	orderId?: string;
+	/** Execution price in cents (live trades only) */
+	tradePrice?: number;
+	/** Whether the order was GTD (needs heartbeat/polling) vs FOK */
+	isGtdOrder?: boolean;
 }
 
 export interface DailyState {
@@ -390,7 +396,7 @@ export interface PaperStats {
 	totalPnl: number;
 }
 
-export type WsEventType = "state:snapshot" | "signal:new" | "trade:executed";
+export type WsEventType = "state:snapshot" | "signal:new" | "trade:executed" | "balance:snapshot";
 
 export interface WsMessage<T = unknown> {
 	type: WsEventType;
@@ -475,4 +481,43 @@ export interface PerAccountConfig {
 	paper: { risk: RiskConfig };
 	live: { risk: RiskConfig };
 	strategy: StrategyConfig;
+}
+
+// === On-Chain Data Types ===
+
+export interface CtfPosition {
+	tokenId: string;
+	balance: string;
+	marketId: string | null;
+	side: string | null;
+}
+
+export interface BalanceSnapshotPayload {
+	usdcBalance: number;
+	usdcRaw: string;
+	positions: CtfPosition[];
+	blockNumber: number;
+	timestamp: number;
+}
+
+export interface OnChainEvent {
+	type: "usdc_transfer" | "ctf_transfer_single" | "ctf_transfer_batch";
+	txHash: string;
+	blockNumber: number;
+	logIndex: number;
+	from: string;
+	to: string;
+	tokenId: string | null;
+	value: string;
+	timestamp: number;
+}
+
+export type ReconStatus = "unreconciled" | "pending" | "confirmed" | "disputed";
+
+export interface ReconResult {
+	orderId: string;
+	status: ReconStatus;
+	confidence: number;
+	txHash: string | null;
+	blockNumber: number | null;
 }

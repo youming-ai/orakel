@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { createBunWebSocket, serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
+import { getAccountSummary, getAllPositions } from "./accountState.ts";
 import { atomicWriteConfig, CONFIG, reloadConfig } from "./config.ts";
 import { getDbDiagnostics, READ_BACKEND, statements } from "./db.ts";
 import { env } from "./env.ts";
@@ -18,6 +19,7 @@ import {
 	getTodayStats,
 	isStopped,
 } from "./paperStats.ts";
+import { getReconStatus } from "./reconciler.ts";
 import {
 	botEvents,
 	clearLivePending,
@@ -132,6 +134,10 @@ botEvents.on("signal:new", (msg: WsMessage<SignalNewPayload>) => {
 });
 
 botEvents.on("trade:executed", (msg: WsMessage<TradeExecutedPayload>) => {
+	broadcastToClients(JSON.stringify(msg));
+});
+
+botEvents.on("balance:snapshot", (msg: unknown) => {
 	broadcastToClients(JSON.stringify(msg));
 });
 
@@ -574,6 +580,22 @@ const apiRoutes = new Hono()
 			ok: true as const,
 			message: "Pending operation cancelled",
 		});
+	})
+
+	.get("/live/balance", (c) => {
+		const summary = getAccountSummary();
+		if (!summary.walletAddress) {
+			return c.json({ ok: false as const, error: "Account state not initialized" }, 503);
+		}
+		return c.json({ ok: true as const, data: summary });
+	})
+
+	.get("/live/positions", (c) => {
+		return c.json({ ok: true as const, data: getAllPositions() });
+	})
+
+	.get("/live/recon-status", (c) => {
+		return c.json({ ok: true as const, data: getReconStatus() });
 	});
 
 // ---------------------------------------------------------------------------
