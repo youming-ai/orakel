@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { createBunWebSocket, serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
-import { CONFIG, reloadConfig } from "./config.ts";
+import { atomicWriteConfig, CONFIG, reloadConfig } from "./config.ts";
 import { getDbDiagnostics, READ_BACKEND, statements } from "./db.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
@@ -454,7 +454,7 @@ const apiRoutes = new Hono()
 				updated.live = currentLive;
 			}
 
-			fs.writeFileSync("./config.json", JSON.stringify(updated, null, 2));
+			await atomicWriteConfig("./config.json", updated);
 
 			reloadConfig();
 

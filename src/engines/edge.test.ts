@@ -629,3 +629,95 @@ describe("decide", () => {
 		expect(result.reason).toBe(reason);
 	});
 });
+
+describe("NaN safety (P0-1)", () => {
+	it("rejects NaN modelUp", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.1,
+			edgeDown: 0.01,
+			modelUp: NaN,
+			modelDown: 0.4,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+		});
+
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("model_prob_not_finite");
+	});
+
+	it("rejects Infinity modelDown", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.1,
+			edgeDown: 0.01,
+			modelUp: 0.6,
+			modelDown: Infinity,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+		});
+
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("model_prob_not_finite");
+	});
+
+	it("rejects NaN edgeUp", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: NaN,
+			edgeDown: 0.01,
+			modelUp: 0.6,
+			modelDown: 0.4,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+		});
+
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("edge_not_finite");
+	});
+
+	it("rejects -Infinity edgeDown", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.1,
+			edgeDown: -Infinity,
+			modelUp: 0.6,
+			modelDown: 0.4,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+		});
+
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("edge_not_finite");
+	});
+
+	it("allows null model probs (existing behavior)", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.15,
+			edgeDown: 0.01,
+			modelUp: null,
+			modelDown: null,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+		});
+
+		// null models should still work (decide uses edge only)
+		expect(result.action).not.toBe("NO_TRADE");
+	});
+
+	it("allows null edges (existing missing_market_data path)", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: null,
+			edgeDown: null,
+			modelUp: 0.6,
+			modelDown: 0.4,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+		});
+
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("missing_market_data");
+	});
+});

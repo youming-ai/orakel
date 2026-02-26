@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { rename, writeFile } from "node:fs/promises";
 import { z } from "zod";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
@@ -288,6 +289,9 @@ export function reloadConfig(): AppConfig {
 	const fileLiveRisk = fileConfig.live.risk;
 	const fileRisk = fileConfig.risk;
 
+	// P1-7: Preserve runtime-only fields that are not in config.json
+	const prevMarketPerformance = CONFIG.strategy.marketPerformance;
+
 	CONFIG.strategy = {
 		edgeThresholdEarly: fileStrategy.edgeThresholdEarly,
 		edgeThresholdMid: fileStrategy.edgeThresholdMid,
@@ -299,6 +303,7 @@ export function reloadConfig(): AppConfig {
 		regimeMultipliers: fileStrategy.regimeMultipliers,
 		skipMarkets: fileStrategy.skipMarkets,
 		minConfidence: fileStrategy.minConfidence,
+		marketPerformance: prevMarketPerformance ?? fileStrategy.marketPerformance,
 	};
 
 	CONFIG.risk = buildRiskConfig(filePaperRisk, fileRisk);
@@ -339,4 +344,14 @@ export function startConfigWatcher(): void {
 	} catch (err) {
 		log.warn("Failed to start config watcher (file may not exist yet):", err);
 	}
+}
+
+/**
+ * P1-6: Atomic config write — write to temp file then rename.
+ * Prevents partial/corrupt JSON if process crashes mid-write.
+ */
+export async function atomicWriteConfig(configPath: string, data: unknown): Promise<void> {
+	const tmp = `${configPath}.tmp.${Date.now()}`;
+	await writeFile(tmp, JSON.stringify(data, null, 2));
+	await rename(tmp, configPath);
 }

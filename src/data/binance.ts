@@ -20,7 +20,7 @@ export async function fetchKlines({
 	url.searchParams.set("interval", interval);
 	url.searchParams.set("limit", String(limit));
 
-	const res = await fetch(url);
+	const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
 	if (!res.ok) {
 		throw new Error(`Binance klines error: ${res.status} ${await res.text()}`);
 	}
@@ -44,7 +44,7 @@ export async function fetchKlines({
 export async function fetchLastPrice({ symbol }: { symbol: string }): Promise<number | null> {
 	const url = new URL("/api/v3/ticker/price", CONFIG.binanceBaseUrl);
 	url.searchParams.set("symbol", String(symbol || ""));
-	const res = await fetch(url);
+	const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
 	if (!res.ok) {
 		throw new Error(`Binance last price error: ${res.status} ${await res.text()}`);
 	}

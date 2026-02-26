@@ -18,6 +18,10 @@ export function LiveConnect({ clientReady, walletAddress }: LiveConnectProps) {
 	const liveConnect = useLiveConnect();
 	const liveDisconnect = useLiveDisconnect();
 
+	// P0-2: Warn users about private key transmission on non-localhost
+	const isLocalhost = typeof window !== "undefined"
+		&& (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
 	// Clear private key from memory on unmount
 	useEffect(() => {
 		return () => setPrivateKey("");
@@ -72,6 +76,11 @@ export function LiveConnect({ clientReady, walletAddress }: LiveConnectProps) {
 				<span>
 					Enter your private key to connect the backend trading client. The key is sent to the bot server and used to
 					sign on-chain transactions.
+					{!isLocalhost && (
+						<strong className="block mt-1 text-red-400">
+							⚠ WARNING: You are NOT on localhost. Your private key will be sent over the network in plaintext.
+						</strong>
+					)}
 				</span>
 			</div>
 			<div className="flex gap-2">

@@ -1188,6 +1188,10 @@ async function main(): Promise<void> {
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
 
+	// P1-2: Safe mode — pause trading when all markets fail consecutively
+	let consecutiveAllFails = 0;
+	const SAFE_MODE_THRESHOLD = 3;
+
 	while (true) {
 		// Check if we should be in the main loop:
 		// - Running (paper or live)
@@ -1312,6 +1316,23 @@ async function main(): Promise<void> {
 				}
 			}),
 		);
+
+		// P1-2: Track consecutive all-market failures for safe mode
+		const allFailed = results.every((r) => !r.ok);
+		if (allFailed && results.length > 0) {
+			consecutiveAllFails++;
+			log.warn(`All markets failed (${consecutiveAllFails}/${SAFE_MODE_THRESHOLD})`);
+			if (consecutiveAllFails >= SAFE_MODE_THRESHOLD) {
+				log.error("Safe mode: all markets failed consecutively, skipping trade execution this tick");
+				await sleep(1000);
+				continue;
+			}
+		} else {
+			if (consecutiveAllFails >= SAFE_MODE_THRESHOLD) {
+				log.info("Exiting safe mode: at least one market recovered");
+			}
+			consecutiveAllFails = 0;
+		}
 
 		// Subscribe discovered token IDs to CLOB WebSocket for real-time events
 		const newTokenIds = results

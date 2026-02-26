@@ -307,6 +307,12 @@ async function initClient(savedCreds: unknown): Promise<void> {
 				if (isApiCreds(creds)) {
 					fs.mkdirSync("./data", { recursive: true });
 					fs.writeFileSync(CREDS_PATH, JSON.stringify(creds, null, 2));
+					// P0-4: Restrict file permissions to owner-only read/write
+					try {
+						fs.chmodSync(CREDS_PATH, 0o600);
+					} catch {
+						/* ignore on Windows */
+					}
 					log.info("Derived and saved creds, key:", creds.key);
 				}
 			} catch (deriveErr: unknown) {
@@ -434,6 +440,11 @@ export async function executeTrade(
 		const { side, marketUp, marketDown, marketSlug } = signal;
 		const isUp = side === "UP";
 		const marketPrice = isUp ? parseFloat(String(marketUp)) : parseFloat(String(marketDown));
+		// P0-1: Guard against NaN/Infinity propagation into trades
+		if (!Number.isFinite(marketPrice)) {
+			log.warn(`Non-finite market price for ${signal.marketId}, aborting paper trade`);
+			return { success: false, reason: "price_not_finite" };
+		}
 		const limitDiscount = Number(riskConfig.limitDiscount ?? 0.1);
 		const priceRaw = Math.max(0.01, marketPrice - limitDiscount);
 		const price = Math.round(priceRaw * 100) / 100;
@@ -500,6 +511,11 @@ export async function executeTrade(
 
 	const isUp = side === "UP";
 	const marketPrice = isUp ? parseFloat(String(marketUp)) : parseFloat(String(marketDown));
+	// P0-1: Guard against NaN/Infinity propagation into live trades
+	if (!Number.isFinite(marketPrice)) {
+		log.warn(`Non-finite market price for ${signal.marketId}, aborting live trade`);
+		return { success: false, reason: "price_not_finite" };
+	}
 	const limitDiscount = Number(riskConfig.limitDiscount ?? 0.1);
 	const priceRaw = Math.max(0.01, marketPrice - limitDiscount);
 	const price = Math.round(priceRaw * 100) / 100;

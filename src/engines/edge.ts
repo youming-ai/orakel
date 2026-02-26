@@ -336,6 +336,14 @@ export function decide(params: {
 				? Number(strategy?.minProbMid ?? 0.55)
 				: Number(strategy?.minProbLate ?? 0.6);
 
+	// P0-1: Guard against NaN/Infinity in model probabilities
+	if ((modelUp !== null && !Number.isFinite(modelUp)) || (modelDown !== null && !Number.isFinite(modelDown))) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: "model_prob_not_finite" };
+	}
+	if ((edgeUp !== null && !Number.isFinite(edgeUp)) || (edgeDown !== null && !Number.isFinite(edgeDown))) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: "edge_not_finite" };
+	}
+
 	if (edgeUp === null || edgeDown === null) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "missing_market_data" };
 	}
