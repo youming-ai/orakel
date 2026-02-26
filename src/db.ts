@@ -278,6 +278,63 @@ function runMigrations(db: Database): void {
 			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (2, strftime('%s', 'now'))");
 		})();
 	}
+
+	if (currentVersion < 3) {
+		db.transaction(() => {
+			// Extend trades table with on-chain reconciliation columns
+			db.run("ALTER TABLE trades ADD COLUMN tx_hash TEXT DEFAULT NULL");
+			db.run("ALTER TABLE trades ADD COLUMN block_number INTEGER DEFAULT NULL");
+			db.run("ALTER TABLE trades ADD COLUMN log_index INTEGER DEFAULT NULL");
+			db.run("ALTER TABLE trades ADD COLUMN onchain_usdc_delta REAL DEFAULT NULL");
+			db.run("ALTER TABLE trades ADD COLUMN onchain_token_id TEXT DEFAULT NULL");
+			db.run("ALTER TABLE trades ADD COLUMN onchain_token_delta REAL DEFAULT NULL");
+			db.run("ALTER TABLE trades ADD COLUMN recon_status TEXT DEFAULT 'unreconciled'");
+			db.run("ALTER TABLE trades ADD COLUMN recon_confidence REAL DEFAULT NULL");
+
+			db.run(`
+				CREATE TABLE IF NOT EXISTS onchain_events (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					tx_hash TEXT NOT NULL,
+					log_index INTEGER NOT NULL,
+					block_number INTEGER,
+					event_type TEXT NOT NULL,
+					from_addr TEXT,
+					to_addr TEXT,
+					token_id TEXT,
+					value TEXT,
+					raw_data TEXT,
+					created_at INTEGER DEFAULT (strftime('%s', 'now')),
+					UNIQUE(tx_hash, log_index)
+				)
+			`);
+			db.run("CREATE INDEX IF NOT EXISTS idx_onchain_events_tx ON onchain_events(tx_hash)");
+			db.run("CREATE INDEX IF NOT EXISTS idx_onchain_events_block ON onchain_events(block_number)");
+			db.run("CREATE INDEX IF NOT EXISTS idx_onchain_events_token ON onchain_events(token_id)");
+
+			db.run(`
+				CREATE TABLE IF NOT EXISTS balance_snapshots (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					usdc_balance TEXT NOT NULL,
+					usdc_formatted REAL NOT NULL,
+					positions_json TEXT NOT NULL DEFAULT '[]',
+					block_number INTEGER,
+					created_at INTEGER DEFAULT (strftime('%s', 'now'))
+				)
+			`);
+
+			db.run(`
+				CREATE TABLE IF NOT EXISTS known_ctf_tokens (
+					token_id TEXT PRIMARY KEY,
+					market_id TEXT NOT NULL,
+					side TEXT NOT NULL,
+					condition_id TEXT,
+					first_seen_at INTEGER DEFAULT (strftime('%s', 'now'))
+				)
+			`);
+
+			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (3, strftime('%s', 'now'))");
+		})();
+	}
 }
 
 // P2-3: Cache prepared statements — prepare once per SQL string, clear on DB reinit
@@ -499,5 +556,89 @@ export const statements = {
 				SUM(CASE WHEN won IS NULL THEN 1 ELSE 0 END) as pending,
 				COALESCE(SUM(CASE WHEN pnl IS NOT NULL THEN pnl ELSE 0 END), 0) as total_pnl
 			FROM trades WHERE mode = $mode
+		`),
+
+	updateTradeOutcome: () =>
+		cachedPrepare(`
+			UPDATE trades SET pnl = $pnl, won = $won WHERE orderId = $orderId AND mode = $mode
+		`),
+};
+
+// === On-Chain Data Statements ===
+
+export const onchainStatements = {
+	insertOnchainEvent: () =>
+		cachedPrepare(`
+			INSERT OR IGNORE INTO onchain_events (tx_hash, log_index, block_number, event_type, from_addr, to_addr, token_id, value, raw_data)
+			VALUES ($txHash, $logIndex, $blockNumber, $eventType, $fromAddr, $toAddr, $tokenId, $value, $rawData)
+		`),
+
+	getRecentOnchainEvents: () =>
+		cachedQuery(`
+			SELECT * FROM onchain_events ORDER BY block_number DESC, log_index DESC LIMIT $limit
+		`),
+
+	getOnchainEventsByToken: () =>
+		cachedQuery(`
+			SELECT * FROM onchain_events WHERE token_id = $tokenId ORDER BY block_number DESC LIMIT $limit
+		`),
+
+	insertBalanceSnapshot: () =>
+		cachedPrepare(`
+			INSERT INTO balance_snapshots (usdc_balance, usdc_formatted, positions_json, block_number)
+			VALUES ($usdcBalance, $usdcFormatted, $positionsJson, $blockNumber)
+		`),
+
+	getLatestBalanceSnapshot: () =>
+		cachedQuery(`
+			SELECT * FROM balance_snapshots ORDER BY id DESC LIMIT 1
+		`),
+
+	upsertKnownCtfToken: () =>
+		cachedPrepare(`
+			INSERT INTO known_ctf_tokens (token_id, market_id, side, condition_id)
+			VALUES ($tokenId, $marketId, $side, $conditionId)
+			ON CONFLICT(token_id) DO UPDATE SET
+				market_id = $marketId,
+				side = $side,
+				condition_id = COALESCE($conditionId, known_ctf_tokens.condition_id)
+		`),
+
+	getKnownCtfTokens: () =>
+		cachedQuery(`
+			SELECT * FROM known_ctf_tokens
+		`),
+
+	getKnownCtfToken: () =>
+		cachedQuery(`
+			SELECT * FROM known_ctf_tokens WHERE token_id = $tokenId
+		`),
+
+	updateTradeReconStatus: () =>
+		cachedPrepare(`
+			UPDATE trades SET
+				recon_status = $reconStatus,
+				recon_confidence = $reconConfidence,
+				tx_hash = COALESCE($txHash, tx_hash),
+				block_number = COALESCE($blockNumber, block_number),
+				log_index = COALESCE($logIndex, log_index),
+				onchain_usdc_delta = COALESCE($onchainUsdcDelta, onchain_usdc_delta),
+				onchain_token_id = COALESCE($onchainTokenId, onchain_token_id),
+				onchain_token_delta = COALESCE($onchainTokenDelta, onchain_token_delta)
+			WHERE order_id = $orderId AND mode = 'live'
+		`),
+
+	getUnreconciledTrades: () =>
+		cachedQuery(`
+			SELECT * FROM trades
+			WHERE mode = 'live' AND (recon_status = 'unreconciled' OR recon_status = 'pending')
+			ORDER BY timestamp DESC LIMIT $limit
+		`),
+
+	getReconciledTrades: () =>
+		cachedQuery(`
+			SELECT * FROM trades
+			WHERE mode = 'live' AND recon_status IS NOT NULL AND recon_status != 'unreconciled'
+			ORDER BY timestamp DESC LIMIT $limit
 		`),
 };
