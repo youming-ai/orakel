@@ -43,6 +43,8 @@ import {
 	disconnectWallet,
 	getClientStatus,
 	getLiveDailyState,
+	getLiveStats,
+	getLiveTodayStats,
 	getPaperDailyState,
 	getWalletAddress,
 } from "./trader.ts";
@@ -286,6 +288,7 @@ const apiRoutes = new Hono()
 			paperRunning: isPaperRunning(),
 			liveRunning: isLiveRunning(),
 			paperStats: getPaperStats(),
+			liveStats: getLiveStats(),
 			paperBalance: getPaperBalance(),
 			liveWallet: {
 				address: status.walletAddress ?? null,
@@ -300,6 +303,7 @@ const apiRoutes = new Hono()
 			livePendingSince: getLivePendingSince(),
 			stopLoss: isStopped() ? stopLoss : null,
 			todayStats: todayStats,
+			liveTodayStats: getLiveTodayStats(),
 		});
 	})
 
@@ -676,6 +680,8 @@ app.get(
 				livePendingStart: isLivePendingStart(),
 				livePendingStop: isLivePendingStop(),
 				paperStats: getPaperStats(),
+				liveStats: getLiveStats(),
+				liveTodayStats: getLiveTodayStats(),
 			};
 
 			const initialMessage: WsMessage<StateSnapshotPayload> = {

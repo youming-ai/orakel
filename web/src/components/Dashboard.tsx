@@ -191,7 +191,7 @@ function DashboardContent() {
 					/>
 				)}
 				<AnalyticsTabs
-					stats={viewMode === "paper" ? state.paperStats : null}
+					stats={viewMode === "paper" ? state.paperStats : state.liveStats}
 					trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
 					byMarket={viewMode === "paper" ? paperByMarket : undefined}
 				config={state.config ?? DEFAULT_CONFIG}
@@ -199,7 +199,7 @@ function DashboardContent() {
 					liveTrades={trades}
 					viewMode={viewMode}
 					stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
-					todayStats={viewMode === "paper" ? state.todayStats : undefined}
+					todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
 				/>
 			</main>
 

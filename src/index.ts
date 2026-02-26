@@ -32,6 +32,8 @@ import { renderDashboard } from "./terminal.ts";
 import {
 	executeTrade,
 	getClientStatus,
+	getLiveStats,
+	getLiveTodayStats,
 	getWallet,
 	startHeartbeat,
 	stopHeartbeat,
@@ -489,6 +491,8 @@ async function main(): Promise<void> {
 			livePendingStart: isLivePendingStart(),
 			livePendingStop: isLivePendingStop(),
 			paperStats: getPaperStats(),
+			liveStats: getLiveStats(),
+			liveTodayStats: getLiveTodayStats(),
 		});
 
 		renderDashboard(results);

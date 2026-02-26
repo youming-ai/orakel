@@ -490,4 +490,14 @@ export const statements = {
       INSERT INTO kv_store (key, value) VALUES ($key, $value)
       ON CONFLICT(key) DO UPDATE SET value = $value
     `),
+	getTradeStatsByMode: () =>
+		cachedQuery(`
+			SELECT
+				COUNT(*) as total_trades,
+				SUM(CASE WHEN won = 1 THEN 1 ELSE 0 END) as wins,
+				SUM(CASE WHEN won = 0 THEN 1 ELSE 0 END) as losses,
+				SUM(CASE WHEN won IS NULL THEN 1 ELSE 0 END) as pending,
+				COALESCE(SUM(CASE WHEN pnl IS NOT NULL THEN pnl ELSE 0 END), 0) as total_pnl
+			FROM trades WHERE mode = $mode
+		`),
 };

@@ -734,3 +734,46 @@ export function updatePnl(amount: number, mode: "paper" | "live"): void {
 	}
 	saveDailyState(mode);
 }
+
+export function getLiveStats(): {
+	totalTrades: number;
+	wins: number;
+	losses: number;
+	pending: number;
+	winRate: number;
+	totalPnl: number;
+} {
+	try {
+		const row = statements.getTradeStatsByMode().get({ $mode: "live" }) as {
+			total_trades?: number;
+			wins?: number;
+			losses?: number;
+			pending?: number;
+			total_pnl?: number;
+		} | null;
+		const totalTrades = Number(row?.total_trades ?? 0);
+		const wins = Number(row?.wins ?? 0);
+		const losses = Number(row?.losses ?? 0);
+		const pending = Number(row?.pending ?? 0);
+		const resolved = wins + losses;
+		return {
+			totalTrades,
+			wins,
+			losses,
+			pending,
+			winRate: resolved > 0 ? wins / resolved : 0,
+			totalPnl: Number((row?.total_pnl ?? 0).toFixed(2)),
+		};
+	} catch (err) {
+		log.warn("Failed to get live stats:", err);
+		return { totalTrades: 0, wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0 };
+	}
+}
+
+export function getLiveTodayStats(): { pnl: number; trades: number; limit: number } {
+	return {
+		pnl: liveDailyState.pnl,
+		trades: liveDailyState.trades,
+		limit: CONFIG.liveRisk.dailyMaxLossUsdc,
+	};
+}

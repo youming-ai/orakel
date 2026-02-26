@@ -416,6 +416,15 @@ export interface StateSnapshotPayload {
 		winRate: number;
 		totalPnl: number;
 	} | null;
+	liveStats: {
+		totalTrades: number;
+		wins: number;
+		losses: number;
+		pending: number;
+		winRate: number;
+		totalPnl: number;
+	} | null;
+	liveTodayStats: { pnl: number; trades: number; limit: number } | null;
 }
 
 export interface SignalNewPayload {

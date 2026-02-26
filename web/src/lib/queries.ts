@@ -84,10 +84,12 @@ export function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 						livePendingStart: patch.livePendingStart ?? prev.livePendingStart,
 						livePendingStop: patch.livePendingStop ?? prev.livePendingStop,
 						paperStats: patch.paperStats ?? prev.paperStats,
+						liveStats: patch.liveStats ?? prev.liveStats,
 						liveWallet: patch.liveWallet ?? prev.liveWallet,
 						stopLoss: patch.stopLoss !== undefined ? patch.stopLoss : prev.stopLoss,
 						balance: patch.balance ?? prev.balance,
 						todayStats: patch.todayStats ?? prev.todayStats,
+						liveTodayStats: patch.liveTodayStats ?? prev.liveTodayStats,
 						paperMode: patch.paperMode ?? prev.paperMode,
 					});
 				}

@@ -109,6 +109,7 @@ export interface DashboardState {
 	markets: MarketSnapshot[];
 	paperMode: boolean;
 	paperStats: PaperStats | null;
+	liveStats: PaperStats | null;
 	config: {
 		strategy: StrategyConfig;
 		paperRisk: RiskConfig;
@@ -129,6 +130,7 @@ export interface DashboardState {
 	stopLoss?: StopLossStatus;
 	balance?: PaperBalance;
 	todayStats?: TodayStats;
+	liveTodayStats?: TodayStats;
 }
 
 export interface MarketSnapshot {
