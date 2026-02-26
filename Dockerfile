@@ -9,13 +9,17 @@ COPY package.json bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile --production
 
-FROM oven/bun:1-alpine AS web-build
+# Use Node for web build — more memory-efficient than Bun for Vite/Rollup on low-RAM VPS
+FROM node:22-alpine AS web-build
 WORKDIR /app/web
 COPY web/package.json web/bun.lock* web/bun.lockb* ./
-RUN --mount=type=cache,target=/root/.bun/install/cache \
+# Install bun just for dependency resolution (respects bun.lock)
+RUN npm i -g bun && \
     bun install --frozen-lockfile
 COPY web/ .
-RUN bun run build
+# Limit Node heap to leave room for OS; swap fallback for peak usage
+ENV NODE_OPTIONS="--max-old-space-size=512"
+RUN node node_modules/vite/bin/vite.js build
 
 FROM oven/bun:1-alpine AS release
 ARG BUILD_UID

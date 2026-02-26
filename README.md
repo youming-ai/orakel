@@ -534,6 +534,45 @@ docker compose down
 docker compose up --build
 ```
 
+## CI/CD 自动化部署 (VPS)
+
+项目支持 GitHub Actions 自动化部署到 VPS，**无需在 VPS 上构建**（解决 VPS CPU 不足导致构建缓慢的问题）。
+
+### 工作流程
+
+```
+推送到 main 分支 → GitHub Actions 构建 → 推送到 GHCR → VPS 自动拉取重启
+```
+
+### 快速设置 (15 分钟)
+
+1. **配置 GitHub Secrets** (5分钟)
+   - 进入 `Settings → Secrets and variables → Actions`
+   - 添加: `VPS_HOST`, `VPS_PORT`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_DEPLOY_PATH`
+
+2. **初始化 VPS** (10分钟)
+   ```bash
+   # 安装 Docker
+   curl -fsSL https://get.docker.com | sh
+   sudo usermod -aG docker $USER
+
+   # 登录 GHCR (需要 GitHub PAT)
+   docker login ghcr.io
+
+   # 克隆项目
+   git clone https://github.com/<you>/orakel.git ~/orakel
+   cd ~/orakel && cp .env.example .env && mkdir -p data
+   docker compose up -d
+   ```
+
+3. **测试部署**
+   ```bash
+   git commit --allow-empty -m "test: trigger CI/CD"
+   git push origin main
+   ```
+
+📖 **详细文档**: [.github/workflows/deploy/SETUP.md](.github/workflows/deploy/SETUP.md)
+
 ## 安全
 
 - 默认启用模拟交易（`PAPER_MODE=true`）

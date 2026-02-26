@@ -259,3 +259,131 @@ curl http://localhost:9999/api/db/diagnostics
 - **RPC 连接失败**: 添加备用 RPC 到 `POLYGON_RPC_URLS`
 - **WebSocket 断连**: 自动重连 (指数退避, 最大 10s)
 - **配置无效**: 查看日志中的 Zod 验证错误, 回退到默认值
+
+---
+
+## 8. CI/CD 自动化部署 (VPS)
+
+### 8.1 部署架构
+
+```
+┌─────────────────┐      ┌──────────────────┐      ┌─────────────┐
+│   GitHub Push   │ ───> │  GitHub Actions  │ ───> │     VPS     │
+│   (main branch) │      │  (Build + Push)  │      │ (Pull + Run)│
+└─────────────────┘      └──────────────────┘      └─────────────┘
+```
+
+### 8.2 GitHub Secrets 配置
+
+进入 GitHub 仓库 **Settings → Secrets and variables → Actions**，添加以下 Secrets:
+
+| Secret 名称 | 说明 | 示例值 |
+|------------|------|--------|
+| `VPS_HOST` | VPS IP 地址 | `123.45.67.89` |
+| `VPS_PORT` | SSH 端口（可选） | `22` |
+| `VPS_USER` | SSH 用户名 | `root` 或 `ubuntu` |
+| `VPS_SSH_KEY` | SSH 私钥 | `cat ~/.ssh/id_rsa` |
+| `VPS_DEPLOY_PATH` | VPS 上项目路径 | `~/orakel` |
+
+#### 获取 SSH 私钥
+
+```bash
+# 从本地电脑
+cat ~/.ssh/id_rsa
+# 或
+cat ~/.ssh/id_ed25519
+```
+
+复制完整内容（包括 `-----BEGIN` 和 `-----END` 行）粘贴到 GitHub Secret。
+
+### 8.3 VPS 初始设置
+
+第一次部署前，在 VPS 上准备环境：
+
+```bash
+# 1. 安装 Docker 和 Docker Compose
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+
+# 2. 登录到 GitHub Container Registry
+# 在 GitHub Settings → Developer settings → Personal access tokens → Tokens (classic) 创建 PAT
+# 权限: read:packages, write:packages
+echo "<YOUR_GITHUB_PAT>" | docker login ghcr.io -u <YOUR_GITHUB_USERNAME> --password-stdin
+
+# 3. 克隆仓库
+git clone https://github.com/<your-username>/orakel.git ~/orakel
+cd ~/orakel
+
+# 4. 配置环境
+cp .env.example .env
+nano .env
+mkdir -p data
+
+# 5. 首次启动
+docker compose up -d
+```
+
+### 8.4 自动部署流程
+
+完成上述设置后，**每次推送到 `main` 分支会自动部署**：
+
+```bash
+git add .
+git commit -m "feat: new feature"
+git push origin main
+```
+
+GitHub Actions 会自动：
+1. 运行测试和 lint
+2. 构建 Docker 镜像（在 CI 环境，速度快）
+3. 推送到 GitHub Container Registry
+4. SSH 到 VPS 拉取最新镜像
+5. 重启容器
+
+### 8.5 手动部署
+
+**方式 1: GitHub UI**
+- 进入 Actions 标签页
+- 选择 "Deploy to VPS" workflow
+- 点击 "Run workflow"
+
+**方式 2: VPS 手动拉取**
+```bash
+cd ~/orakel
+./scripts/vps-deploy.sh ghcr.io/<username>/orakel:<commit-sha>
+```
+
+### 8.6 故障排查
+
+| 问题 | 解决方案 |
+|------|----------|
+| SSH 连接失败 | 检查 Secret 配置，确认 VPS 防火墙允许 SSH |
+| Docker 登录失败 | 检查 GITHUB_TOKEN 权限，确认 Workflow permissions 已启用 |
+| 镜像拉取缓慢 | 配置 Docker 镜像加速（见下方） |
+| 容器启动失败 | `docker compose logs -f` 查看日志 |
+
+**Docker 镜像加速（国内 VPS）：**
+```bash
+sudo nano /etc/docker/daemon.json
+```
+```json
+{
+  "registry-mirrors": [
+    "https://docker.mirrors.ustc.edu.cn"
+  ]
+}
+```
+```bash
+sudo systemctl restart docker
+```
+
+### 8.7 回滚版本
+
+```bash
+# 查看可用镜像
+docker images "ghcr.io/<username>/orakel" --format "table {{.Tag}}\t{{.CreatedAt}}"
+
+# 回滚到特定版本
+export IMAGE_TAG="ghcr.io/<username>/orakel:<commit-sha>"
+docker compose up -d
+```

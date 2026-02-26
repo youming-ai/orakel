@@ -1,5 +1,7 @@
 services:
   bot:
+    # 使用预构建镜像（CI/CD）或本地构建
+    image: ${IMAGE_TAG:-orakel:local}
     build:
       context: .
       args:
