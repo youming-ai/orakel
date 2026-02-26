@@ -263,9 +263,9 @@ export function AnalyticsTabs({
 		maxTradeSizeUsdc: form.maxTradeSizeUsdc,
 		maxOpenPositions: form.maxOpenPositions,
 		dailyMaxLossUsdc: form.dailyMaxLossUsdc,
-		limitDiscount: config.paperRisk.limitDiscount,
-		minLiquidity: config.paperRisk.minLiquidity,
-		maxTradesPerWindow: config.paperRisk.maxTradesPerWindow,
+		limitDiscount: riskConfig.limitDiscount,
+		minLiquidity: riskConfig.minLiquidity,
+		maxTradesPerWindow: riskConfig.maxTradesPerWindow,
 	};
 
 	function saveConfig() {

@@ -1,5 +1,16 @@
 // Use fetch directly to avoid Hono version mismatch between web and root
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+const API_TOKEN = import.meta.env.VITE_API_TOKEN || "";
+
+function authHeaders(): Record<string, string> {
+	if (!API_TOKEN) return {};
+	return { Authorization: `Bearer ${API_TOKEN}` };
+}
+
+/** Expose token for WebSocket authentication (query param) */
+export function getApiToken(): string {
+	return API_TOKEN;
+}
 
 async function get<T>(path: string): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`);
@@ -11,7 +22,7 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function post<T>(path: string): Promise<T> {
-	const res = await fetch(`${API_BASE}${path}`, { method: "POST" });
+	const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { ...authHeaders() } });
 	if (!res.ok) {
 		const text = await res.text().catch(() => "");
 		throw new Error(`API ${res.status}: ${text || res.statusText}`);
@@ -22,7 +33,7 @@ async function post<T>(path: string): Promise<T> {
 async function postJson<T>(path: string, data: unknown): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: { "Content-Type": "application/json", ...authHeaders() },
 		body: JSON.stringify(data),
 	});
 	if (!res.ok) {
@@ -35,7 +46,7 @@ async function postJson<T>(path: string, data: unknown): Promise<T> {
 async function put<T>(path: string, data: unknown): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, {
 		method: "PUT",
-		headers: { "Content-Type": "application/json" },
+		headers: { "Content-Type": "application/json", ...authHeaders() },
 		body: JSON.stringify(data),
 	});
 	if (!res.ok) {

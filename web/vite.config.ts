@@ -23,6 +23,21 @@ export default defineConfig({
     host: true,
     allowedHosts: true,
   },
+  build: {
+    // Reduce peak memory usage for low-RAM environments (1GB VPS)
+    sourcemap: false,
+    // Split heavy deps into separate chunks so Rollup doesn't hold everything
+    // in memory simultaneously during tree-shaking
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          web3: ["viem", "wagmi"],
+          charts: ["recharts"],
+          ui: ["radix-ui", "lucide-react"],
+        },
+      },
+    },
+  },
   // Reduce log verbosity
   logLevel: "warn",
 });

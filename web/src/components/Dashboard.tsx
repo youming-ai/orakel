@@ -82,7 +82,7 @@ function DashboardContent() {
 			id: t.orderId,
 			marketId: t.market,
 			windowStartMs: new Date(t.timestamp).getTime(),
-			side: (t.side === "UP" ? "UP" : "DOWN") as "UP" | "DOWN",
+			side: (t.side.includes("UP") ? "UP" : "DOWN") as "UP" | "DOWN",
 			price: Number.parseFloat(t.price) || 0,
 			size: Number.parseFloat(t.amount) || 0,
 			priceToBeat: 0,

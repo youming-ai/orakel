@@ -57,8 +57,8 @@ export function OverviewTab({
 }: OverviewTabProps) {
     const sortedMarkets = useMemo(() => {
         return [...markets].sort((a, b) => {
-            if (a.phase === "ENTER" && b.phase !== "ENTER") return -1;
-            if (b.phase === "ENTER" && a.phase !== "ENTER") return 1;
+            if (a.action === "ENTER" && b.action !== "ENTER") return -1;
+            if (b.action === "ENTER" && a.action !== "ENTER") return 1;
             return 0;
         });
     }, [markets]);
