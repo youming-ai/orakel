@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	filterBtcUpDown15mMarkets,
 	flattenEventMarkets,
+	parseGammaMarket,
 	pickLatestLiveMarket,
 	summarizeOrderBook,
 } from "./polymarket.ts";
@@ -426,5 +427,110 @@ describe("summarizeOrderBook", () => {
 		});
 		expect(result.bidLiquidity).toBe(10);
 		expect(result.askLiquidity).toBe(20);
+	});
+});
+
+describe("parseGammaMarket", () => {
+	function makeGammaMarket(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+		return {
+			slug: "btc-updown-15m-2026-02-26-0000",
+			question: "Will BTC be above price to beat $100,000 at 00:15 UTC?",
+			title: "BTC up/down 15m",
+			endDate: "2026-02-26T00:15:00.000Z",
+			eventStartTime: "2026-02-26T00:00:00.000Z",
+			outcomes: ["Up", "Down"],
+			outcomePrices: [0.52, 0.48],
+			clobTokenIds: ["up-token", "down-token"],
+			bestBid: "0.5",
+			bestAsk: "0.53",
+			spread: "0.03",
+			events: [{ seriesSlug: "btc-15m", series: [{ slug: "btc-15m" }] }],
+			seriesSlug: "btc-15m",
+			...overrides,
+		};
+	}
+
+	it("should parse valid market with all required fields", () => {
+		const parsed = parseGammaMarket(makeGammaMarket());
+		expect(parsed).not.toBeNull();
+		expect(parsed?.slug).toBe("btc-updown-15m-2026-02-26-0000");
+		expect(parsed?.endDate).toBe("2026-02-26T00:15:00.000Z");
+		expect(parsed?.bestBid).toBe(0.5);
+		expect(parsed?.bestAsk).toBe(0.53);
+		expect(parsed?.spread).toBe(0.03);
+	});
+
+	it("should parse valid market when optional fields are missing", () => {
+		const parsed = parseGammaMarket(
+			makeGammaMarket({
+				question: undefined,
+				title: undefined,
+				eventStartTime: undefined,
+				bestBid: undefined,
+				bestAsk: undefined,
+				spread: undefined,
+				events: undefined,
+				seriesSlug: undefined,
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		expect(parsed?.slug).toBe("btc-updown-15m-2026-02-26-0000");
+	});
+
+	it("should parse JSON-encoded string fields for outcomes and prices", () => {
+		const parsed = parseGammaMarket(
+			makeGammaMarket({
+				outcomes: '["Up","Down"]',
+				outcomePrices: "[0.61,0.39]",
+				clobTokenIds: '["up-token","down-token"]',
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		expect(parsed?.outcomes).toBe('["Up","Down"]');
+		expect(parsed?.outcomePrices).toBe("[0.61,0.39]");
+		expect(parsed?.clobTokenIds).toBe('["up-token","down-token"]');
+	});
+
+	it("should parse array fields for outcomes and prices", () => {
+		const parsed = parseGammaMarket(
+			makeGammaMarket({
+				outcomes: ["Up", "Down"],
+				outcomePrices: ["0.66", "0.34"],
+				clobTokenIds: ["up", "down"],
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		expect(parsed?.outcomes).toEqual(["Up", "Down"]);
+		expect(parsed?.outcomePrices).toEqual([0.66, 0.34]);
+		expect(parsed?.clobTokenIds).toEqual(["up", "down"]);
+	});
+
+	it("should return null when slug is missing", () => {
+		const parsed = parseGammaMarket(makeGammaMarket({ slug: undefined }));
+		expect(parsed).toBeNull();
+	});
+
+	it("should return null when endDate is missing", () => {
+		const parsed = parseGammaMarket(makeGammaMarket({ endDate: undefined }));
+		expect(parsed).toBeNull();
+	});
+
+	it("should return null for completely invalid input", () => {
+		expect(parseGammaMarket(null)).toBeNull();
+		expect(parseGammaMarket(123)).toBeNull();
+		expect(parseGammaMarket("not-an-object")).toBeNull();
+	});
+
+	it("should preserve unknown fields via passthrough", () => {
+		const parsed = parseGammaMarket(
+			makeGammaMarket({
+				customField: "hello",
+				nestedCustom: { keep: true },
+			}),
+		);
+		expect(parsed).not.toBeNull();
+		expect(parsed && "customField" in parsed).toBe(true);
+		expect(parsed?.customField).toBe("hello");
+		expect(parsed?.nestedCustom).toEqual({ keep: true });
 	});
 });

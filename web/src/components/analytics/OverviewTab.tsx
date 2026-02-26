@@ -84,7 +84,7 @@ export function OverviewTab({
                                 onClick={() => clearStopMutation.mutate()}
                                 disabled={clearStopMutation.isPending}
                             >
-                                Reset & Resume
+								{clearStopMutation.isPending ? "Resetting..." : "Reset & Resume"}
                             </Button>
                         </div>
                     </CardContent>

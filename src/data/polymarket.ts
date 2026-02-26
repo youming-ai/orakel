@@ -1,8 +1,57 @@
+import { z } from "zod";
+import { createTtlCache } from "../cache.ts";
 import { CONFIG } from "../config.ts";
+import { createLogger } from "../logger.ts";
 import type { OrderBookSummary } from "../types.ts";
 
 type JsonRecord = Record<string, unknown>;
 type GammaValue = unknown;
+
+const log = createLogger("polymarket");
+
+const GammaMarketEventSchema = z
+	.object({
+		seriesSlug: z.string().optional(),
+		series: z
+			.array(
+				z
+					.object({
+						slug: z.string().optional(),
+					})
+					.passthrough(),
+			)
+			.optional(),
+	})
+	.passthrough();
+
+export const GammaMarketSchema = z
+	.object({
+		slug: z.string(),
+		question: z.string().optional(),
+		title: z.string().optional(),
+		endDate: z.string(),
+		eventStartTime: z.string().optional(),
+		outcomes: z.union([z.string(), z.array(z.string())]),
+		outcomePrices: z.union([z.string(), z.array(z.coerce.number())]),
+		clobTokenIds: z.union([z.string(), z.array(z.string())]),
+		bestBid: z.coerce.number().optional(),
+		bestAsk: z.coerce.number().optional(),
+		spread: z.coerce.number().optional(),
+		events: z.array(GammaMarketEventSchema).optional(),
+		seriesSlug: z.string().optional(),
+	})
+	.passthrough();
+
+export type GammaMarket = z.infer<typeof GammaMarketSchema>;
+
+export function parseGammaMarket(data: unknown): GammaMarket | null {
+	const result = GammaMarketSchema.safeParse(data);
+	if (!result.success) {
+		log.warn("Invalid Gamma market data:", z.prettifyError(result.error));
+		return null;
+	}
+	return result.data;
+}
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
@@ -40,7 +89,18 @@ function asRecord(x: unknown): JsonRecord | null {
 	return x as JsonRecord;
 }
 
-export async function fetchMarketBySlug(slug: string): Promise<GammaValue | null> {
+// P1-1: Cache market metadata for 30s — slug/outcomes/tokens rarely change
+const slugCache = new Map<string, ReturnType<typeof createTtlCache<GammaMarket>>>();
+
+export async function fetchMarketBySlug(slug: string): Promise<GammaMarket | null> {
+	let cache = slugCache.get(slug);
+	if (!cache) {
+		cache = createTtlCache<GammaMarket>(30_000);
+		slugCache.set(slug, cache);
+	}
+	const cached = cache.get();
+	if (cached !== undefined) return cached;
+
 	const url = new URL("/markets", CONFIG.gammaBaseUrl);
 	url.searchParams.set("slug", slug);
 
@@ -52,8 +112,11 @@ export async function fetchMarketBySlug(slug: string): Promise<GammaValue | null
 	const data: unknown = await res.json();
 	const market = Array.isArray(data) ? data[0] : data;
 	if (!market) return null;
+	const parsed = parseGammaMarket(market);
+	if (!parsed) return null;
 
-	return market;
+	cache.set(parsed);
+	return parsed;
 }
 
 export async function fetchMarketsBySeriesSlug({
@@ -204,7 +267,19 @@ export function filterBtcUpDown15mMarkets(
 	});
 }
 
+// P1-1: Cache CLOB price for 3s
+const clobPriceCache = new Map<string, ReturnType<typeof createTtlCache<number | null>>>();
+
 export async function fetchClobPrice({ tokenId, side }: { tokenId: string; side: string }): Promise<number | null> {
+	const cacheKey = `${tokenId}:${side}`;
+	let cache = clobPriceCache.get(cacheKey);
+	if (!cache) {
+		cache = createTtlCache<number | null>(3_000);
+		clobPriceCache.set(cacheKey, cache);
+	}
+	const cached = cache.get();
+	if (cached !== undefined) return cached;
+
 	const url = new URL("/price", CONFIG.clobBaseUrl);
 	url.searchParams.set("token_id", tokenId);
 	url.searchParams.set("side", side);
@@ -215,10 +290,23 @@ export async function fetchClobPrice({ tokenId, side }: { tokenId: string; side:
 	}
 	const data: unknown = await res.json();
 	const rec = asRecord(data);
-	return toNumber(rec?.price);
+	const result = toNumber(rec?.price);
+	cache.set(result);
+	return result;
 }
 
+// P1-1: Cache orderbook for 3s
+const orderbookCache = new Map<string, ReturnType<typeof createTtlCache<GammaValue>>>();
+
 export async function fetchOrderBook({ tokenId }: { tokenId: string }): Promise<GammaValue> {
+	let cache = orderbookCache.get(tokenId);
+	if (!cache) {
+		cache = createTtlCache<GammaValue>(3_000);
+		orderbookCache.set(tokenId, cache);
+	}
+	const cached = cache.get();
+	if (cached !== undefined) return cached;
+
 	const url = new URL("/book", CONFIG.clobBaseUrl);
 	url.searchParams.set("token_id", tokenId);
 
@@ -226,7 +314,9 @@ export async function fetchOrderBook({ tokenId }: { tokenId: string }): Promise<
 	if (!res.ok) {
 		throw new Error(`CLOB book error: ${res.status} ${await res.text()}`);
 	}
-	return await res.json();
+	const result = await res.json();
+	cache.set(result);
+	return result;
 }
 
 export function summarizeOrderBook(book: GammaValue, depthLevels: number = 5): OrderBookSummary {

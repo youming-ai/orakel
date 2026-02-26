@@ -13,6 +13,8 @@ interface HeaderProps {
 	paperPendingStop: boolean;
 	livePendingStart: boolean;
 	livePendingStop: boolean;
+	paperMutationPending: boolean;
+	liveMutationPending: boolean;
 	onViewModeChange: (mode: "paper" | "live") => void;
 	onPaperToggle: () => void;
 	onLiveToggle: () => void;
@@ -92,6 +94,8 @@ export function Header({
 	paperPendingStop,
 	livePendingStart,
 	livePendingStop,
+	paperMutationPending,
+	liveMutationPending,
 	onViewModeChange,
 	onPaperToggle,
 	onLiveToggle,
@@ -101,6 +105,7 @@ export function Header({
 	const pendingStop = viewMode === "paper" ? paperPendingStop : livePendingStop;
 	const status = getBotStatus(isRunning, pendingStart, pendingStop);
 	const isPending = status === "starting" || status === "stopping";
+	const mutationPending = viewMode === "paper" ? paperMutationPending : liveMutationPending;
 	const timeLeft = useCycleCountdown();
 	const theme = useUIStore((s) => s.theme);
 	const toggleTheme = useUIStore((s) => s.toggleTheme);
@@ -133,7 +138,7 @@ export function Header({
 					<button
 						type="button"
 						onClick={canToggle ? handleToggle : undefined}
-						disabled={!canToggle}
+						disabled={!canToggle || mutationPending}
 						className={cn(
 						"flex items-center gap-1.5 h-7 px-2 sm:px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-lg transition-all shrink-0 border outline-none",
 							!canToggle
@@ -180,6 +185,7 @@ export function Header({
 					<button
 						type="button"
 						onClick={toggleTheme}
+						aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
 						className="flex items-center justify-center size-7 rounded-lg border border-border bg-muted/20 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors outline-none shrink-0"
 						title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
 					>

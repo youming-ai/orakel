@@ -1,3 +1,4 @@
+import { createTtlCache } from "../cache.ts";
 import { CONFIG } from "../config.ts";
 import type { Candle } from "../types.ts";
 
@@ -5,6 +6,9 @@ function toNumber(x: unknown): number | null {
 	const n = Number(x);
 	return Number.isFinite(n) ? n : null;
 }
+
+// P1-1: Cache klines for 60s — they only update once per minute
+const klinesCache = new Map<string, ReturnType<typeof createTtlCache<Candle[]>>>();
 
 export async function fetchKlines({
 	symbol,
@@ -15,6 +19,15 @@ export async function fetchKlines({
 	interval: string;
 	limit: number;
 }): Promise<Candle[]> {
+	const key = `${symbol}:${interval}:${limit}`;
+	let cache = klinesCache.get(key);
+	if (!cache) {
+		cache = createTtlCache<Candle[]>(60_000);
+		klinesCache.set(key, cache);
+	}
+	const cached = cache.get();
+	if (cached) return cached;
+
 	const url = new URL("/api/v3/klines", CONFIG.binanceBaseUrl);
 	url.searchParams.set("symbol", String(symbol || ""));
 	url.searchParams.set("interval", interval);
@@ -27,7 +40,7 @@ export async function fetchKlines({
 	const data: unknown = await res.json();
 	const rows = Array.isArray(data) ? data : [];
 
-	return rows.map((k) => {
+	const result = rows.map((k) => {
 		const row = Array.isArray(k) ? k : [];
 		return {
 			openTime: Number(row[0]),
@@ -39,6 +52,9 @@ export async function fetchKlines({
 			closeTime: Number(row[6]),
 		};
 	});
+
+	cache.set(result);
+	return result;
 }
 
 export async function fetchLastPrice({ symbol }: { symbol: string }): Promise<number | null> {

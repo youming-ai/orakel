@@ -57,6 +57,7 @@ export function ensureDir(dirPath: string): void {
 	fs.mkdirSync(dirPath, { recursive: true });
 }
 
+/** @deprecated CSV persistence — scheduled for removal. SQLite is the primary backend. */
 export function appendCsvRow(filePath: string, header: string[], row: (string | number | null | undefined)[]): void {
 	ensureDir(path.dirname(filePath));
 	const exists = fs.existsSync(filePath);

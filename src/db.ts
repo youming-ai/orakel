@@ -280,15 +280,37 @@ function runMigrations(db: Database): void {
 	}
 }
 
+// P2-3: Cache prepared statements — prepare once per SQL string, clear on DB reinit
+const stmtCache = new Map<string, ReturnType<Database["prepare"]>>();
+const queryCache = new Map<string, ReturnType<Database["query"]>>();
+
+function cachedPrepare(sql: string): ReturnType<Database["prepare"]> {
+	let stmt = stmtCache.get(sql);
+	if (!stmt) {
+		stmt = getDb().prepare(sql);
+		stmtCache.set(sql, stmt);
+	}
+	return stmt;
+}
+
+function cachedQuery(sql: string): ReturnType<Database["query"]> {
+	let q = queryCache.get(sql);
+	if (!q) {
+		q = getDb().query(sql);
+		queryCache.set(sql, q);
+	}
+	return q;
+}
+
 export const statements = {
 	insertTrade: () =>
-		getDb().prepare(`
+		cachedPrepare(`
       INSERT INTO trades (timestamp, market, side, amount, price, order_id, status, mode, pnl, won)
       VALUES ($timestamp, $market, $side, $amount, $price, $orderId, $status, $mode, $pnl, $won)
     `),
 
 	insertSignal: () =>
-		getDb().prepare(`
+		cachedPrepare(`
       INSERT INTO signals (
         timestamp,
         market,
@@ -342,22 +364,22 @@ export const statements = {
     `),
 
 	getRecentTrades: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT * FROM trades WHERE mode = $mode ORDER BY timestamp DESC LIMIT $limit
     `),
 
 	getAllRecentTrades: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT * FROM trades ORDER BY timestamp DESC LIMIT $limit
     `),
 
 	getRecentSignals: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT * FROM signals ORDER BY timestamp DESC LIMIT $limit
     `),
 
 	insertPaperTrade: () =>
-		getDb().prepare(`
+		cachedPrepare(`
       INSERT INTO paper_trades (
         id,
         market_id,
@@ -396,17 +418,17 @@ export const statements = {
     `),
 
 	getPendingPaperTrades: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT * FROM paper_trades WHERE resolved = 0 ORDER BY timestamp
     `),
 
 	getRecentPaperTrades: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT * FROM paper_trades ORDER BY timestamp DESC LIMIT $limit
     `),
 
 	upsertDailyStats: () =>
-		getDb().prepare(`
+		cachedPrepare(`
       INSERT INTO daily_stats (date, mode, pnl, trades, wins, losses)
       VALUES ($date, $mode, $pnl, $trades, $wins, $losses)
       ON CONFLICT(date, mode) DO UPDATE SET
@@ -417,17 +439,17 @@ export const statements = {
     `),
 
 	getDailyStats: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT * FROM daily_stats WHERE date = $date AND mode = $mode
     `),
 
 	getPaperState: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT * FROM paper_state WHERE id = 1
     `),
 
 	upsertPaperState: () =>
-		getDb().prepare(`
+		cachedPrepare(`
       INSERT INTO paper_state (
         id, initial_balance, current_balance, max_drawdown,
         wins, losses, total_pnl,
@@ -454,17 +476,17 @@ export const statements = {
     `),
 
 	getAllPaperTrades: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT * FROM paper_trades ORDER BY timestamp ASC
     `),
 
 	getKv: () =>
-		getDb().query(`
+		cachedQuery(`
       SELECT value FROM kv_store WHERE key = $key
     `),
 
 	setKv: () =>
-		getDb().prepare(`
+		cachedPrepare(`
       INSERT INTO kv_store (key, value) VALUES ($key, $value)
       ON CONFLICT(key) DO UPDATE SET value = $value
     `),

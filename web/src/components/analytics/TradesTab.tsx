@@ -163,7 +163,7 @@ export function TradesTab({
 				<h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
 					{viewMode === "paper" ? "Paper Trades" : "Live Trades"}
 				</h2>
-				<TradeTable trades={viewMode === "paper" ? trades : liveTrades} paperMode={viewMode === "paper"} />
+				<TradeTable trades={liveTrades} paperMode={viewMode === "paper"} />
 			</div>
 		</div>
 	);

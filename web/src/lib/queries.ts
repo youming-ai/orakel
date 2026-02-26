@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ConfigPayload, DashboardState } from "./api";
+
 import { api } from "./api";
 import type { ViewMode } from "./types";
 import type { WsMessage } from "./ws";
@@ -69,8 +70,26 @@ export function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 				// Only merge into existing cache — WS snapshots are partial (no config/balance/etc.)
 				// If no prior HTTP data exists, skip to avoid writing incomplete DashboardState.
 				const prev = qc.getQueryData<DashboardState>(queries.state().queryKey);
-				if (prev) {
-					qc.setQueryData(queries.state().queryKey, { ...prev, ...msg.data });
+				if (prev && msg.data && typeof msg.data === "object") {
+					const patch = msg.data as Partial<DashboardState>;
+					qc.setQueryData(queries.state().queryKey, {
+						...prev,
+						markets: patch.markets ?? prev.markets,
+						updatedAt: patch.updatedAt ?? prev.updatedAt,
+						config: patch.config ?? prev.config,
+						paperRunning: patch.paperRunning ?? prev.paperRunning,
+						liveRunning: patch.liveRunning ?? prev.liveRunning,
+						paperPendingStart: patch.paperPendingStart ?? prev.paperPendingStart,
+						paperPendingStop: patch.paperPendingStop ?? prev.paperPendingStop,
+						livePendingStart: patch.livePendingStart ?? prev.livePendingStart,
+						livePendingStop: patch.livePendingStop ?? prev.livePendingStop,
+						paperStats: patch.paperStats ?? prev.paperStats,
+						liveWallet: patch.liveWallet ?? prev.liveWallet,
+						stopLoss: patch.stopLoss !== undefined ? patch.stopLoss : prev.stopLoss,
+						balance: patch.balance ?? prev.balance,
+						todayStats: patch.todayStats ?? prev.todayStats,
+						paperMode: patch.paperMode ?? prev.paperMode,
+					});
 				}
 				break;
 			}

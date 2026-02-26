@@ -1,8 +1,6 @@
 import { useCallback, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import {
-	createWsCacheHandler,
-	useDashboardState,
+	useDashboardStateWithWs,
 	useLiveCancel,
 	useLiveToggle,
 	usePaperCancel,
@@ -12,8 +10,7 @@ import {
 } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
 import type { ViewMode } from "@/lib/types";
-import type { PaperTradeEntry, TradeRecord } from "@/lib/api";
-import { useWebSocket } from "@/lib/ws";
+import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
 import { AnalyticsTabs } from "./AnalyticsTabs";
 import { Header } from "./Header";
 import { Web3Provider } from "./Web3Provider";
@@ -31,28 +28,42 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+const DEFAULT_CONFIG: DashboardState["config"] = {
+	strategy: {
+		edgeThresholdEarly: 0.06,
+		edgeThresholdMid: 0.08,
+		edgeThresholdLate: 0.1,
+		minProbEarly: 0.52,
+		minProbMid: 0.55,
+		minProbLate: 0.6,
+		blendWeights: { vol: 0.5, ta: 0.5 },
+		regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 },
+	},
+	paperRisk: {
+		maxTradeSizeUsdc: 1,
+		limitDiscount: 0.05,
+		dailyMaxLossUsdc: 10,
+		maxOpenPositions: 2,
+		minLiquidity: 15000,
+		maxTradesPerWindow: 1,
+	},
+	liveRisk: {
+		maxTradeSizeUsdc: 1,
+		limitDiscount: 0.05,
+		dailyMaxLossUsdc: 10,
+		maxOpenPositions: 2,
+		minLiquidity: 15000,
+		maxTradesPerWindow: 1,
+	},
+};
+
 function DashboardContent() {
 	const viewMode = useUIStore((s) => s.viewMode);
 	const setViewMode = useUIStore((s) => s.setViewMode);
 	const confirmAction = useUIStore((s) => s.confirmAction);
 	const setConfirmAction = useUIStore((s) => s.setConfirmAction);
-	const queryClient = useQueryClient();
+	const { data: state, error: stateError } = useDashboardStateWithWs();
 
-	// WebSocket cache handler - memoized to prevent infinite re-renders
-	const wsCacheHandler = useMemo(() => createWsCacheHandler(queryClient), [queryClient]);
-
-	// WebSocket connection
-	useWebSocket({
-		onMessage: wsCacheHandler,
-		onConnect: () => {
-			// Connection state tracked by useWebSocket hook
-		},
-		onDisconnect: () => {
-			// Connection state tracked by useWebSocket hook
-		},
-	});
-
-	const { data: state, error: stateError } = useDashboardState();
 	const { data: trades = [] } = useTrades(viewMode);
 	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
 	const paperToggle = usePaperToggle();
@@ -166,10 +177,12 @@ function DashboardContent() {
 				paperPendingStop={state.paperPendingStop ?? false}
 				livePendingStart={state.livePendingStart ?? false}
 				livePendingStop={state.livePendingStop ?? false}
-				onViewModeChange={handleViewModeChange}
-				onPaperToggle={handlePaperToggle}
-				onLiveToggle={handleLiveToggle}
-			/>
+			onViewModeChange={handleViewModeChange}
+			onPaperToggle={handlePaperToggle}
+			onLiveToggle={handleLiveToggle}
+			paperMutationPending={paperToggle.isPending || paperCancel.isPending}
+			liveMutationPending={liveToggle.isPending || liveCancel.isPending}
+		/>
 			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
 				{viewMode === "live" && (
 					<LiveConnect
@@ -181,7 +194,7 @@ function DashboardContent() {
 					stats={viewMode === "paper" ? state.paperStats : null}
 					trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
 					byMarket={viewMode === "paper" ? paperByMarket : undefined}
-					config={state.config ?? { strategy: { edgeThresholdEarly: 0.06, edgeThresholdMid: 0.08, edgeThresholdLate: 0.1, minProbEarly: 0.52, minProbMid: 0.55, minProbLate: 0.6, blendWeights: { vol: 0.5, ta: 0.5 }, regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 } }, paperRisk: { maxTradeSizeUsdc: 1, limitDiscount: 0.05, dailyMaxLossUsdc: 10, maxOpenPositions: 2, minLiquidity: 15000, maxTradesPerWindow: 1 }, liveRisk: { maxTradeSizeUsdc: 1, limitDiscount: 0.05, dailyMaxLossUsdc: 10, maxOpenPositions: 2, minLiquidity: 15000, maxTradesPerWindow: 1 } }}
+				config={state.config ?? DEFAULT_CONFIG}
 					markets={state.markets ?? []}
 					liveTrades={trades}
 					viewMode={viewMode}

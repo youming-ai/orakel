@@ -3,11 +3,19 @@ const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 async function get<T>(path: string): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`);
+	if (!res.ok) {
+		const text = await res.text().catch(() => "");
+		throw new Error(`API ${res.status}: ${text || res.statusText}`);
+	}
 	return res.json();
 }
 
 async function post<T>(path: string): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, { method: "POST" });
+	if (!res.ok) {
+		const text = await res.text().catch(() => "");
+		throw new Error(`API ${res.status}: ${text || res.statusText}`);
+	}
 	return res.json();
 }
 
@@ -17,6 +25,10 @@ async function postJson<T>(path: string, data: unknown): Promise<T> {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(data),
 	});
+	if (!res.ok) {
+		const text = await res.text().catch(() => "");
+		throw new Error(`API ${res.status}: ${text || res.statusText}`);
+	}
 	return res.json();
 }
 
@@ -26,6 +38,10 @@ async function put<T>(path: string, data: unknown): Promise<T> {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(data),
 	});
+	if (!res.ok) {
+		const text = await res.text().catch(() => "");
+		throw new Error(`API ${res.status}: ${text || res.statusText}`);
+	}
 	return res.json();
 }
 

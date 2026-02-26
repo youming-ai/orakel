@@ -167,6 +167,9 @@ export function MarketCard({ market: m }: MarketCardProps) {
 				{/* Expandable Technicals Area */}
 				<div>
 					<button
+						type="button"
+						aria-expanded={expanded}
+						aria-controls={`technicals-${m.id}`}
 						onClick={() => setExpanded(!expanded)}
 						className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors mx-auto"
 					>
@@ -175,8 +178,13 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					</button>
 
 					{expanded && (
-						<div className="mt-3 space-y-3 p-3 bg-muted/20 border border-border/50 rounded-lg animate-in slide-in-from-top-1 fade-in duration-200">
-							<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
+					<div
+						id={`technicals-${m.id}`}
+						role="region"
+						aria-label={`${m.id} technical indicators`}
+						className="mt-3 space-y-3 p-3 bg-muted/20 border border-border/50 rounded-lg animate-in slide-in-from-top-1 fade-in duration-200"
+					>
+						<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
 								<div className="space-y-1">
 									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">HA Trend</span>
 									<div className="flex items-center gap-1.5">

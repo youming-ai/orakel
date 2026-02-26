@@ -1,3 +1,7 @@
+import type { GammaMarket } from "./data/polymarket.ts";
+
+export type { GammaMarket } from "./data/polymarket.ts";
+
 export interface Candle {
 	openTime: number;
 	open: number | null;
@@ -201,7 +205,7 @@ export interface OrderBookSummary {
 export interface PolymarketSnapshot {
 	ok: boolean;
 	reason?: string;
-	market?: unknown;
+	market?: GammaMarket;
 	tokens?: { upTokenId: string; downTokenId: string };
 	prices?: { up: number | null; down: number | null };
 	orderbook?: { up: OrderBookSummary; down: OrderBookSummary };
@@ -209,6 +213,27 @@ export interface PolymarketSnapshot {
 	clobTokenIds?: string[];
 	outcomePrices?: string[];
 }
+
+export interface RawMarketData {
+	ok: true;
+	market: MarketConfig;
+	spotPrice: number;
+	currentPrice: number | null;
+	lastPrice: number;
+	timeLeftMin: number | null;
+	marketSlug: string;
+	marketStartMs: number | null;
+	candles: Candle[];
+	poly: PolymarketSnapshot;
+}
+
+export interface RawMarketDataError {
+	ok: false;
+	market: MarketConfig;
+	error: string;
+}
+
+export type FetchMarketDataResult = RawMarketData | RawMarketDataError;
 
 export interface TradeSignal {
 	timestamp: string;
@@ -265,6 +290,36 @@ export interface OrderTracker {
 export interface WsStreamHandle {
 	getLast(symbol?: string): PriceTick;
 	close(): void;
+}
+
+export interface StreamHandles {
+	binance: WsStreamHandle;
+	polymarket: WsStreamHandle;
+	chainlink: Map<string, WsStreamHandle>;
+}
+
+export interface ComputeResult {
+	rec: TradeDecision;
+	consec: { color: string | null; count: number };
+	rsiNow: number | null;
+	macd: MacdResult | null;
+	vwapSlope: number | null;
+	volatility15m: number | null;
+	binanceChainlinkDelta: number | null;
+	orderbookImbalance: number | null;
+	marketUp: number | null;
+	marketDown: number | null;
+	edge: EdgeResult;
+	scored: ScoreResult;
+	blended: BlendResult;
+	regimeInfo: RegimeResult;
+	finalUp: number;
+	finalDown: number;
+	volImplied: number | null;
+	pLong: string;
+	pShort: string;
+	predictNarrative: string;
+	actionText: string;
 }
 
 export interface RedeemResult {
