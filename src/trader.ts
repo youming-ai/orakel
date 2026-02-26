@@ -90,7 +90,9 @@ export function startHeartbeat(): boolean {
 				if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
 					const backoffMs = Math.min(30_000, 5_000 * 2 ** reconnectAttempts);
 					reconnectAttempts++;
-					log.info(`Attempting heartbeat reconnection ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${backoffMs}ms`);
+					log.info(
+						`Attempting heartbeat reconnection ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${backoffMs}ms`,
+					);
 					reconnectTimer = setTimeout(async () => {
 						if (client && isLiveRunning()) {
 							log.info("Attempting to restart heartbeat...");
