@@ -41,13 +41,13 @@ function getOrderedRpcs(): string[] {
 	return rpcs;
 }
 
-function toDecimal(raw: string, decimals: number): number {
+export function toDecimal(raw: string, decimals: number): number {
 	const n = Number(raw);
 	if (!Number.isFinite(n)) return 0;
 	return n / 10 ** decimals;
 }
 
-function parseHexToNumber(hex: string): number {
+export function parseHexToNumber(hex: string): number {
 	const clean = String(hex || "").trim();
 	if (!clean.startsWith("0x")) {
 		throw new Error("rpc_invalid_hex");
@@ -59,7 +59,7 @@ function parseHexToNumber(hex: string): number {
 	return n;
 }
 
-function normalizeTokenIds(tokenIds: string[]): string[] {
+export function normalizeTokenIds(tokenIds: string[]): string[] {
 	const out: string[] = [];
 	const seen = new Set<string>();
 	for (const tokenId of tokenIds) {

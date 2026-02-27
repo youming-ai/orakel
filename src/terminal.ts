@@ -30,14 +30,14 @@ const ANSI: ANSIMap = {
 	white: "\x1b[97m",
 };
 
-function stripAnsi(s: unknown): string {
+export function stripAnsi(s: unknown): string {
 	const esc = String.fromCharCode(27);
 	return String(s ?? "")
 		.replaceAll(esc, "")
 		.replace(/\[[0-9;]*m/g, "");
 }
 
-function padAnsi(s: unknown, width: number): string {
+export function padAnsi(s: unknown, width: number): string {
 	const raw = String(s ?? "");
 	const len = stripAnsi(raw).length;
 	if (len >= width) return raw;
@@ -59,13 +59,13 @@ function renderScreen(text: string): void {
 	process.stdout.write(text);
 }
 
-function colorForAction(action: TradeDecision["action"] | undefined, side: TradeDecision["side"] | undefined): string {
+export function colorForAction(action: TradeDecision["action"] | undefined, side: TradeDecision["side"] | undefined): string {
 	if (action === "ENTER" && side === "UP") return ANSI.green;
 	if (action === "ENTER" && side === "DOWN") return ANSI.red;
 	return ANSI.gray;
 }
 
-function getBtcSession(now: Date = new Date()): string {
+export function getBtcSession(now: Date = new Date()): string {
 	const h = now.getUTCHours();
 	const inAsia = h >= 0 && h < 8;
 	const inEurope = h >= 7 && h < 16;
@@ -78,7 +78,7 @@ function getBtcSession(now: Date = new Date()): string {
 	return "Off-hours";
 }
 
-function fmtEtTime(now: Date = new Date()): string {
+export function fmtEtTime(now: Date = new Date()): string {
 	try {
 		return new Intl.DateTimeFormat("en-US", {
 			timeZone: "America/New_York",
@@ -92,7 +92,7 @@ function fmtEtTime(now: Date = new Date()): string {
 	}
 }
 
-function fmtTimeLeft(mins: number | null | undefined): string {
+export function fmtTimeLeft(mins: number | null | undefined): string {
 	if (!Number.isFinite(Number(mins))) return "--:--";
 	const totalSeconds = Math.max(0, Math.floor(Number(mins) * 60));
 	const m = Math.floor(totalSeconds / 60);
@@ -100,7 +100,7 @@ function fmtTimeLeft(mins: number | null | undefined): string {
 	return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function compactMacdLabel(macd: MacdResult | null | undefined): string {
+export function compactMacdLabel(macd: MacdResult | null | undefined): string {
 	if (!macd) return "flat";
 	if (macd.hist < 0) return macd.histDelta !== null && macd.histDelta < 0 ? "bearish" : "red";
 	if (macd.hist > 0) return macd.histDelta !== null && macd.histDelta > 0 ? "bullish" : "green";

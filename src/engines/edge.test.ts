@@ -628,6 +628,66 @@ describe("decide", () => {
 
 		expect(result.reason).toBe(reason);
 	});
+
+	it("skips high-confidence CHOP via enhanced regime signal", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.2,
+			edgeDown: 0.05,
+			modelUp: 0.75,
+			modelDown: 0.25,
+			regime: "CHOP",
+			enhancedRegime: {
+				regime: "CHOP",
+				confidence: 0.75,
+				reason: "frequent_vwap_cross",
+			},
+			strategy: makeStrategy(),
+			marketId: "SOL",
+		});
+
+		expect(result.reason).toBe("high_confidence_chop");
+	});
+
+	it("uses range multiplier for low-confidence trend in enhanced regime", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.075,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			regime: "TREND_UP",
+			enhancedRegime: {
+				regime: "TREND_UP",
+				confidence: 0.3,
+				reason: "price_above_vwap_slope_up",
+			},
+			strategy: makeStrategy(),
+		});
+
+		expect(result.reason).toBe("edge_below_0.080");
+	});
+
+	it("skips CHOP poor market in adaptive threshold path", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.2,
+			edgeDown: 0.05,
+			modelUp: 0.75,
+			modelDown: 0.25,
+			regime: "CHOP",
+			strategy: makeStrategy(),
+			marketId: "BTC",
+			adaptiveThresholds: {
+				edgeThreshold: 0.06,
+				minProb: 0.55,
+				minConfidence: 0.5,
+				reason: "test",
+			},
+		});
+
+		expect(result.reason).toBe("skip_chop_poor_market");
+	});
 });
 
 describe("NaN safety (P0-1)", () => {

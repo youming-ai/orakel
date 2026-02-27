@@ -14,7 +14,7 @@ type MultiPolymarketStreamHandle = WsStreamHandle & {
 	getLast(symbol: string): PriceTick;
 };
 
-function safeJsonParse(s: string): unknown | null {
+export function safeJsonParse(s: string): unknown | null {
 	try {
 		return JSON.parse(s);
 	} catch {
@@ -22,7 +22,7 @@ function safeJsonParse(s: string): unknown | null {
 	}
 }
 
-function normalizePayload(payload: unknown): JsonRecord | null {
+export function normalizePayload(payload: unknown): JsonRecord | null {
 	if (!payload) return null;
 	if (typeof payload === "object" && !Array.isArray(payload)) return payload as JsonRecord;
 	if (typeof payload === "string") {
@@ -32,12 +32,12 @@ function normalizePayload(payload: unknown): JsonRecord | null {
 	return null;
 }
 
-function toFiniteNumber(x: unknown): number | null {
+export function toFiniteNumber(x: unknown): number | null {
 	const n = typeof x === "string" ? Number(x) : typeof x === "number" ? x : Number.NaN;
 	return Number.isFinite(n) ? n : null;
 }
 
-function normSymbol(x: unknown): string {
+export function normSymbol(x: unknown): string {
 	return String(x || "")
 		.toLowerCase()
 		.replace(/[^a-z0-9]/g, "");

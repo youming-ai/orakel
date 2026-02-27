@@ -8,7 +8,7 @@
         "@hono/zod-validator": "^0.7.6",
         "@polymarket/clob-client": "^5.2.4",
         "ethers": "^5.8.0",
-        "hono": "^4.12.2",
+        "hono": "^4.12.3",
         "undici": "^6.23.0",
         "ws": "^8.19.0",
         "zod": "^4.3.6",
@@ -356,7 +356,7 @@
 
     "hmac-drbg": ["hmac-drbg@1.0.1", "", { "dependencies": { "hash.js": "^1.0.3", "minimalistic-assert": "^1.0.0", "minimalistic-crypto-utils": "^1.0.1" } }, "sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg=="],
 
-    "hono": ["hono@4.12.2", "", {}, "sha512-gJnaDHXKDayjt8ue0n8Gs0A007yKXj4Xzb8+cNjZeYsSzzwKc0Lr+OZgYwVfB0pHfUs17EPoLvrOsEaJ9mj+Tg=="],
+    "hono": ["hono@4.12.3", "", {}, "sha512-SFsVSjp8sj5UumXOOFlkZOG6XS9SJDKw0TbwFeV+AJ8xlST8kxK5Z/5EYa111UY8732lK2S/xB653ceuaoGwpg=="],
 
     "inherits": ["inherits@2.0.4", "", {}, "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ=="],
 

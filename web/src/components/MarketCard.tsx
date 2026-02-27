@@ -121,7 +121,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 	const confidence = m.confidence;
 
 	return (
-		<Card className={cn("relative overflow-hidden transition-all duration-200 hover:border-border/80 group", phaseBg)}>
+		<Card role="region" aria-label={`${m.id} market card`} className={cn("relative overflow-hidden transition-all duration-200 hover:border-border/80 group", phaseBg)}>
 			<CardHeader className="pb-3">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
@@ -170,6 +170,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 						type="button"
 						aria-expanded={expanded}
 						aria-controls={`technicals-${m.id}`}
+						aria-label={expanded ? `Hide ${m.id} technical details` : `Show ${m.id} technical details`}
 						onClick={() => setExpanded(!expanded)}
 						className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors mx-auto"
 					>

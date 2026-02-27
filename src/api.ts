@@ -275,10 +275,11 @@ const apiRoutes = new Hono()
 		});
 	})
 
-	.get("/state", (c) => {
+	.get("/state", async (c) => {
 		const status = getClientStatus();
 		const todayStats = getTodayStats();
 		const stopLoss = getStopReason();
+		const liveStats = await getLiveStats();
 
 		return c.json({
 			markets: getMarkets(),
@@ -294,7 +295,7 @@ const apiRoutes = new Hono()
 			paperRunning: isPaperRunning(),
 			liveRunning: isLiveRunning(),
 			paperStats: getPaperStats(),
-			liveStats: getLiveStats(),
+			liveStats,
 			paperBalance: getPaperBalance(),
 			liveWallet: {
 				address: status.walletAddress ?? null,
@@ -692,28 +693,56 @@ app.get(
 			wsClients.add(ws.raw as WebSocket);
 			wsLog.info("Client connected, total:", wsClients.size);
 
-			const snapshot: StateSnapshotPayload = {
-				markets: getMarkets(),
-				updatedAt: getUpdatedAt(),
-				paperRunning: isPaperRunning(),
-				liveRunning: isLiveRunning(),
-				paperPendingStart: isPaperPendingStart(),
-				paperPendingStop: isPaperPendingStop(),
-				livePendingStart: isLivePendingStart(),
-				livePendingStop: isLivePendingStop(),
-				paperStats: getPaperStats(),
-				liveStats: getLiveStats(),
-				liveTodayStats: getLiveTodayStats(),
-			};
+			// Fetch live stats from chain (async) before sending snapshot
+			getLiveStats()
+				.then((liveStats) => {
+					const snapshot: StateSnapshotPayload = {
+						markets: getMarkets(),
+						updatedAt: getUpdatedAt(),
+						paperRunning: isPaperRunning(),
+						liveRunning: isLiveRunning(),
+						paperPendingStart: isPaperPendingStart(),
+						paperPendingStop: isPaperPendingStop(),
+						livePendingStart: isLivePendingStart(),
+						livePendingStop: isLivePendingStop(),
+						paperStats: getPaperStats(),
+						liveStats,
+						liveTodayStats: getLiveTodayStats(),
+					};
 
-			const initialMessage: WsMessage<StateSnapshotPayload> = {
-				type: "state:snapshot",
-				data: snapshot,
-				ts: Date.now(),
-				version: 0,
-			};
+					const initialMessage: WsMessage<StateSnapshotPayload> = {
+						type: "state:snapshot",
+						data: snapshot,
+						ts: Date.now(),
+						version: 0,
+					};
 
-			ws.send(JSON.stringify(initialMessage));
+					ws.send(JSON.stringify(initialMessage));
+				})
+				.catch((err) => {
+					wsLog.error("Failed to fetch live stats for WS snapshot:", err);
+					// Send fallback snapshot with empty liveStats so client is not left blank
+					const fallbackSnapshot: StateSnapshotPayload = {
+						markets: getMarkets(),
+						updatedAt: getUpdatedAt(),
+						paperRunning: isPaperRunning(),
+						liveRunning: isLiveRunning(),
+						paperPendingStart: isPaperPendingStart(),
+						paperPendingStop: isPaperPendingStop(),
+						livePendingStart: isLivePendingStart(),
+						livePendingStop: isLivePendingStop(),
+						paperStats: getPaperStats(),
+						liveStats: { totalTrades: 0, wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0 },
+						liveTodayStats: getLiveTodayStats(),
+					};
+					const fallbackMsg: WsMessage<StateSnapshotPayload> = {
+						type: "state:snapshot",
+						data: fallbackSnapshot,
+						ts: Date.now(),
+						version: 0,
+					};
+					ws.send(JSON.stringify(fallbackMsg));
+				});
 		},
 		onClose(_event, ws) {
 			wsClients.delete(ws.raw as WebSocket);

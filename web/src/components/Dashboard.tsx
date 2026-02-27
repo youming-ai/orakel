@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import {
 	useDashboardStateWithWs,
 	useLiveCancel,
@@ -9,12 +10,14 @@ import {
 	useTrades,
 } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
+import { useAlertHandler } from "@/lib/alerts";
 import type { ViewMode } from "@/lib/types";
 import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
 import { AnalyticsTabs } from "./AnalyticsTabs";
 import { Header } from "./Header";
 import { Web3Provider } from "./Web3Provider";
 import { LiveConnect } from "./LiveConnect";
+import { AlertSystem } from "./AlertSystem";
 import { Toaster } from "@/components/ui/toaster";
 import { toast } from "@/lib/toast";
 import {
@@ -58,11 +61,15 @@ const DEFAULT_CONFIG: DashboardState["config"] = {
 };
 
 function DashboardContent() {
+	const prefersReducedMotion = useReducedMotion();
 	const viewMode = useUIStore((s) => s.viewMode);
 	const setViewMode = useUIStore((s) => s.setViewMode);
 	const confirmAction = useUIStore((s) => s.confirmAction);
 	const setConfirmAction = useUIStore((s) => s.setConfirmAction);
 	const { data: state, error: stateError } = useDashboardStateWithWs();
+
+	// Handle alerts from WebSocket events
+	useAlertHandler();
 
 	const { data: trades = [] } = useTrades(viewMode);
 	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
@@ -154,7 +161,9 @@ function DashboardContent() {
 					) : (
 						<>
 							<div
-								className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+								className={`inline-block h-6 w-6 rounded-full border-2 border-muted-foreground border-t-transparent${
+									prefersReducedMotion ? "" : " animate-spin"
+								}`}
 								role="status"
 								aria-label="Loading dashboard"
 							/>
@@ -226,6 +235,7 @@ function DashboardContent() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+			<AlertSystem />
 		</div>
 	);
 }

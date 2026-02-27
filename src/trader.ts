@@ -3,13 +3,16 @@ import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
 import { enrichPosition } from "./accountState.ts";
+import { storeSignalMetadata } from "./adaptiveState.ts";
 import { CONFIG } from "./config.ts";
 import { onchainStatements, PERSIST_BACKEND, statements } from "./db.ts";
+import { calculateKellyPositionSize } from "./engines/positionSizing.ts";
 import { env } from "./env.ts";
+import { clearLiveStatsCache, getLiveStatsLegacy } from "./liveStats.ts";
 import { createLogger } from "./logger.ts";
-import { addPaperTrade } from "./paperStats.ts";
+import { addPaperTrade, getPaperBalance } from "./paperStats.ts";
 import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "./state.ts";
-import type { DailyState, MarketConfig, RiskConfig, TradeResult, TradeSignal } from "./types.ts";
+import type { DailyState, MarketConfig, PositionSizeResult, RiskConfig, TradeResult, TradeSignal } from "./types.ts";
 import { getCandleWindowTiming } from "./utils.ts";
 
 const log = createLogger("trader");
@@ -181,6 +184,76 @@ function asRecord(value: unknown): Record<string, unknown> {
 		return value as Record<string, unknown>;
 	}
 	return {};
+}
+
+function asSignalConfidence(signal: TradeSignal): number {
+	const signalRecord = asRecord(signal);
+	const confidenceValue = signalRecord.confidence;
+
+	if (typeof confidenceValue === "number" && Number.isFinite(confidenceValue)) {
+		return confidenceValue;
+	}
+
+	if (confidenceValue && typeof confidenceValue === "object") {
+		const confidenceRecord = asRecord(confidenceValue);
+		const scoreValue = confidenceRecord.score;
+		if (typeof scoreValue === "number" && Number.isFinite(scoreValue)) {
+			return scoreValue;
+		}
+	}
+
+	return 0.5;
+}
+
+function asSignalRegime(signal: TradeSignal): string | null {
+	const signalRecord = asRecord(signal);
+	const regimeValue = signalRecord.regime;
+	if (typeof regimeValue === "string" && regimeValue.length > 0) {
+		return regimeValue;
+	}
+	return null;
+}
+
+function normalizedMarketPrice(price: number | null): number {
+	if (typeof price !== "number" || !Number.isFinite(price) || price <= 0 || price >= 1) {
+		return 0.5;
+	}
+	return price;
+}
+
+function computeTradeSize(signal: TradeSignal, riskConfig: RiskConfig, balance: number): PositionSizeResult {
+	const configuredMaxSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+	if (!Number.isFinite(configuredMaxSize) || configuredMaxSize <= 0) {
+		return {
+			size: 0,
+			rawKelly: 0,
+			adjustedKelly: 0,
+			reason: "max_size_zero",
+		};
+	}
+
+	const marketPrice =
+		signal.side === "UP" ? normalizedMarketPrice(signal.marketUp) : normalizedMarketPrice(signal.marketDown);
+	const winProbability = signal.side === "UP" ? signal.modelUp : signal.modelDown;
+	const avgWinPayout = 1 - marketPrice;
+	const avgLossPayout = marketPrice;
+
+	const result = calculateKellyPositionSize({
+		winProbability,
+		avgWinPayout,
+		avgLossPayout,
+		bankroll: balance,
+		maxSize: configuredMaxSize,
+		confidence: asSignalConfidence(signal),
+		regime: asSignalRegime(signal),
+		side: signal.side,
+	});
+
+	log.info(
+		`Kelly sizing ${signal.marketId} ${signal.side}: size=${result.size.toFixed(4)} raw=${result.rawKelly.toFixed(4)} adjusted=${result.adjustedKelly.toFixed(4)} reason=${result.reason}`,
+	);
+
+	return result;
 }
 
 function isApiCreds(value: unknown): value is ApiKeyCreds {
@@ -406,6 +479,16 @@ function tradeLogPath(marketId: string | null | undefined, mode: "paper" | "live
 	return `./data/${mode}/trades-${id}.csv`;
 }
 
+/**
+ * Log trade to local storage (CSV and SQLite).
+ *
+ * IMPORTANT: This is for LOGGING ONLY.
+ *
+ * - Paper mode: Local DB is the primary data source
+ * - Live mode: Local DB is ONLY for logging and reconciliation debugging.
+ *              All live stats (win rate, PnL, etc.) are fetched from on-chain data
+ *              via getLiveStats() -> liveStats.ts (CLOB API).
+ */
 function logTrade(
 	trade: {
 		timestamp?: string;
@@ -471,6 +554,13 @@ export async function executeTrade(
 
 	if (mode === "paper") {
 		const { side, marketUp, marketDown, marketSlug } = signal;
+		const paperBalance = getPaperBalance().current;
+		const paperSizing = computeTradeSize(signal, riskConfig, paperBalance);
+		const tradeSize = paperSizing.size;
+		if (tradeSize <= 0) {
+			log.warn(`Skipping paper trade for ${signal.marketId}: ${paperSizing.reason}`);
+			return { success: false, reason: "size_zero" };
+		}
 		const isUp = side === "UP";
 		const marketPrice = isUp ? parseFloat(String(marketUp)) : parseFloat(String(marketDown));
 		// P0-1: Guard against NaN/Infinity propagation into trades
@@ -481,6 +571,18 @@ export async function executeTrade(
 		const limitDiscount = Number(riskConfig.limitDiscount ?? 0.1);
 		const priceRaw = Math.max(0.01, marketPrice - limitDiscount);
 		const price = Math.round(priceRaw * 100) / 100;
+		const arbitrageDetected = signal.arbitrageDetected === true;
+		const arbitrageDirection = signal.arbitrageDirection ?? (side === "UP" ? "BUY_UP" : "BUY_DOWN");
+		const arbitrageSpread =
+			typeof signal.arbitrageSpread === "number" && Number.isFinite(signal.arbitrageSpread)
+				? signal.arbitrageSpread
+				: null;
+		const arbitrageStatusMarker =
+			arbitrageDetected && arbitrageSpread !== null
+				? `ARB:${arbitrageDirection}:spread=${arbitrageSpread.toFixed(4)}`
+				: arbitrageDetected
+					? `ARB:${arbitrageDirection}:spread=n/a`
+					: null;
 
 		if (price < 0.02 || price > 0.98) {
 			log.info(`Price ${price} out of tradeable range`);
@@ -493,11 +595,29 @@ export async function executeTrade(
 			windowStartMs: timing.startMs,
 			side: signal.side,
 			price,
-			size: Number(riskConfig.maxTradeSizeUsdc || 0),
+			size: tradeSize,
 			priceToBeat: signal.priceToBeat ?? 0,
 			currentPriceAtEntry: signal.currentPrice,
 			timestamp: new Date().toISOString(),
 		});
+
+		storeSignalMetadata(paperId, {
+			edge: Math.max(Number(signal.edgeUp ?? 0), Number(signal.edgeDown ?? 0)),
+			confidence: 0.5,
+			phase: signal.phase,
+			regime: null,
+			volatility15m: Number(signal.volatility15m ?? 0),
+			modelUp: Number(signal.modelUp ?? 0.5),
+			orderbookImbalance: signal.orderbookImbalance ?? null,
+			rsi: null,
+			vwapSlope: null,
+		});
+
+		if (arbitrageDetected) {
+			log.info(
+				`[ARBITRAGE][PAPER] ${signal.marketId} ${arbitrageDirection} spread=${arbitrageSpread?.toFixed(4) ?? "n/a"}`,
+			);
+		}
 
 		log.info(`Simulated fill: ${side} at ${price}¢ | ${marketSlug} (${paperId})`);
 
@@ -507,10 +627,10 @@ export async function executeTrade(
 			{
 				market: marketSlug,
 				side: `BUY_${side}`,
-				amount: Number(riskConfig.maxTradeSizeUsdc || 0),
+				amount: tradeSize,
 				price,
 				orderId: paperId,
-				status: "paper_filled",
+				status: arbitrageStatusMarker === null ? "paper_filled" : `paper_filled|${arbitrageStatusMarker}`,
 			},
 			signal.marketId || marketConfig?.id,
 			mode,
@@ -521,7 +641,7 @@ export async function executeTrade(
 			mode,
 			side,
 			price,
-			size: Number(riskConfig.maxTradeSizeUsdc || 0),
+			size: tradeSize,
 			timestamp: paperTradeTimestamp,
 			orderId: paperId,
 			status: "paper_filled",
@@ -538,6 +658,13 @@ export async function executeTrade(
 
 	if (!canTrade(riskConfig, "live")) {
 		return { success: false, reason: "trading_disabled" };
+	}
+
+	const liveSizing = computeTradeSize(signal, riskConfig, Number(riskConfig.maxTradeSizeUsdc || 0) * 10);
+	const tradeSize = liveSizing.size;
+	if (tradeSize <= 0) {
+		log.warn(`Skipping live trade for ${signal.marketId}: ${liveSizing.reason}`);
+		return { success: false, reason: "size_zero" };
 	}
 
 	const { side, marketUp, marketDown, marketSlug, tokens } = signal;
@@ -578,7 +705,6 @@ export async function executeTrade(
 
 	try {
 		const negRisk = false;
-		const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
 		const isLatePhase = signal.phase === "LATE";
 		const isHighConfidence = signal.strength === "STRONG" || signal.strength === "GOOD";
 
@@ -650,7 +776,7 @@ export async function executeTrade(
 			{
 				market: marketSlug,
 				side: `BUY_${side}`,
-				amount: Number(riskConfig.maxTradeSizeUsdc || 0),
+				amount: tradeSize,
 				price,
 				orderId: resultOrderId || resultId || "unknown",
 				status: resultStatus || "placed",
@@ -666,13 +792,16 @@ export async function executeTrade(
 				mode,
 				side,
 				price,
-				size: Number(riskConfig.maxTradeSizeUsdc || 0),
+				size: tradeSize,
 				timestamp: liveTradeTimestamp,
 				orderId: finalOrderId,
 				status: resultStatus || "placed",
 			});
 			liveDailyState.trades++;
 			saveDailyState("live");
+
+			// Clear stats cache after new trade
+			clearLiveStatsCache();
 
 			if (tokenId && tokenId.length > 0) {
 				try {
@@ -697,7 +826,7 @@ export async function executeTrade(
 
 			// Conservative PnL: debit full trade cost as worst-case loss.
 			// Daily loss limit in canTrade() now acts as a spending cap for live mode.
-			const liveTradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+			const liveTradeSize = tradeSize;
 			updatePnl(-liveTradeSize * price, "live");
 
 			// Track for settlement at window boundary
@@ -731,7 +860,7 @@ export async function executeTrade(
 			{
 				market: marketSlug,
 				side: `BUY_${side}`,
-				amount: Number(riskConfig.maxTradeSizeUsdc || 0),
+				amount: tradeSize,
 				price,
 				orderId: "error",
 				status: `error: ${msg}`,
@@ -856,37 +985,31 @@ export function resolveLiveTrades(windowStartMs: number, finalPrices: Map<string
 	return resolved;
 }
 
-export function getLiveStats(): {
+/**
+ * Get live trading stats from on-chain data.
+ *
+ * This function now fetches stats from Polymarket CLOB API (chain data)
+ * instead of local SQLite database. Local DB is used only for logging.
+ *
+ * @deprecated Use getLiveStatsFromChain() directly for more details
+ */
+export async function getLiveStats(): Promise<{
 	totalTrades: number;
 	wins: number;
 	losses: number;
 	pending: number;
 	winRate: number;
 	totalPnl: number;
-} {
+}> {
+	if (!client) {
+		log.warn("Cannot get live stats: client not initialized");
+		return { totalTrades: 0, wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0 };
+	}
+
 	try {
-		const row = statements.getTradeStatsByMode().get({ $mode: "live" }) as {
-			total_trades?: number;
-			wins?: number;
-			losses?: number;
-			pending?: number;
-			total_pnl?: number;
-		} | null;
-		const totalTrades = Number(row?.total_trades ?? 0);
-		const wins = Number(row?.wins ?? 0);
-		const losses = Number(row?.losses ?? 0);
-		const pending = Number(row?.pending ?? 0);
-		const resolved = wins + losses;
-		return {
-			totalTrades,
-			wins,
-			losses,
-			pending,
-			winRate: resolved > 0 ? wins / resolved : 0,
-			totalPnl: Number((row?.total_pnl ?? 0).toFixed(2)),
-		};
+		return await getLiveStatsLegacy(client);
 	} catch (err) {
-		log.warn("Failed to get live stats:", err);
+		log.error("Failed to get live stats from chain:", err);
 		return { totalTrades: 0, wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0 };
 	}
 }

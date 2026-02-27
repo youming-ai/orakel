@@ -8,6 +8,17 @@ Orakel is a production-grade automated trading bot for Polymarket's 15-minute bi
 
 **Tech Stack:** Bun Runtime, TypeScript, Hono API, SQLite, React 19, Vite, shadcn/ui, wagmi/viem
 
+### Development Roadmap
+
+The project follows a 4-phase development plan documented in [`docs/ROADMAP.md`](docs/ROADMAP.md):
+
+- **Phase 1**: Performance optimization (10× speedup, 80% network reduction)
+- **Phase 2**: Win rate improvement (48.6% → 58-65%)
+- **Phase 3**: Profit maximization (60-120% PnL increase)
+- **Phase 4**: UI/UX optimization (real-time charts, alerts)
+
+See [`docs/TASKS.md`](docs/TASKS.md) for detailed task breakdown.
+
 ## Common Commands
 
 ```bash
@@ -27,6 +38,9 @@ cd web && bun run build    # Build for production
 # Docker
 docker compose up --build  # Build and start all services
 
+# Deployment
+./scripts/vps-deploy.sh    # Deploy to VPS (requires SSH config)
+
 # CI Pre-push Check
 bun run lint && bun run typecheck && bun run test  # Run all checks
 ```
@@ -38,7 +52,15 @@ The system consists of two main services communicating via REST/WebSocket:
 1. **Bot Service** (port 9999) - Trading engine and API server
 2. **Web Dashboard** (port 9998) - React monitoring UI
 
-### Main Trading Loop (`src/index.ts` → `processMarket()`)
+### Pipeline Architecture
+
+The main loop has been refactored into a modular pipeline (see [`src/pipeline/`](src/pipeline/)):
+
+1. **Fetch Layer** ([`src/pipeline/fetch.ts`](src/pipeline/fetch.ts)) - Parallel data collection from Binance, Polymarket, Chainlink
+2. **Compute Layer** ([`src/pipeline/compute.ts`](src/pipeline/compute.ts)) - Indicator calculation, probability fusion, edge computation, trade decision
+3. **Persist Layer** - SQLite storage for trades, signals, daily stats
+
+### Main Trading Flow (executed every 1 second per market)
 
 Executed every 1 second per market:
 
@@ -98,6 +120,50 @@ Executed every 1 second per market:
 
 **Regime Detection** ([`src/engines/regime.ts`](src/engines/regime.ts))
 - `detectRegime()` - Classifies market as TREND_UP/TREND_DOWN/CHOP/RANGE based on VWAP relationship, slope, and crossover frequency
+- `detectEnhancedRegime()` - Enhanced detection with RSI, MACD confirmation, and confidence scoring
+- `RegimeTransitionTracker` - Tracks regime transitions for historical pattern analysis
+
+**Adaptive Thresholds** ([`src/engines/adaptiveThresholds.ts`](src/engines/adaptiveThresholds.ts))
+- `AdaptiveThresholdManager` - Dynamically adjusts trading thresholds based on recent market performance
+- `MarketPerformanceTracker` - Per-market rolling statistics (win rate, PnL, trade count)
+- Phase-aware adjustments (EARLY: -20%, MID: baseline, LATE: +20%)
+
+**Signal Quality Model** ([`src/engines/signalQuality.ts`](src/engines/signalQuality.ts))
+- `SignalQualityModel` - KNN-based win rate prediction using historical signal features
+- `predictWinRate()` - Predicts win rate for current signal based on similar historical signals
+- Confidence levels: HIGH (≥20 samples, ≥60% win rate), MEDIUM (≥10 samples), LOW, INSUFFICIENT
+
+**Ensemble Model** ([`src/engines/ensemble.ts`](src/engines/ensemble.ts))
+- `computeEnsemble()` - Combines multiple model predictions with dynamic weighting
+- Models: vol_implied, ta_score, blended, signal_quality
+- Context-aware weight adjustments (regime, volatility, orderbook imbalance)
+- Returns dominant model and agreement score
+
+**Position Sizing** ([`src/engines/positionSizing.ts`](src/engines/positionSizing.ts))
+- `calculateKellyPositionSize()` - Kelly formula for optimal position sizing
+- Half-Kelly with confidence-based adjustments
+- Max position caps and risk-of-ruin protection
+
+**Risk Management** ([`src/engines/riskManagement.ts`](src/engines/riskManagement.ts))
+- `calculateDynamicStops()` - Volatility-based stop loss calculation
+- `TrailingStopManager` - Dynamic trailing stop for high-confidence trades
+- Time-decay take profit (1.2-2.0× risk-reward based on time remaining)
+
+**Fee Optimization** ([`src/engines/feeOptimization.ts`](src/engines/feeOptimization.ts))
+- `optimizePolymarketOrder()` - Smart order type selection (limit vs market)
+- Post-only strategy for maker rebates when time permits
+
+**Arbitrage Detection** ([`src/engines/arbitrage.ts`](src/engines/arbitrage.ts))
+- `detectArbitrage()` - Detects price discrepancies across markets
+- Pure arbitrage: sum < 0.98 (auto-execute)
+- Cross-market: Binance vs Polymarket divergence > 10%
+
+### Backtest Engine ([`src/backtest.ts`](src/backtest.ts))
+
+- Runs historical simulations on stored signals
+- A/B testing framework for strategy comparison
+- Parameter optimization with grid search
+- Cross-validation to prevent overfitting
 
 ### Market-Specific Adjustments (from backtest)
 
@@ -203,6 +269,14 @@ New code should use SQLite prepared statements from [`src/db.ts`](src/db.ts).
 
 8. **Overconfidence Protection** - Soft cap (0.22) and hard cap (0.3) on edge to prevent trades when model appears too confident
 
+9. **Incremental Computation** - O(1) indicator updates using ring buffers ([`IncrementalRSI`](src/indicators/incremental.ts), [`RollingVolatilityCalculator`](src/indicators/volatilityBuffer.ts))
+
+10. **Adaptive Thresholds** - Dynamic threshold adjustment based on rolling market performance ([`AdaptiveThresholdManager`](src/engines/adaptiveThresholds.ts))
+
+11. **Ensemble Modeling** - Combines multiple prediction sources with context-aware weighting ([`computeEnsemble`](src/engines/ensemble.ts))
+
+12. **Signal Quality Prediction** - KNN-based win rate prediction from historical signal features ([`SignalQualityModel`](src/engines/signalQuality.ts))
+
 ## Critical Insights for Development
 
 1. **ALWAYS validate config changes** - Both [`src/env.ts`](src/env.ts) and [`src/config.ts`](src/config.ts) use Zod schemas. Invalid values cause fail-fast at startup.
@@ -229,11 +303,19 @@ New code should use SQLite prepared statements from [`src/db.ts`](src/db.ts).
 
 12. **Imports must use `.ts` extensions** - Required by `verbatimModuleSyntax` in tsconfig. Use `import type` for type-only imports.
 
+13. **Use incremental indicators for hot path** - [`IncrementalRSI`](src/indicators/incremental.ts) and [`RollingVolatilityCalculator`](src/indicators/volatilityBuffer.ts) provide O(1) updates vs O(n) recalculation.
+
+14. **Cache external API calls** - Use [`createTtlCache`](src/cache.ts) for REST responses (K-lines: 60s, orderbooks: 3s, metadata: 30s) to reduce network load by 80%+.
+
+15. **Adaptive state is global** - [`performanceTracker`](src/adaptiveState.ts) and [`adaptiveManager`](src/adaptiveState.ts) are singletons that track per-market rolling stats. Don't create multiple instances.
+
+16. **Ensemble model overrides blended** - When [`SignalQualityModel`](src/engines/signalQuality.ts) has sufficient data, the ensemble result takes precedence over the simple vol/TA blend.
+
 ## Important File Locations
 
 ```
 src/
-├── index.ts                  # Main loop, processMarket()
+├── index.ts                  # Main loop entry point
 ├── trader.ts                 # executeTrade(), wallet connection
 ├── config.ts                 # Config loading with Zod validation
 ├── types.ts                  # ALL TypeScript interfaces
@@ -243,37 +325,76 @@ src/
 ├── env.ts                    # Environment validation (Zod)
 ├── markets.ts                # Market definitions (BTC, ETH, SOL, XRP)
 ├── paperStats.ts             # Paper trade tracking + settlement
+├── liveStats.ts              # Live trade tracking
 ├── orderManager.ts           # Live order polling
-├── strategyRefinement.ts     # Backtest insights + MARKET_ADJUSTMENTS, BACKTEST_INSIGHTS
-├── backtest.ts               # Backtest analysis tool
+├── persistence.ts            # Persistence layer abstraction
+├── reconciler.ts             # On-chain reconciliation
 ├── redeemer.ts               # Manual live trade redemption
+├── backtest.ts               # Backtest analysis tool
+├── adaptiveState.ts          # Global adaptive state (performanceTracker, signalQualityModel)
+├── objectPool.ts             # Object pooling for GC reduction
+├── cache.ts                  # TTL and LRU cache implementations
+├── pipeline/
+│   ├── fetch.ts              # Data fetching layer
+│   ├── compute.ts            # Computation layer (computeMarketDecision)
+│   └── processMarket.ts      # Main market processing orchestration
 ├── engines/
 │   ├── edge.ts               # Edge computation, confidence scoring, decision logic
 │   ├── probability.ts        # TA scoring, vol implied, blending, time decay
-│   └── regime.ts             # Market regime detection (TREND_UP/DOWN, CHOP, RANGE)
+│   ├── regime.ts             # Market regime detection (TREND_UP/DOWN, CHOP, RANGE)
+│   ├── adaptiveThresholds.ts # Dynamic threshold adjustment
+│   ├── signalQuality.ts      # KNN-based win rate prediction
+│   ├── ensemble.ts           # Multi-model ensemble with dynamic weighting
+│   ├── positionSizing.ts     # Kelly formula position sizing
+│   ├── riskManagement.ts     # Dynamic stops and trailing stops
+│   ├── feeOptimization.ts    # Fee optimization strategies
+│   └── arbitrage.ts          # Arbitrage detection
 ├── indicators/
 │   ├── heikenAshi.ts         # Heiken Ashi candles + consecutive counting
 │   ├── rsi.ts                # RSI + slope + SMA
+│   ├── incremental.ts        # IncrementalRSI (O(1) updates)
 │   ├── macd.ts               # MACD + histogram + delta
-│   └── vwap.ts               # VWAP series + session VWAP
+│   ├── vwap.ts               # VWAP series + session VWAP
+│   └── volatilityBuffer.ts   # RollingVolatilityCalculator (ring buffer)
 └── data/
     ├── binance.ts            # Binance REST API (klines, price)
     ├── binanceWs.ts          # Binance WebSocket (real-time ticks)
     ├── polymarket.ts         # Polymarket Gamma + CLOB APIs
     ├── polymarketLiveWs.ts   # Polymarket live pricing WebSocket
+    ├── polymarketClobWs.ts   # Polymarket CLOB WebSocket
     ├── chainlink.ts          # Chainlink RPC price feed calls
-    └── chainlinkWs.ts        # Chainlink WebSocket fallback
+    ├── chainlinkWs.ts        # Chainlink WebSocket fallback
+    ├── polygonBalance.ts     # Polygon balance queries
+    └── polygonEvents.ts      # Polygon event queries
 
 web/src/
 ├── components/
 │   ├── Dashboard.tsx         # Main dashboard
 │   ├── MarketCard.tsx        # Per-market display
 │   ├── ConnectWallet.tsx     # Wallet connection UI
-│   └── LiveConnect.tsx       # Live trading controls
-└── lib/
-    ├── api.ts                # API client (fetch + WebSocket)
-    ├── stores/               # Zustand state management
-    └── types.ts              # Frontend TypeScript types
+│   ├── LiveConnect.tsx       # Live trading controls
+│   ├── PriceChart.tsx        # Real-time price charts (lightweight-charts)
+│   ├── SignalStrength.tsx    # Signal strength visualization
+│   ├── TradingHeatmap.tsx    # Trading heatmap by hour
+│   ├── AlertSystem.tsx       # Alert system
+│   ├── AlertConfig.tsx       # Alert configuration UI
+│   ├── AlertHistory.tsx      # Alert history display
+│   ├── TradeTable.tsx        # Trade history table
+│   ├── AnalyticsTabs.tsx     # Analytics tabs (Overview, Trades, Strategy)
+│   ├── Header.tsx            # Header component
+│   ├── StatCard.tsx          # Stat card component
+│   └── analytics/
+│       ├── OverviewTab.tsx   # Overview analytics
+│       ├── TradesTab.tsx     # Trades analytics
+│       └── StrategyTab.tsx   # Strategy analytics
+├── hooks/
+│   └── useReducedMotion.ts   # Reduced motion hook
+├── lib/
+│   ├── api.ts                # API client (fetch + WebSocket)
+│   ├── alerts.ts             # Alert utilities
+│   ├── stores/               # Zustand state management
+│   └── types.ts              # Frontend TypeScript types
+└── main.tsx                  # Entry point
 ```
 
 ## API Endpoints
@@ -283,9 +404,13 @@ REST API (port 9999):
 - `GET /api/trades?mode=paper&limit=100` - Recent trades
 - `GET /api/signals?market=BTC&limit=200` - Recent signals for backtest
 - `GET /api/paper-stats` - Paper trading stats
+- `GET /api/live/stats` - Live trading stats
+- `GET /api/live/positions` - Current live positions
 - `POST /api/paper/start|stop` - Start/stop paper trading (cycle-aware)
 - `POST /api/live/connect|disconnect` - Wallet management
 - `POST /api/live/start|stop` - Live trading controls
+- `POST /api/alerts/config` - Update alert configuration
+- `GET /api/alerts/history` - Get alert history
 
 WebSocket: `/api` - Real-time events: `state:snapshot`, `signal:new`, `trade:executed`
 
@@ -337,3 +462,35 @@ import type { AppConfig, RiskConfig } from "./types.ts";
 - Run tests matching pattern: `bunx vitest run -t "clamp"`
 - Pure functions tested without mocks — pass data directly
 - Use `toBeCloseTo(value, precision)` for floating-point comparisons
+- Incremental indicators: test that `update()` produces identical results to batch computation after initialization
+- Ensemble and edge engines: test with mock data covering all regimes and phases
+
+## Deployment
+
+### Docker Deployment
+
+The project includes Docker support with health checks:
+
+```bash
+docker compose up --build    # Build and start
+docker compose logs -f       # View logs
+docker compose ps            # Check status
+```
+
+### VPS Deployment
+
+Use [`scripts/vps-deploy.sh`](scripts/vps-deploy.sh) for VPS deployment:
+
+```bash
+./scripts/vps-deploy.sh [IMAGE_TAG]
+```
+
+The script:
+1. Pulls the latest Docker image from GHCR
+2. Updates git repository (if in git directory)
+3. Restarts services via docker compose
+4. Verifies deployment health
+
+### Health Check
+
+The bot exposes `/api/health` for health monitoring (used by Docker healthcheck).

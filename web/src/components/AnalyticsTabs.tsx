@@ -1,4 +1,4 @@
-import { BarChart3, LayoutDashboard, List, Settings2 } from "lucide-react";
+import { LayoutDashboard, List, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
@@ -13,17 +13,16 @@ import type {
 	TodayStats,
 	TradeRecord,
 } from "@/lib/api";
-import { TIMING_BUCKETS } from "@/lib/constants";
 import { CHART_COLORS } from "@/lib/charts";
-import { fmtTime, asNumber } from "@/lib/format";
+import { TIMING_BUCKETS } from "@/lib/constants";
+import { asNumber, fmtTime } from "@/lib/format";
 import { useConfigMutation, usePaperClearStop } from "@/lib/queries";
 import { toast } from "@/lib/toast";
 import type { ViewMode } from "@/lib/types";
 
 import { OverviewTab } from "./analytics/OverviewTab";
-import { MarketsTab } from "./analytics/MarketsTab";
+import { type StrategyFormValues, StrategyTab } from "./analytics/StrategyTab";
 import { TradesTab } from "./analytics/TradesTab";
-import { StrategyTab, type StrategyFormValues } from "./analytics/StrategyTab";
 
 interface AnalyticsTabsProps {
 	stats: PaperStats | null;
@@ -41,10 +40,7 @@ interface AnalyticsTabsProps {
 	todayStats?: TodayStats;
 }
 
-function toStrategyFormValues(
-	strategyRaw: StrategyConfig,
-	riskRaw: RiskConfig,
-): StrategyFormValues {
+function toStrategyFormValues(strategyRaw: StrategyConfig, riskRaw: RiskConfig): StrategyFormValues {
 	const blend = strategyRaw.blendWeights;
 	const regime = strategyRaw.regimeMultipliers;
 	return {
@@ -91,9 +87,7 @@ function buildStatsFromTrades(trades: PaperTradeEntry[]): PaperStats {
 	};
 }
 
-function buildMarketFromTrades(
-	trades: PaperTradeEntry[],
-): Record<string, MarketBreakdown> {
+function buildMarketFromTrades(trades: PaperTradeEntry[]): Record<string, MarketBreakdown> {
 	const marketMap = new Map<string, MarketBreakdown>();
 	for (const trade of trades) {
 		const current = marketMap.get(trade.marketId) ?? {
@@ -138,17 +132,10 @@ export function AnalyticsTabs({
 	const configMutation = useConfigMutation(viewMode);
 	const clearStopMutation = usePaperClearStop();
 	const riskConfig = viewMode === "paper" ? config.paperRisk : config.liveRisk;
-	const [form, setForm] = useState<StrategyFormValues>(() =>
-		toStrategyFormValues(config.strategy, riskConfig),
-	);
+	const [form, setForm] = useState<StrategyFormValues>(() => toStrategyFormValues(config.strategy, riskConfig));
 
 	useEffect(() => {
-		setForm(
-			toStrategyFormValues(
-				config.strategy,
-				viewMode === "paper" ? config.paperRisk : config.liveRisk,
-			),
-		);
+		setForm(toStrategyFormValues(config.strategy, viewMode === "paper" ? config.paperRisk : config.liveRisk));
 	}, [config.strategy, config.paperRisk, config.liveRisk, viewMode]);
 
 	const derivedStats = useMemo(() => buildStatsFromTrades(trades), [trades]);
@@ -182,8 +169,7 @@ export function AnalyticsTabs({
 		});
 	}, [trades]);
 
-	const timelinePositive =
-		(pnlTimeline[pnlTimeline.length - 1]?.cumulative ?? 0) >= 0;
+	const timelinePositive = (pnlTimeline[pnlTimeline.length - 1]?.cumulative ?? 0) >= 0;
 
 	const marketRows = useMemo(() => {
 		return Object.entries(marketStats)
@@ -212,8 +198,7 @@ export function AnalyticsTabs({
 
 		for (const trade of trades) {
 			const ts = new Date(trade.timestamp).getTime();
-			if (!Number.isFinite(ts) || !Number.isFinite(trade.windowStartMs))
-				continue;
+			if (!Number.isFinite(ts) || !Number.isFinite(trade.windowStartMs)) continue;
 			const minuteInWindow = (ts - trade.windowStartMs) / 60000;
 			const index = Math.max(0, Math.min(4, Math.floor(minuteInWindow / 3)));
 			const bucket = buckets[index];
@@ -280,9 +265,7 @@ export function AnalyticsTabs({
 
 		const payload: ConfigPayload = {
 			strategy: strategyView,
-			...(viewMode === "paper"
-				? { paperRisk: riskView }
-				: { liveRisk: riskView }),
+			...(viewMode === "paper" ? { paperRisk: riskView } : { liveRisk: riskView }),
 		};
 
 		configMutation.mutate(payload, {
@@ -297,10 +280,7 @@ export function AnalyticsTabs({
 				toast({
 					type: "error",
 					title: "Save Failed",
-					description:
-						error instanceof Error
-							? error.message
-							: "An unknown error occurred",
+					description: error instanceof Error ? error.message : "An unknown error occurred",
 				});
 			},
 		});
@@ -315,9 +295,6 @@ export function AnalyticsTabs({
 					<TabsList className="w-max min-w-full sm:w-auto h-11 border-b-0">
 						<TabsTrigger value="overview">
 							<LayoutDashboard className="size-3.5 mr-1.5" /> Overview
-						</TabsTrigger>
-						<TabsTrigger value="markets">
-							<BarChart3 className="size-3.5 mr-1.5" /> Markets
 						</TabsTrigger>
 						<TabsTrigger value="trades">
 							<List className="size-3.5 mr-1.5" /> Trades
@@ -342,10 +319,6 @@ export function AnalyticsTabs({
 				/>
 			</TabsContent>
 
-			<TabsContent value="markets" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
-				<MarketsTab marketRows={marketRows} />
-			</TabsContent>
-
 			<TabsContent value="trades" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
 				<TradesTab
 					viewMode={viewMode}
@@ -355,6 +328,7 @@ export function AnalyticsTabs({
 					timingData={timingData}
 					sideTotal={sideTotal}
 					sideData={sideData}
+					marketRows={marketRows}
 				/>
 			</TabsContent>
 
