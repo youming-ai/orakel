@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { computeEnsemble } from "./ensemble.ts";
 
 describe("computeEnsemble", () => {
@@ -109,6 +109,64 @@ describe("computeEnsemble", () => {
 		expect(chopWeight).toBeGreaterThan(rangeWeight);
 	});
 
+	it("in TREND regime boosts vol_implied weight", () => {
+		const trend = computeEnsemble({
+			volImpliedUp: 0.7,
+			taRawUp: 0.5,
+			blendedUp: 0.55,
+			blendSource: "blended",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "TREND_UP",
+			volatility15m: 0.004,
+			orderbookImbalance: null,
+		});
+		const range = computeEnsemble({
+			volImpliedUp: 0.7,
+			taRawUp: 0.5,
+			blendedUp: 0.55,
+			blendSource: "blended",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.004,
+			orderbookImbalance: null,
+		});
+
+		const trendWeight = trend.models.find((m) => m.name === "vol_implied")?.weight ?? 0;
+		const rangeWeight = range.models.find((m) => m.name === "vol_implied")?.weight ?? 0;
+		expect(trendWeight).toBeGreaterThan(rangeWeight);
+	});
+
+	it("in high volatility boosts vol_implied weight", () => {
+		const highVol = computeEnsemble({
+			volImpliedUp: 0.7,
+			taRawUp: 0.5,
+			blendedUp: 0.55,
+			blendSource: "blended",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.009,
+			orderbookImbalance: null,
+		});
+		const lowVol = computeEnsemble({
+			volImpliedUp: 0.7,
+			taRawUp: 0.5,
+			blendedUp: 0.55,
+			blendSource: "blended",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.004,
+			orderbookImbalance: null,
+		});
+
+		const highVolWeight = highVol.models.find((m) => m.name === "vol_implied")?.weight ?? 0;
+		const lowVolWeight = lowVol.models.find((m) => m.name === "vol_implied")?.weight ?? 0;
+		expect(highVolWeight).toBeGreaterThan(lowVolWeight);
+	});
+
 	it("agreement is approximately 1.0 when all models agree", () => {
 		const result = computeEnsemble({
 			volImpliedUp: 0.6,
@@ -139,6 +197,61 @@ describe("computeEnsemble", () => {
 		});
 
 		expect(result.agreement).toBeLessThan(0.5);
+	});
+
+	it("agreement is 1 when only one model is available", () => {
+		const result = computeEnsemble({
+			volImpliedUp: null,
+			taRawUp: 0.62,
+			blendedUp: 0.62,
+			blendSource: "ta_only",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.004,
+			orderbookImbalance: null,
+		});
+
+		expect(result.agreement).toBe(1);
+	});
+
+	it("nudges finalUp by orderbook imbalance only above 0.3 magnitude", () => {
+		const baseline = computeEnsemble({
+			volImpliedUp: 0.6,
+			taRawUp: 0.55,
+			blendedUp: 0.58,
+			blendSource: "blended",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.004,
+			orderbookImbalance: 0.3,
+		});
+		const positiveNudge = computeEnsemble({
+			volImpliedUp: 0.6,
+			taRawUp: 0.55,
+			blendedUp: 0.58,
+			blendSource: "blended",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.004,
+			orderbookImbalance: 0.31,
+		});
+		const negativeNudge = computeEnsemble({
+			volImpliedUp: 0.6,
+			taRawUp: 0.55,
+			blendedUp: 0.58,
+			blendSource: "blended",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.004,
+			orderbookImbalance: -0.31,
+		});
+
+		expect(positiveNudge.finalUp - baseline.finalUp).toBeCloseTo(0.01, 8);
+		expect(baseline.finalUp - negativeNudge.finalUp).toBeCloseTo(0.01, 8);
 	});
 
 	it("always clamps finalUp to [0.01, 0.99]", () => {
@@ -185,5 +298,58 @@ describe("computeEnsemble", () => {
 		});
 
 		expect(result.dominantModel).toBe("signal_quality");
+	});
+
+	it("treats INSUFFICIENT signal quality as unavailable", () => {
+		const insufficient = computeEnsemble({
+			volImpliedUp: 0.6,
+			taRawUp: 0.6,
+			blendedUp: 0.6,
+			blendSource: "blended",
+			signalQualityWinRate: 0.99,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.004,
+			orderbookImbalance: null,
+		});
+		const withoutSignalModel = computeEnsemble({
+			volImpliedUp: 0.6,
+			taRawUp: 0.6,
+			blendedUp: 0.6,
+			blendSource: "blended",
+			signalQualityWinRate: null,
+			signalQualityConfidence: "INSUFFICIENT",
+			regime: "RANGE",
+			volatility15m: 0.004,
+			orderbookImbalance: null,
+		});
+
+		const signalModel = insufficient.models.find((m) => m.name === "signal_quality");
+		expect(signalModel?.available).toBe(false);
+		expect(signalModel?.weight).toBe(0);
+		expect(insufficient.finalUp).toBeCloseTo(withoutSignalModel.finalUp, 10);
+	});
+
+	it("falls back to ta_score when total model weight is zero", () => {
+		const reduceSpy = vi.spyOn(Array.prototype, "reduce").mockImplementationOnce(() => 0 as never);
+		try {
+			const result = computeEnsemble({
+				volImpliedUp: 0.65,
+				taRawUp: 0.61,
+				blendedUp: 0.63,
+				blendSource: "blended",
+				signalQualityWinRate: 0.7,
+				signalQualityConfidence: "HIGH",
+				regime: "RANGE",
+				volatility15m: 0.004,
+				orderbookImbalance: null,
+			});
+
+			expect(result.finalUp).toBeCloseTo(0.61, 10);
+			expect(result.finalDown).toBeCloseTo(0.39, 10);
+			expect(result.dominantModel).toBe("ta_score");
+		} finally {
+			reduceSpy.mockRestore();
+		}
 	});
 });

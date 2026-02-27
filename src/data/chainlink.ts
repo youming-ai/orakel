@@ -20,7 +20,7 @@ const cacheByAggregator = new Map<string, CacheEntry>();
 const MIN_FETCH_INTERVAL_MS = 2_000;
 const RPC_TIMEOUT_MS = 1_500;
 
-function getRpcCandidates(): string[] {
+export function getRpcCandidates(): string[] {
 	const fromList = Array.isArray(CONFIG.chainlink.polygonRpcUrls) ? CONFIG.chainlink.polygonRpcUrls : [];
 	const single = CONFIG.chainlink.polygonRpcUrl ? [CONFIG.chainlink.polygonRpcUrl] : [];
 	const defaults = ["https://polygon-rpc.com", "https://rpc.ankr.com/polygon", "https://polygon.llamarpc.com"];
@@ -29,7 +29,7 @@ function getRpcCandidates(): string[] {
 	return Array.from(new Set(all));
 }
 
-function getOrderedRpcs(): string[] {
+export function getOrderedRpcs(): string[] {
 	const rpcs = getRpcCandidates();
 	const pref = preferredRpcUrl;
 	if (pref && rpcs.includes(pref)) {
