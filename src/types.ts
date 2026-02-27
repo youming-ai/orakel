@@ -303,6 +303,8 @@ export interface TradeSignal {
 	arbitrageSpread?: number | null;
 	arbitrageDirection?: "BUY_UP" | "BUY_DOWN" | "SKIP" | null;
 	tokens: { upTokenId: string; downTokenId: string } | null;
+	confidence?: number;
+	regime?: Regime | null;
 }
 
 export interface PositionSizeResult {

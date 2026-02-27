@@ -197,6 +197,8 @@ export function persistSignal({
 		arbitrageSpread: edge.arbitrageSpread ?? null,
 		arbitrageDirection: edge.arbitrageDirection ?? null,
 		tokens: poly.ok ? (poly.tokens ?? null) : null,
+		confidence: rec.confidence?.score,
+		regime: rec.regime,
 	};
 
 	writeLatestSignal(market.id, signalPayload);

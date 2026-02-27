@@ -409,8 +409,10 @@ export function decide(params: {
 		const marketPerf = getMarketPerformance(marketId);
 		const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
 		threshold = adaptiveThresholds.edgeThreshold * marketMult;
-		effectiveMinProb = adaptiveThresholds.minProb;
-		effectiveMinConfidence = adaptiveThresholds.minConfidence;
+		// Apply BTC-specific probability and confidence thresholds (Issue #4 fix)
+		effectiveMinProb = marketId === "BTC" ? Math.max(adaptiveThresholds.minProb, 0.58) : adaptiveThresholds.minProb;
+		effectiveMinConfidence =
+			marketId === "BTC" ? Math.max(adaptiveThresholds.minConfidence, 0.6) : adaptiveThresholds.minConfidence;
 
 		// Check REGIME_DISABLED sentinel (same as static path)
 		const regimeMult = enhancedRegimeDecision?.useRangeMultiplier

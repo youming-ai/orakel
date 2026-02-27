@@ -604,9 +604,9 @@ export async function executeTrade(
 
 		storeSignalMetadata(paperId, {
 			edge: Math.max(Number(signal.edgeUp ?? 0), Number(signal.edgeDown ?? 0)),
-			confidence: 0.5,
+			confidence: signal.confidence ?? 0.5,
 			phase: signal.phase,
-			regime: null,
+			regime: signal.regime ?? null,
 			volatility15m: Number(signal.volatility15m ?? 0),
 			modelUp: Number(signal.modelUp ?? 0.5),
 			orderbookImbalance: signal.orderbookImbalance ?? null,

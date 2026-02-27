@@ -1,9 +1,8 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { WsMessage, SignalNewData, TradeExecutedData } from "./ws";
-import { subscribeGlobal } from "./ws";
-
+import type { SignalNewData, TradeExecutedData, WsMessage } from "./ws.ts";
+import { subscribeGlobal } from "./ws.ts";
 
 /* ── Alert Types ─────────────────────────────────────────── */
 
