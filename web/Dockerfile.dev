@@ -1,0 +1,19 @@
+# Development Dockerfile for Web Dashboard
+# This is optimized for development with hot-reload
+
+FROM oven/bun:1-alpine
+
+WORKDIR /app
+
+# Install dependencies
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+# Copy source (will be mounted as volume in compose)
+COPY . .
+
+# Expose Vite dev server port
+EXPOSE 9998
+
+# Run Vite in development mode with HMR
+CMD ["bun", "run", "dev", "--host", "0.0.0.0"]
