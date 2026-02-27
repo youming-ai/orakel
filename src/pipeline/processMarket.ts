@@ -1,4 +1,6 @@
 import { CONFIG } from "../config.ts";
+import type { AdaptiveThresholdManager } from "../engines/adaptiveThresholds.ts";
+import type { SignalQualityModel } from "../engines/signalQuality.ts";
 import { persistSignal } from "../persistence.ts";
 import type {
 	CandleWindowTiming,
@@ -17,6 +19,8 @@ interface ProcessMarketParams {
 	timing: CandleWindowTiming;
 	streams: StreamHandles;
 	state: MarketState;
+	adaptiveManager?: AdaptiveThresholdManager | null;
+	signalQualityModel?: SignalQualityModel | null;
 }
 
 export interface MarketState {
@@ -65,6 +69,8 @@ export async function processMarket({
 	timing,
 	streams,
 	state,
+	adaptiveManager,
+	signalQualityModel,
 }: Omit<ProcessMarketParams, "orderTracker">): Promise<ProcessMarketResult> {
 	const data = await fetchMarketData(market, timing, streams);
 	if (!data.ok) return { ok: false, market, error: data.error };
@@ -95,7 +101,7 @@ export async function processMarket({
 	}
 
 	const priceToBeat = state.priceToBeatState.slug === marketSlug ? state.priceToBeatState.value : null;
-	const result = computeMarketDecision(data, priceToBeat, CONFIG);
+	const result = computeMarketDecision(data, priceToBeat, CONFIG, adaptiveManager, signalQualityModel);
 	if (result.edge.vigTooHigh) {
 		return {
 			ok: true,

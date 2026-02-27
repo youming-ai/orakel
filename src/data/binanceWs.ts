@@ -11,17 +11,17 @@ type MultiBinanceWsStreamHandle = WsStreamHandle & {
 	getLast(symbol: string): PriceTick;
 };
 
-function toNumber(x: unknown): number | null {
+export function toNumber(x: unknown): number | null {
 	const n = Number(x);
 	return Number.isFinite(n) ? n : null;
 }
 
-function buildWsUrl(symbol: string): string {
+export function buildWsUrl(symbol: string): string {
 	const s = String(symbol || "").toLowerCase();
 	return `wss://stream.binance.com:9443/ws/${s}@trade`;
 }
 
-function buildCombinedWsUrl(symbols: string[]): string {
+export function buildCombinedWsUrl(symbols: string[]): string {
 	const streams = (Array.isArray(symbols) ? symbols : [])
 		.map((s) => String(s || "").toLowerCase())
 		.filter(Boolean)

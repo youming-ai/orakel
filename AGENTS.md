@@ -36,48 +36,79 @@ Always run `bun run lint && bun run typecheck && bun run test` before pushing.
 ## Project Structure
 
 ```
-src/                           # Backend (Bun runtime)
-├── index.ts                   # Main loop, processMarket() — runs every 1s per market
-├── api.ts                     # Hono API server + WebSocket (695 lines)
-├── config.ts                  # Zod-validated config loader (auto-reloads)
-├── env.ts                     # Zod-validated environment variables
-├── types.ts                   # ALL shared TypeScript interfaces/types
-├── logger.ts                  # Logger factory (createLogger)
-├── state.ts                   # Shared runtime state (module singletons + EventEmitter)
-├── db.ts                      # SQLite setup + prepared statements
-├── trader.ts                  # Trade execution, wallet management
-├── paperStats.ts              # Paper trade tracking + settlement
-├── orderManager.ts            # Live order polling lifecycle
-├── markets.ts                 # Market definitions (BTC, ETH, SOL, XRP)
-├── utils.ts                   # Pure utility functions
-├── data/                      # External data source adapters
-│   ├── binance.ts/binanceWs.ts       # Binance REST + WebSocket
-│   ├── polymarket.ts/polymarketLiveWs.ts  # Gamma + CLOB API + live WS
-│   └── chainlink.ts/chainlinkWs.ts   # On-chain RPC + WebSocket
-├── engines/                   # Core trading logic
-│   ├── edge.ts                # Edge computation + confidence scoring + decisions
-│   ├── probability.ts         # TA scoring + vol-implied prob + blending
-│   └── regime.ts              # Market state detection (TREND/RANGE/CHOP)
-└── indicators/                # Technical analysis (pure functions)
-    ├── rsi.ts, macd.ts, vwap.ts, heikenAshi.ts
+src/                              # Backend (Bun runtime)
+├── index.ts                      # Entry point — starts API server + market loop
+├── api.ts                        # Hono API server + WebSocket events
+├── config.ts                     # Zod-validated config loader (auto-reloads config.json)
+├── env.ts                        # Zod-validated environment variables (.env)
+├── types.ts                      # ALL shared TypeScript interfaces/types
+├── logger.ts                     # Logger factory (createLogger)
+├── state.ts                      # Shared runtime state (module singletons + EventEmitter)
+├── db.ts                         # SQLite setup + prepared statements
+├── trader.ts                     # Trade execution, wallet management
+├── paperStats.ts                 # Paper trade tracking + settlement
+├── liveStats.ts                  # Live trade stats from CLOB API
+├── orderManager.ts               # Live order polling lifecycle
+├── markets.ts                    # Market definitions (BTC, ETH, SOL, XRP)
+├── utils.ts                      # Pure utility functions
+├── cache.ts                      # TTL + LRU cache implementations
+├── objectPool.ts                 # Object pool for memory optimization
+├── contracts.ts                  # Smart contract address resolution
+├── reconciler.ts                 # On-chain vs local state reconciliation
+├── redeemer.ts                   # On-chain position redemption
+├── accountState.ts               # Wallet balance + position tracking
+├── adaptiveState.ts              # Runtime adaptive model state (singletons)
+├── strategyRefinement.ts         # Backtest-driven strategy insights
+├── backtest.ts                   # Signal replay analysis tool
+├── persistence.ts                # Signal/trade persistence (SQLite + CSV)
+├── terminal.ts                   # TUI dashboard renderer
+├── pipeline/                     # Market processing pipeline
+│   ├── fetch.ts                  #   Data fetching (Binance + Polymarket + Chainlink)
+│   ├── compute.ts                #   Indicator calculation + decision logic
+│   └── processMarket.ts          #   Orchestrates fetch → compute → persist per market
+├── data/                         # External data source adapters
+│   ├── binance.ts                #   Binance REST (klines, last price)
+│   ├── binanceWs.ts              #   Binance WebSocket (real-time trades)
+│   ├── polymarket.ts             #   Gamma + CLOB REST API
+│   ├── polymarketLiveWs.ts       #   Polymarket live data WebSocket
+│   ├── polymarketClobWs.ts       #   CLOB orderbook WebSocket
+│   ├── chainlink.ts              #   Chainlink on-chain RPC (price feeds)
+│   ├── chainlinkWs.ts            #   Chainlink WebSocket (price streaming)
+│   ├── polygonBalance.ts         #   Polygon RPC (USDC balance, CTF positions)
+│   └── polygonEvents.ts          #   Polygon WebSocket (on-chain transfer events)
+├── engines/                      # Core trading logic (all pure functions)
+│   ├── edge.ts                   #   Edge computation + confidence scoring + decisions
+│   ├── probability.ts            #   TA scoring + vol-implied prob + blending
+│   ├── regime.ts                 #   Market state detection (TREND/RANGE/CHOP)
+│   ├── ensemble.ts               #   Multi-model probability ensemble
+│   ├── signalQuality.ts          #   Signal quality prediction (k-NN model)
+│   ├── positionSizing.ts         #   Kelly criterion position sizing
+│   ├── feeOptimization.ts        #   Order strategy + price optimization
+│   ├── riskManagement.ts         #   Volatility stops + trailing stops
+│   ├── arbitrage.ts              #   Market vig arbitrage detection
+│   └── adaptiveThresholds.ts     #   Performance-adaptive edge thresholds
+└── indicators/                   # Technical analysis (pure functions)
+    ├── rsi.ts                    #   RSI(14) + slope
+    ├── macd.ts                   #   MACD(12,26,9)
+    ├── vwap.ts                   #   Session VWAP + series
+    ├── heikenAshi.ts             #   Heiken Ashi candles + consecutive count
+    ├── incremental.ts            #   IncrementalRSI (single-pass)
+    └── volatilityBuffer.ts       #   Ring-buffer realized volatility
 
-web/                           # Frontend (Vite + React 19)
+web/                              # Frontend (Vite + React 19)
 ├── src/
-│   ├── components/            # Dashboard, MarketCard, Header, TradeTable, etc.
-│   │   └── ui/                # shadcn/ui primitives
-│   └── lib/                   # API client, Zustand stores, types, utils
+│   ├── components/               # Dashboard, MarketCard, Header, TradeTable, etc.
+│   │   └── ui/                   # shadcn/ui primitives
+│   └── lib/                      # API client, Zustand stores, types, utils
 ```
 
 ## Code Style
 
 ### Formatting (enforced by Biome)
 
-- **Indent**: tabs (width 2)
-- **Line width**: 120
-- **Quotes**: double quotes (`"`)
-- **Semicolons**: always
-- **Trailing commas**: all (including function params)
-- **Arrow parentheses**: always (`(x) => ...`, never `x => ...`)
+- **Indent**: tabs (width 2) · **Line width**: 120
+- **Quotes**: double quotes (`"`) · **Semicolons**: always
+- **Trailing commas**: all (including function params) · **Arrow parens**: always
 
 ### Biome Lint Rules (biome.json)
 
@@ -89,24 +120,20 @@ web/                           # Frontend (Vite + React 19)
 ### Imports
 
 ```typescript
-// 1. Node builtins — always node: protocol
-import fs from "node:fs";
-// 2. External packages — named imports
-import { Hono } from "hono";
-// 3. Internal — relative paths WITH .ts extension (required by verbatimModuleSyntax)
-import { clamp } from "./utils.ts";
-// 4. Type-only — MUST use `import type` (enforced by verbatimModuleSyntax)
-import type { AppConfig } from "./types.ts";
+import fs from "node:fs";                    // 1. Node builtins — always node: protocol
+import { Hono } from "hono";                // 2. External packages — named imports
+import { clamp } from "./utils.ts";         // 3. Internal — relative paths WITH .ts extension
+import type { AppConfig } from "./types.ts"; // 4. Type-only — MUST use `import type`
 ```
 
 Biome organizes imports automatically. Do not manually reorder.
+Relative `.ts` extension is **required** by `verbatimModuleSyntax`.
 
-### Type Definitions
+### Types
 
-- **All shared types** live in `src/types.ts` — interfaces, type aliases, enums
-- `interface` for object shapes, `type` for unions/aliases
+- **All shared types** live in `src/types.ts` — `interface` for object shapes, `type` for unions/aliases
 - Zod schemas for **runtime validation** (config.ts, env.ts) — infer with `z.infer<typeof Schema>`
-- TypeScript strict mode with `noUncheckedIndexedAccess: true`
+- TypeScript strict mode: `noUncheckedIndexedAccess: true`
 - Frontend types live in `web/src/lib/types.ts`
 
 ### Naming Conventions
@@ -121,26 +148,14 @@ Biome organizes imports automatically. Do not manually reorder.
 | React components   | PascalCase       | `MarketCard.tsx`, `Dashboard.tsx`      |
 | Test files         | `{name}.test.ts` | `rsi.test.ts` next to `rsi.ts`        |
 
-### Functions
+### Functions & Error Handling
 
-- **Named `function` declarations** for exported/top-level functions
-- **Arrow functions** for callbacks, inline handlers, middleware
-
-### Error Handling
-
+- **Named `function` declarations** for exported/top-level; **arrow functions** for callbacks
 - **try/catch** with structured logging via `createLogger()` — always degrade to defaults
 - **Zod** for validation errors — use `z.prettifyError()` for readable messages
 - **API responses**: `{ ok: true, data }` | `{ ok: false, error: string }`
 - **No custom Error subclasses** — use plain Error
-
-### Logging
-
-Use the logger factory, never raw `console.log`:
-```typescript
-import { createLogger } from "./logger.ts";
-const log = createLogger("module-name");
-log.info("message", data);    // debug | info | warn | error
-```
+- **Logging**: always use `createLogger("module-name")`, never raw `console.log`
 
 ## Testing Conventions
 

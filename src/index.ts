@@ -1,4 +1,5 @@
 import { applyEvent, enrichPosition, initAccountState, resetAccountState, updateFromSnapshot } from "./accountState.ts";
+import { adaptiveManager, signalQualityModel } from "./adaptiveState.ts";
 import { startApiServer } from "./api.ts";
 import { CONFIG } from "./config.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
@@ -361,7 +362,7 @@ async function main(): Promise<void> {
 				}
 				const liveResolved = resolveLiveTrades(prevWindowStartMs, liveFinalPrices);
 				if (liveResolved > 0) {
-					const stats = getLiveStats();
+					const stats = await getLiveStats();
 					log.info(
 						`Live settled ${liveResolved} trade(s) | W:${stats.wins} L:${stats.losses} | WR:${(stats.winRate * 100).toFixed(0)}% | PnL:${stats.totalPnl.toFixed(2)}`,
 					);
@@ -425,6 +426,8 @@ async function main(): Promise<void> {
 						timing,
 						streams,
 						state,
+						adaptiveManager,
+						signalQualityModel,
 					});
 				} catch (err: unknown) {
 					const message = err instanceof Error ? err.message : String(err);
@@ -634,6 +637,8 @@ async function main(): Promise<void> {
 			}),
 		);
 		updateMarkets(snapshots);
+		// Fetch live stats from chain before emitting snapshot
+		const liveStats = await getLiveStats();
 		emitStateSnapshot({
 			markets: snapshots,
 			updatedAt: getUpdatedAt(),
@@ -644,7 +649,7 @@ async function main(): Promise<void> {
 			livePendingStart: isLivePendingStart(),
 			livePendingStop: isLivePendingStop(),
 			paperStats: getPaperStats(),
-			liveStats: getLiveStats(),
+			liveStats,
 			liveTodayStats: getLiveTodayStats(),
 		});
 

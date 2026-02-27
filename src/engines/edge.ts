@@ -2,6 +2,7 @@ import { CONFIG } from "../config.ts";
 import type {
 	ConfidenceResult,
 	EdgeResult,
+	EnhancedRegimeResult,
 	Phase,
 	Regime,
 	Side,
@@ -10,9 +11,14 @@ import type {
 	TradeDecision,
 } from "../types.ts";
 import { clamp, estimatePolymarketFee } from "../utils.ts";
+import type { AdjustedThresholds } from "./adaptiveThresholds.ts";
+import { detectArbitrage } from "./arbitrage.ts";
+import { shouldTradeBasedOnRegimeConfidence } from "./regime.ts";
 
 const SOFT_CAP_EDGE = 0.22;
 const HARD_CAP_EDGE = 0.3;
+const ARBITRAGE_MIN_SPREAD = 0.02;
+const ARBITRAGE_MAX_BOOST = 0.05;
 /** Sentinel multiplier: any regime multiplier >= this value means "skip trade entirely" */
 const REGIME_DISABLED = 999;
 
@@ -188,12 +194,23 @@ export function computeEdge(params: {
 	modelDown: number;
 	marketYes: number | null;
 	marketNo: number | null;
+	marketId?: string;
+	binanceChainlinkDelta?: number | null;
 	orderbookImbalance?: number | null;
 	orderbookSpreadUp?: number | null;
 	orderbookSpreadDown?: number | null;
 }): EdgeResult {
-	const { modelUp, modelDown, marketYes, marketNo, orderbookImbalance, orderbookSpreadUp, orderbookSpreadDown } =
-		params;
+	const {
+		modelUp,
+		modelDown,
+		marketYes,
+		marketNo,
+		marketId = "",
+		binanceChainlinkDelta = null,
+		orderbookImbalance,
+		orderbookSpreadUp,
+		orderbookSpreadDown,
+	} = params;
 
 	if (marketYes === null || marketNo === null) {
 		return {
@@ -205,12 +222,15 @@ export function computeEdge(params: {
 			effectiveEdgeDown: null,
 			rawSum: null,
 			arbitrage: false,
+			arbitrageDetected: false,
+			arbitrageSpread: null,
+			arbitrageDirection: null,
 			overpriced: false,
 		};
 	}
 
 	const rawSum = marketYes + marketNo;
-	const arbitrage = rawSum < 0.98;
+	const sumArbitrage = rawSum < 0.98;
 	const overpriced = rawSum > 1.04;
 
 	const marketUp = clamp(marketYes, 0, 1);
@@ -251,13 +271,30 @@ export function computeEdge(params: {
 		const spreadPenalty = (spreadDown - 0.02) * 0.5;
 		effectiveEdgeDown -= spreadPenalty;
 	}
-	// Deduct estimated Polymarket fees from effective edge
-	// Use taker fee (no rebate) as conservative worst-case estimate.
-	// If order executes as maker (postOnly GTD), actual fee is lower (bonus).
-	const feeEstimateUp = estimatePolymarketFee(marketUp);
-	const feeEstimateDown = estimatePolymarketFee(marketDown);
+	const makerRebate = 0;
+	const feeEstimateUp = estimatePolymarketFee(marketUp, makerRebate);
+	const feeEstimateDown = estimatePolymarketFee(marketDown, makerRebate);
 	effectiveEdgeUp -= feeEstimateUp;
 	effectiveEdgeDown -= feeEstimateDown;
+
+	const binanceImpliedUp =
+		binanceChainlinkDelta !== null && Number.isFinite(binanceChainlinkDelta)
+			? clamp(0.5 + binanceChainlinkDelta * 2, 0, 1)
+			: null;
+	const arbitrageOpportunity =
+		binanceImpliedUp === null
+			? null
+			: detectArbitrage(marketId, marketUp, marketDown, binanceImpliedUp, ARBITRAGE_MIN_SPREAD);
+	const arbitrageDetected = arbitrageOpportunity !== null;
+
+	if (arbitrageOpportunity !== null) {
+		const arbitrageBoost = Math.min(arbitrageOpportunity.confidence * ARBITRAGE_MAX_BOOST, ARBITRAGE_MAX_BOOST);
+		if (arbitrageOpportunity.direction === "BUY_UP") {
+			effectiveEdgeUp += arbitrageBoost;
+		} else if (arbitrageOpportunity.direction === "BUY_DOWN") {
+			effectiveEdgeDown += arbitrageBoost;
+		}
+	}
 
 	const maxVig = 0.04;
 	const vigTooHigh = rawSum > 1 + maxVig;
@@ -270,7 +307,10 @@ export function computeEdge(params: {
 		effectiveEdgeUp,
 		effectiveEdgeDown,
 		rawSum,
-		arbitrage,
+		arbitrage: sumArbitrage || arbitrageDetected,
+		arbitrageDetected,
+		arbitrageSpread: arbitrageOpportunity?.spread ?? null,
+		arbitrageDirection: arbitrageOpportunity?.direction ?? null,
 		overpriced,
 		vigTooHigh,
 		feeEstimateUp,
@@ -287,6 +327,7 @@ export function decide(params: {
 	modelUp?: number | null;
 	modelDown?: number | null;
 	regime?: Regime | null;
+	enhancedRegime?: EnhancedRegimeResult | null;
 	modelSource?: string;
 	strategy: StrategyConfig;
 	marketId?: string;
@@ -298,6 +339,7 @@ export function decide(params: {
 	macdHist?: number | null;
 	haColor?: string | null;
 	minConfidence?: number;
+	adaptiveThresholds?: AdjustedThresholds | null;
 }): TradeDecision {
 	const {
 		remainingMinutes,
@@ -308,6 +350,7 @@ export function decide(params: {
 		modelUp = null,
 		modelDown = null,
 		regime = null,
+		enhancedRegime = null,
 		strategy,
 		marketId = "",
 		volatility15m = null,
@@ -317,24 +360,11 @@ export function decide(params: {
 		macdHist = null,
 		haColor = null,
 		minConfidence = 0.5,
+		adaptiveThresholds = null,
 	} = params;
 
 	const phase: Phase = remainingMinutes > 10 ? "EARLY" : remainingMinutes > 5 ? "MID" : "LATE";
-
-	// Refined thresholds based on backtest (lowered for better performance)
-	const baseThreshold =
-		phase === "EARLY"
-			? Number(strategy?.edgeThresholdEarly ?? 0.06)
-			: phase === "MID"
-				? Number(strategy?.edgeThresholdMid ?? 0.08)
-				: Number(strategy?.edgeThresholdLate ?? 0.1);
-
-	const minProb =
-		phase === "EARLY"
-			? Number(strategy?.minProbEarly ?? 0.52)
-			: phase === "MID"
-				? Number(strategy?.minProbMid ?? 0.55)
-				: Number(strategy?.minProbLate ?? 0.6);
+	const effectiveRegime = enhancedRegime?.regime ?? regime;
 
 	// P0-1: Guard against NaN/Infinity in model probabilities
 	if ((modelUp !== null && !Number.isFinite(modelUp)) || (modelDown !== null && !Number.isFinite(modelDown))) {
@@ -351,7 +381,12 @@ export function decide(params: {
 	// Check if market should be skipped entirely (via config)
 	const skipMarkets = strategy?.skipMarkets ?? [];
 	if (skipMarkets.includes(marketId)) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: "market_skipped_by_config" };
+		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "market_skipped_by_config" };
+	}
+
+	const enhancedRegimeDecision = enhancedRegime === null ? null : shouldTradeBasedOnRegimeConfidence(enhancedRegime);
+	if (enhancedRegimeDecision && !enhancedRegimeDecision.shouldTrade) {
+		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: enhancedRegimeDecision.reason };
 	}
 
 	// Use effective edge if available
@@ -362,44 +397,87 @@ export function decide(params: {
 	const bestEdge = bestSide === "UP" ? effUp : effDown;
 	const bestModel = bestSide === "UP" ? modelUp : modelDown;
 
-	// Apply market-specific edge multiplier
-	const marketPerf = getMarketPerformance(marketId);
-	const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
-	const adjustedThreshold = baseThreshold * marketMult;
+	// --- Threshold computation ---
+	// When adaptive thresholds are provided, they already incorporate phase/regime/trend.
+	// We still apply the market-specific multiplier and REGIME_DISABLED sentinel.
+	let threshold: number;
+	let effectiveMinProb: number;
+	let effectiveMinConfidence: number;
 
-	const multiplier = regimeMultiplier(regime, bestSide, strategy?.regimeMultipliers, marketId);
-	const threshold = adjustedThreshold * multiplier;
+	if (adaptiveThresholds) {
+		// Adaptive path: threshold already includes phase/regime/trend adjustments
+		const marketPerf = getMarketPerformance(marketId);
+		const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
+		threshold = adaptiveThresholds.edgeThreshold * marketMult;
+		// Apply BTC-specific probability and confidence thresholds (Issue #4 fix)
+		effectiveMinProb = marketId === "BTC" ? Math.max(adaptiveThresholds.minProb, 0.58) : adaptiveThresholds.minProb;
+		effectiveMinConfidence =
+			marketId === "BTC" ? Math.max(adaptiveThresholds.minConfidence, 0.6) : adaptiveThresholds.minConfidence;
 
-	// Skip regime entirely when multiplier is the disabled sentinel
-	if (multiplier >= REGIME_DISABLED) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: "skip_chop_poor_market" };
+		// Check REGIME_DISABLED sentinel (same as static path)
+		const regimeMult = enhancedRegimeDecision?.useRangeMultiplier
+			? Number(strategy?.regimeMultipliers?.RANGE ?? 1)
+			: regimeMultiplier(effectiveRegime, bestSide, strategy?.regimeMultipliers, marketId);
+		if (regimeMult >= REGIME_DISABLED) {
+			return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "skip_chop_poor_market" };
+		}
+	} else {
+		// Static path (original behavior)
+		const baseThreshold =
+			phase === "EARLY"
+				? Number(strategy?.edgeThresholdEarly ?? 0.06)
+				: phase === "MID"
+					? Number(strategy?.edgeThresholdMid ?? 0.08)
+					: Number(strategy?.edgeThresholdLate ?? 0.1);
+
+		const marketPerf = getMarketPerformance(marketId);
+		const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
+		const adjustedThreshold = baseThreshold * marketMult;
+
+		const multiplier = enhancedRegimeDecision?.useRangeMultiplier
+			? Number(strategy?.regimeMultipliers?.RANGE ?? 1)
+			: regimeMultiplier(effectiveRegime, bestSide, strategy?.regimeMultipliers, marketId);
+		threshold = adjustedThreshold * multiplier;
+
+		// Skip regime entirely when multiplier is the disabled sentinel
+		if (multiplier >= REGIME_DISABLED) {
+			return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "skip_chop_poor_market" };
+		}
+
+		const staticMinProb =
+			phase === "EARLY"
+				? Number(strategy?.minProbEarly ?? 0.52)
+				: phase === "MID"
+					? Number(strategy?.minProbMid ?? 0.55)
+					: Number(strategy?.minProbLate ?? 0.6);
+
+		// Apply BTC-specific probability threshold (Issue #4 fix)
+		effectiveMinProb = marketId === "BTC" ? Math.max(staticMinProb, 0.58) : staticMinProb;
+		effectiveMinConfidence = marketId === "BTC" ? Math.max(minConfidence, 0.6) : minConfidence;
 	}
 
 	if (bestEdge < threshold) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: `edge_below_${threshold.toFixed(3)}` };
+		return {
+			action: "NO_TRADE",
+			side: null,
+			phase,
+			regime: effectiveRegime,
+			reason: `edge_below_${threshold.toFixed(3)}`,
+		};
 	}
 
-	if (bestModel !== null && bestModel < minProb) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${minProb}` };
-	}
-
-	// Apply BTC-specific probability threshold (Issue #4 fix)
-	const effectiveMinProb = marketId === "BTC" ? Math.max(minProb, 0.58) : minProb;
 	if (bestModel !== null && bestModel < effectiveMinProb) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${effectiveMinProb}_btc_adjusted` };
+		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: `prob_below_${effectiveMinProb}` };
 	}
-
-	// BTC-specific protection: require higher confidence for poor performer (Issue #4 fix)
-	const effectiveMinConfidence = marketId === "BTC" ? Math.max(minConfidence, 0.6) : minConfidence;
 
 	// Overconfidence checks
 	if (Math.abs(bestEdge) > HARD_CAP_EDGE) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
+		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "overconfident_hard_cap" };
 	}
 	if (Math.abs(bestEdge) > SOFT_CAP_EDGE) {
 		const penalizedThreshold = threshold * 1.4;
 		if (bestEdge < penalizedThreshold) {
-			return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_soft_cap" };
+			return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "overconfident_soft_cap" };
 		}
 	}
 
@@ -407,7 +485,7 @@ export function decide(params: {
 	const confidence = computeConfidence({
 		modelUp: modelUp ?? 0.5,
 		modelDown: modelDown ?? 0.5,
-		regime,
+		regime: effectiveRegime,
 		volatility15m,
 		orderbookImbalance,
 		vwapSlope,
@@ -423,7 +501,7 @@ export function decide(params: {
 			action: "NO_TRADE",
 			side: null,
 			phase,
-			regime,
+			regime: effectiveRegime,
 			reason: `confidence_${confidence.score.toFixed(2)}_below_${effectiveMinConfidence}`,
 			confidence,
 		};
@@ -443,7 +521,7 @@ export function decide(params: {
 		action: "ENTER",
 		side: bestSide,
 		phase,
-		regime,
+		regime: effectiveRegime,
 		strength,
 		edge: bestEdge,
 		confidence,

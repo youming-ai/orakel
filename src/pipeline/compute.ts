@@ -1,19 +1,28 @@
+import {
+	signalQualityModel as defaultSignalQualityModel,
+	getRegimeTransitionTracker,
+	performanceTracker,
+} from "../adaptiveState.ts";
+import type { AdaptiveThresholdManager } from "../engines/adaptiveThresholds.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
+import { computeEnsemble } from "../engines/ensemble.ts";
 import {
 	applyAdaptiveTimeDecay,
 	blendProbabilities,
-	computeRealizedVolatility,
 	computeVolatilityImpliedProb,
 	scoreDirection,
 } from "../engines/probability.ts";
-import { detectRegime } from "../engines/regime.ts";
+import { detectEnhancedRegime, detectRegime } from "../engines/regime.ts";
+import type { SignalFeatures, SignalQualityModel } from "../engines/signalQuality.ts";
 import { computeHeikenAshi, countConsecutive } from "../indicators/heikenAshi.ts";
+import { IncrementalRSI } from "../indicators/incremental.ts";
 import { computeMacd } from "../indicators/macd.ts";
-import { computeRsi, slopeLast } from "../indicators/rsi.ts";
+import { slopeLast } from "../indicators/rsi.ts";
+import { RollingVolatilityCalculator } from "../indicators/volatilityBuffer.ts";
 import { computeVwapSeries } from "../indicators/vwap.ts";
 import type { AppConfig, ComputeResult, MacdResult, RawMarketData, TradeDecision } from "../types.ts";
 
-function countVwapCrosses(closes: number[], vwapSeries: number[], lookback: number): number | null {
+export function countVwapCrosses(closes: number[], vwapSeries: number[], lookback: number): number | null {
 	if (closes.length < lookback || vwapSeries.length < lookback) return null;
 	let crosses = 0;
 	for (let i = closes.length - lookback + 1; i < closes.length; i += 1) {
@@ -34,6 +43,8 @@ export function computeMarketDecision(
 	data: RawMarketData,
 	priceToBeat: number | null,
 	config: AppConfig,
+	adaptiveManager?: AdaptiveThresholdManager | null,
+	signalQualityModel?: SignalQualityModel | null,
 ): ComputeResult {
 	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin } = data;
 	const effectiveTimeLeftMin = timeLeftMin ?? config.candleWindowMinutes;
@@ -48,16 +59,11 @@ export function computeMarketDecision(
 			? (vwapNow - vwapBack) / lookback
 			: null;
 
-	const rsiNow = computeRsi(closes, config.rsiPeriod);
-	const rsiForSlope: number[] = [];
-	for (let offset = 2; offset >= 0; offset--) {
-		const subLen = closes.length - offset;
-		if (subLen >= config.rsiPeriod + 1) {
-			const r = computeRsi(closes.slice(0, subLen), config.rsiPeriod);
-			if (r !== null) rsiForSlope.push(r);
-		}
-	}
-	const rsiSlope = slopeLast(rsiForSlope, 3);
+	// Single-pass RSI with trailing values for slope (replaces 4× computeRsi calls)
+	const rsiCalc = new IncrementalRSI(config.rsiPeriod);
+	const rsiTrailing = rsiCalc.initFromClosesWithTrailing(closes, 3);
+	const rsiNow = rsiCalc.value;
+	const rsiSlope = slopeLast(rsiTrailing, 3);
 
 	const macd = computeMacd(closes, config.macdFast, config.macdSlow, config.macdSignal) as MacdResult | null;
 	const ha = computeHeikenAshi(candles);
@@ -81,6 +87,17 @@ export function computeMarketDecision(
 		volumeRecent,
 		volumeAvg,
 	});
+	const enhancedRegimeInfo = detectEnhancedRegime({
+		price: lastPrice,
+		vwap: vwapNow,
+		vwapSlope,
+		vwapCrossCount,
+		volumeRecent,
+		volumeAvg,
+		rsi: rsiNow,
+		macdHist: macd?.hist ?? null,
+		transitionTracker: getRegimeTransitionTracker(market.id),
+	});
 
 	const scored = scoreDirection({
 		price: currentPrice ?? lastPrice,
@@ -94,7 +111,9 @@ export function computeMarketDecision(
 		failedVwapReclaim,
 	});
 
-	const volatility15m = computeRealizedVolatility(closes, 60);
+	// Ring-buffer volatility (avoids array slice + copy)
+	const volCalc = new RollingVolatilityCalculator(60, config.candleWindowMinutes);
+	const volatility15m = volCalc.initFromCloses(closes);
 	const binanceChainlinkDelta =
 		spotPrice !== null && currentPrice !== null && currentPrice > 0 ? (spotPrice - currentPrice) / currentPrice : null;
 	const upBookSummary = poly.ok ? (poly.orderbook?.up ?? null) : null;
@@ -141,11 +160,48 @@ export function computeMarketDecision(
 		weights: config.strategy.blendWeights,
 	});
 
-	const finalUp =
+	const baseFinalUp =
 		blended.source === "blended"
 			? blended.blendedUp
 			: applyAdaptiveTimeDecay(scored.rawUp, effectiveTimeLeftMin, config.candleWindowMinutes, volatility15m)
 					.adjustedUp;
+
+	const phase = effectiveTimeLeftMin > 10 ? "EARLY" : effectiveTimeLeftMin > 5 ? "MID" : "LATE";
+
+	const qualityModel = signalQualityModel === undefined ? defaultSignalQualityModel : signalQualityModel;
+	let signalQuality: ComputeResult["signalQuality"] = null;
+	let ensembleResult: ComputeResult["ensembleResult"] = null;
+	let finalUp = baseFinalUp;
+
+	if (qualityModel) {
+		const features: SignalFeatures = {
+			marketId: market.id,
+			edge: Math.abs(baseFinalUp - 0.5) * 2,
+			confidence: Math.abs(scored.rawUp - 0.5) * 2,
+			volatility15m: volatility15m ?? 0,
+			phase,
+			regime: regimeInfo.regime,
+			modelUp: baseFinalUp,
+			orderbookImbalance,
+			rsi: rsiNow,
+			vwapSlope,
+		};
+
+		signalQuality = qualityModel.predictWinRate(features);
+		ensembleResult = computeEnsemble({
+			volImpliedUp: volImplied,
+			taRawUp: scored.rawUp,
+			blendedUp: blended.blendedUp,
+			blendSource: blended.source,
+			signalQualityWinRate: signalQuality.confidence === "INSUFFICIENT" ? null : signalQuality.predictedWinRate,
+			signalQualityConfidence: signalQuality.confidence,
+			regime: regimeInfo.regime,
+			volatility15m,
+			orderbookImbalance,
+		});
+		finalUp = ensembleResult.finalUp;
+	}
+
 	const finalDown = 1 - finalUp;
 
 	const marketUp = poly.ok ? (poly.prices?.up ?? null) : null;
@@ -155,10 +211,37 @@ export function computeMarketDecision(
 		modelDown: finalDown,
 		marketYes: marketUp,
 		marketNo: marketDown,
+		marketId: market.id,
+		binanceChainlinkDelta,
 		orderbookImbalance,
 		orderbookSpreadUp: upBookSummary?.spread ?? null,
 		orderbookSpreadDown: downBookSummary?.spread ?? null,
 	});
+
+	const baseEdgeThreshold =
+		phase === "EARLY"
+			? Number(config.strategy.edgeThresholdEarly ?? 0.06)
+			: phase === "MID"
+				? Number(config.strategy.edgeThresholdMid ?? 0.08)
+				: Number(config.strategy.edgeThresholdLate ?? 0.1);
+	const baseMinProb =
+		phase === "EARLY"
+			? Number(config.strategy.minProbEarly ?? 0.52)
+			: phase === "MID"
+				? Number(config.strategy.minProbMid ?? 0.55)
+				: Number(config.strategy.minProbLate ?? 0.6);
+	const snapshot = adaptiveManager ? performanceTracker.getSnapshot(market.id) : null;
+	const adaptiveThresholds =
+		adaptiveManager && snapshot
+			? adaptiveManager.getAdjustedThresholds({
+					marketId: market.id,
+					baseEdgeThreshold,
+					baseMinProb,
+					baseMinConfidence: config.strategy.minConfidence ?? 0.5,
+					phase,
+					regime: regimeInfo.regime,
+				})
+			: null;
 
 	const rec = edge.vigTooHigh
 		? ({
@@ -177,6 +260,7 @@ export function computeMarketDecision(
 				modelUp: finalUp,
 				modelDown: finalDown,
 				regime: regimeInfo.regime,
+				enhancedRegime: enhancedRegimeInfo,
 				modelSource: blended.source,
 				strategy: config.strategy,
 				marketId: market.id,
@@ -187,6 +271,7 @@ export function computeMarketDecision(
 				macdHist: macd?.hist ?? null,
 				haColor: consec.color,
 				minConfidence: config.strategy.minConfidence ?? 0.5,
+				adaptiveThresholds,
 			});
 
 	const pLong = Number.isFinite(finalUp) ? (finalUp * 100).toFixed(0) : "-";
@@ -213,7 +298,10 @@ export function computeMarketDecision(
 		edge,
 		scored,
 		blended,
+		ensembleResult,
+		signalQuality,
 		regimeInfo,
+		enhancedRegime: enhancedRegimeInfo,
 		finalUp,
 		finalDown,
 		volImplied,

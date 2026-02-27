@@ -1,4 +1,6 @@
 import type { GammaMarket } from "./data/polymarket.ts";
+import type { EnsembleResult } from "./engines/ensemble.ts";
+import type { SignalQualityResult } from "./engines/signalQuality.ts";
 
 export type { GammaMarket } from "./data/polymarket.ts";
 
@@ -45,6 +47,36 @@ export interface RiskConfig {
 	maxOpenPositions: number;
 	minLiquidity: number;
 	maxTradesPerWindow: number;
+}
+
+export interface StopConfig {
+	volatilityMultiplier: number;
+	maxStopPercent: number;
+	minStopPercent: number;
+	enableVolatilityStop: boolean;
+}
+
+export interface StopResult {
+	stopPrice: number;
+	stopPercent: number;
+	reason: string;
+}
+
+export interface TrailingStopState {
+	entryPrice: number;
+	side: Side;
+	highestPrice: number;
+	lowestPrice: number;
+	trailingPercent: number;
+	activated: boolean;
+	activationPercent: number;
+}
+
+export interface TakeProfitConfig {
+	baseProfitPercent: number;
+	decayRate: number;
+	minProfitPercent: number;
+	enableTakeProfit: boolean;
 }
 
 export interface MarketPerformance {
@@ -116,6 +148,9 @@ export interface EdgeResult {
 	effectiveEdgeDown: number | null;
 	rawSum: number | null;
 	arbitrage: boolean;
+	arbitrageDetected: boolean;
+	arbitrageSpread?: number | null;
+	arbitrageDirection?: "BUY_UP" | "BUY_DOWN" | "SKIP" | null;
 	overpriced: boolean;
 	vigTooHigh?: boolean;
 	feeEstimateUp?: number;
@@ -157,6 +192,11 @@ export interface TradeDecision {
 export interface RegimeResult {
 	regime: Regime;
 	reason: string;
+}
+
+export interface EnhancedRegimeResult extends RegimeResult {
+	confidence: number;
+	transitionProb?: Record<Regime, number>;
 }
 
 export interface MacdResult {
@@ -259,7 +299,19 @@ export interface TradeSignal {
 	orderbookImbalance: number | null;
 	rawSum: number | null;
 	arbitrage: boolean;
+	arbitrageDetected?: boolean;
+	arbitrageSpread?: number | null;
+	arbitrageDirection?: "BUY_UP" | "BUY_DOWN" | "SKIP" | null;
 	tokens: { upTokenId: string; downTokenId: string } | null;
+	confidence?: number;
+	regime?: Regime | null;
+}
+
+export interface PositionSizeResult {
+	size: number;
+	rawKelly: number;
+	adjustedKelly: number;
+	reason: string;
 }
 
 export interface TradeResult {
@@ -318,7 +370,10 @@ export interface ComputeResult {
 	edge: EdgeResult;
 	scored: ScoreResult;
 	blended: BlendResult;
+	ensembleResult?: EnsembleResult | null;
+	signalQuality?: SignalQualityResult | null;
 	regimeInfo: RegimeResult;
+	enhancedRegime?: EnhancedRegimeResult;
 	finalUp: number;
 	finalDown: number;
 	volImplied: number | null;

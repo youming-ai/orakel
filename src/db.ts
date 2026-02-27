@@ -46,9 +46,7 @@ export function getDb(): Database {
 			fs.unlinkSync(testFile);
 			log.info("  Directory is writable:", dataDir);
 		} catch (err) {
-			throw new Error(
-				`Directory "${dataDir}" is not writable. ` + `Error: ${err}. ` + `Check file permissions and ownership.`,
-			);
+			throw new Error(`Directory "${dataDir}" is not writable. Error: ${err}. Check file permissions and ownership.`);
 		}
 
 		// Open database with error handling

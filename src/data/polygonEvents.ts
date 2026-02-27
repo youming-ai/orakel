@@ -32,14 +32,14 @@ interface JsonRpcLog {
 	logIndex?: unknown;
 }
 
-function getWssCandidates(): string[] {
+export function getWssCandidates(): string[] {
 	const fromList = Array.isArray(CONFIG.chainlink.polygonWssUrls) ? CONFIG.chainlink.polygonWssUrls : [];
 	const single = CONFIG.chainlink.polygonWssUrl ? [CONFIG.chainlink.polygonWssUrl] : [];
 	const all = [...fromList, ...single].map((s) => String(s).trim()).filter(Boolean);
 	return Array.from(new Set(all));
 }
 
-function toHexNumber(value: unknown): number | null {
+export function toHexNumber(value: unknown): number | null {
 	if (typeof value !== "string") return null;
 	try {
 		return Number(BigInt(value));
@@ -48,7 +48,7 @@ function toHexNumber(value: unknown): number | null {
 	}
 }
 
-function parseRpcLog(msg: JsonRpcMessage): JsonRpcLog | null {
+export function parseRpcLog(msg: JsonRpcMessage): JsonRpcLog | null {
 	if (msg.method !== "eth_subscription") return null;
 	const params = msg.params;
 	if (!params || typeof params !== "object" || Array.isArray(params)) return null;
@@ -62,7 +62,7 @@ function parseRpcLog(msg: JsonRpcMessage): JsonRpcLog | null {
 	return candidate;
 }
 
-function parseUsdcTransfer(logEntry: JsonRpcLog): OnChainEvent | null {
+export function parseUsdcTransfer(logEntry: JsonRpcLog): OnChainEvent | null {
 	const topics = Array.isArray(logEntry.topics) ? logEntry.topics : [];
 	if (topics.length < 3) return null;
 	if (String(topics[0]).toLowerCase() !== TRANSFER_TOPIC.toLowerCase()) return null;
@@ -95,7 +95,7 @@ function parseUsdcTransfer(logEntry: JsonRpcLog): OnChainEvent | null {
 	}
 }
 
-function parseCtfTransferSingle(logEntry: JsonRpcLog): OnChainEvent | null {
+export function parseCtfTransferSingle(logEntry: JsonRpcLog): OnChainEvent | null {
 	const topics = Array.isArray(logEntry.topics) ? logEntry.topics : [];
 	if (topics.length < 4) return null;
 	if (String(topics[0]).toLowerCase() !== TRANSFER_SINGLE_TOPIC.toLowerCase()) return null;
@@ -129,7 +129,7 @@ function parseCtfTransferSingle(logEntry: JsonRpcLog): OnChainEvent | null {
 	}
 }
 
-function parseOnChainEvent(logEntry: JsonRpcLog): OnChainEvent | null {
+export function parseOnChainEvent(logEntry: JsonRpcLog): OnChainEvent | null {
 	const address = typeof logEntry.address === "string" ? logEntry.address.toLowerCase() : "";
 	const topics = Array.isArray(logEntry.topics) ? logEntry.topics : [];
 	const topic0 = String(topics[0] ?? "").toLowerCase();
