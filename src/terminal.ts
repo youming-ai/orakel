@@ -59,7 +59,10 @@ function renderScreen(text: string): void {
 	process.stdout.write(text);
 }
 
-export function colorForAction(action: TradeDecision["action"] | undefined, side: TradeDecision["side"] | undefined): string {
+export function colorForAction(
+	action: TradeDecision["action"] | undefined,
+	side: TradeDecision["side"] | undefined,
+): string {
 	if (action === "ENTER" && side === "UP") return ANSI.green;
 	if (action === "ENTER" && side === "DOWN") return ANSI.red;
 	return ANSI.gray;

@@ -416,5 +416,4 @@ describe("parseOnChainEvent", () => {
 		const result = parseOnChainEvent(logEntry);
 		expect(result?.type).toBe("usdc_transfer");
 	});
-
 });
