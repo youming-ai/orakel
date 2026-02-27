@@ -322,7 +322,6 @@ export function AnalyticsTabs({
 			<TabsContent value="trades" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
 				<TradesTab
 					viewMode={viewMode}
-					trades={trades}
 					liveTrades={liveTrades}
 					tradesLength={trades.length}
 					timingData={timingData}

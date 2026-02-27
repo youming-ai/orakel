@@ -75,7 +75,8 @@ let heartbeatReconnecting = false;
 export function startHeartbeat(): boolean {
 	if (heartbeatTimer) return true; // already running
 	if (!client) {
-		log.warn("Cannot start heartbeat: client not initialized");
+		// Client not initialized is expected when in paper mode or before wallet connection
+		log.debug("Cannot start heartbeat: client not initialized");
 		return false;
 	}
 	heartbeatFailures = 0;
@@ -1002,7 +1003,8 @@ export async function getLiveStats(): Promise<{
 	totalPnl: number;
 }> {
 	if (!client) {
-		log.warn("Cannot get live stats: client not initialized");
+		// Client not initialized is expected when in paper mode or before wallet connection
+		log.debug("Cannot get live stats: client not initialized");
 		return { totalTrades: 0, wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0 };
 	}
 

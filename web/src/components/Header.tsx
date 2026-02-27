@@ -1,4 +1,4 @@
-import { Activity, Clock, Loader2, Moon, Play, Sun, Wallet, Zap } from "lucide-react";
+import { Clock, Loader2, Moon, Sun, Wallet, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -48,20 +48,18 @@ const statusConfig: Record<BotStatus, { label: string; className: string }> = {
 };
 
 function StatusIndicator({ status }: { status: BotStatus }) {
-	switch (status) {
-		case "stopped":
-			return <Play className="size-3 fill-current" />;
-		case "starting":
-		case "stopping":
-			return <Loader2 className="size-3 animate-spin" />;
-		case "running":
-			return (
-				<div className="relative flex items-center justify-center">
-					<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-					<Activity className="size-3 text-emerald-400 relative" />
-				</div>
-			);
+	if (status === "running") {
+		return (
+			<span className="relative flex size-2">
+				<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+				<span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+			</span>
+		);
 	}
+	if (status === "starting" || status === "stopping") {
+		return <Loader2 className="size-3 animate-spin text-amber-400" />;
+	}
+	return <span className="inline-flex size-2 rounded-full bg-red-400" />;
 }
 
 function useCycleCountdown() {

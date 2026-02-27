@@ -302,7 +302,7 @@ describe("colorForAction", () => {
 	});
 
 	it("should return gray for null action and side", () => {
-		const result = colorForAction(null, null);
+		const result = colorForAction(undefined, undefined);
 		expect(result).toBe("\x1b[90m");
 	});
 });

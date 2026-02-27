@@ -9,9 +9,8 @@ import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
 import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ChartErrorBoundary } from "../ChartErrorBoundary";
-import { MarketCard } from "../MarketCard";
+import { MarketCardWithSignal } from "../MarketCardWithSignal";
 import { PriceChart } from "../PriceChart";
-import { SignalStrength } from "../SignalStrength";
 import { StatCard } from "../StatCard";
 
 interface OverviewTabProps {
@@ -46,7 +45,7 @@ export function EmptyPlaceholder() {
 
 export function OverviewTab({
 	stopLoss,
-	viewMode,
+	viewMode: _viewMode,
 	todayStats,
 	clearStopMutation,
 	mergedStats,
@@ -61,6 +60,37 @@ export function OverviewTab({
 			return 0;
 		});
 	}, [markets]);
+
+	// Calculate trading frequency trend based on recent activity
+	const tradesTrend = useMemo((): "up" | "down" | "neutral" => {
+		if (pnlTimeline.length === 0) return "neutral";
+
+		const now = Date.now();
+		const oneHourMs = 60 * 60 * 1000;
+		const fourHoursMs = 4 * oneHourMs;
+
+		// Calculate time span of all trades
+		const oldestTrade = new Date(pnlTimeline[pnlTimeline.length - 1]?.ts || now).getTime();
+		const timeSpanHours = Math.max(1, (now - oldestTrade) / oneHourMs);
+
+		// Calculate average trades per hour
+		const avgTradesPerHour = pnlTimeline.length / timeSpanHours;
+
+		// Count trades in last 4 hours
+		const recentTrades = pnlTimeline.filter((t) => {
+			const tradeTime = new Date(t.ts).getTime();
+			return now - tradeTime <= fourHoursMs;
+		}).length;
+
+		// Calculate recent trades per hour (with minimum 4 hour window)
+		const recentTradesPerHour = recentTrades / 4;
+
+		// Compare recent to average (with 20% threshold to avoid noise)
+		const ratio = recentTradesPerHour / Math.max(0.1, avgTradesPerHour);
+		if (ratio > 1.2) return "up";
+		if (ratio < 0.8) return "down";
+		return "neutral";
+	}, [pnlTimeline]);
 
 	return (
 		<div className="space-y-4">
@@ -160,7 +190,7 @@ export function OverviewTab({
 				{/* Hero Stats */}
 				<Card
 					className={cn(
-						"flex flex-col justify-center p-6 border-border/60 shadow-sm shrink-0 xl:w-72",
+						"flex flex-col justify-center p-6 border-border/60 shrink-0 xl:w-72",
 						mergedStats.totalPnl >= 0
 							? "bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20"
 							: "bg-gradient-to-br from-red-500/10 to-transparent border-red-500/20",
@@ -185,13 +215,13 @@ export function OverviewTab({
 				</Card>
 
 				{/* Standard Stats */}
-				<Card className="flex-1 overflow-hidden border-border/60 shadow-sm">
+				<Card className="flex-1 overflow-hidden border-border/60">
 					<div className="grid grid-cols-2 sm:grid-cols-4 gap-px sm:gap-0 bg-border/60 sm:bg-card sm:divide-x sm:divide-border/60 h-full">
 						<StatCard
 							label="Trades"
 							value={String(mergedStats.totalTrades)}
 							icon={<Hash className="size-3.5" />}
-							trend="neutral"
+							trend={tradesTrend}
 						/>
 						<StatCard
 							label="Win Rate"
@@ -199,7 +229,6 @@ export function OverviewTab({
 							color={mergedStats.winRate >= 0.5 ? "text-emerald-400" : mergedStats.winRate > 0 ? "text-red-400" : ""}
 							icon={<Target className="size-3.5" />}
 							trend={mergedStats.winRate >= 0.5 ? "up" : "down"}
-							highlight
 						/>
 						<StatCard
 							label="Wins"
@@ -224,15 +253,13 @@ export function OverviewTab({
 				<h2 className="text-sm font-semibold text-foreground">Markets</h2>
 				<div className="flex-1 h-px bg-border/50" />
 			</div>
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 				{sortedMarkets.map((m) => (
-					<MarketCard key={m.id} market={m} />
+					<MarketCardWithSignal key={m.id} market={m} />
 				))}
 			</div>
 
 			<PriceChart markets={markets} />
-
-			<SignalStrength markets={markets} />
 
 			{/* Section: Performance History */}
 			<div className="flex items-center gap-3 pt-2">

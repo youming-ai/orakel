@@ -1,4 +1,5 @@
 import type { Trade } from "@polymarket/clob-client";
+import { Side } from "@polymarket/clob-client";
 import { describe, expect, it } from "vitest";
 import { calculateStatsFromTrades, convertTradeToLiveTrade } from "./liveStats.ts";
 
@@ -8,7 +9,7 @@ function makeTrade(overrides: Partial<Trade> = {}): Trade {
 		id: "trade-1",
 		market: "BTC",
 		asset_id: "asset-123",
-		side: "BUY",
+		side: Side.BUY,
 		size: "10",
 		price: "0.5",
 		status: "matched",
@@ -22,7 +23,7 @@ function makeTrade(overrides: Partial<Trade> = {}): Trade {
 describe("convertTradeToLiveTrade", () => {
 	it("should convert BUY trade with outcome '1' (win)", () => {
 		const trade = makeTrade({
-			side: "BUY",
+			side: Side.BUY,
 			outcome: "1",
 			size: "10",
 			price: "0.5",
@@ -41,7 +42,7 @@ describe("convertTradeToLiveTrade", () => {
 
 	it("should convert BUY trade with outcome '0' (loss)", () => {
 		const trade = makeTrade({
-			side: "BUY",
+			side: Side.BUY,
 			outcome: "0",
 			size: "10",
 			price: "0.5",
@@ -55,7 +56,7 @@ describe("convertTradeToLiveTrade", () => {
 
 	it("should convert SELL trade with outcome '1' (loss)", () => {
 		const trade = makeTrade({
-			side: "SELL",
+			side: Side.SELL,
 			outcome: "1",
 			size: "10",
 			price: "0.5",
@@ -69,7 +70,7 @@ describe("convertTradeToLiveTrade", () => {
 
 	it("should convert SELL trade with outcome '0' (win)", () => {
 		const trade = makeTrade({
-			side: "SELL",
+			side: Side.SELL,
 			outcome: "0",
 			size: "10",
 			price: "0.5",
@@ -511,6 +512,6 @@ describe("calculateStatsFromTrades", () => {
 		const result = calculateStatsFromTrades(trades);
 
 		expect(result.trades).toHaveLength(1);
-		expect(result.trades[0].id).toBe("1");
+		expect(result.trades[0]?.id).toBe("1");
 	});
 });

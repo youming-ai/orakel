@@ -3,8 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ConfidenceResult, MarketSnapshot } from "@/lib/api";
 import { fmtCents, fmtMinSec, fmtPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { useState } from "react";
 
 interface MarketCardProps {
 	market: MarketSnapshot;
@@ -99,8 +97,6 @@ function SignalLight({ action, edge }: { action: string; edge: number | null }) 
 }
 
 export function MarketCard({ market: m }: MarketCardProps) {
-	const [expanded, setExpanded] = useState(false);
-
 	if (!m.ok) {
 		return (
 			<Card className="border-red-500/30 bg-red-500/10">
@@ -164,27 +160,12 @@ export function MarketCard({ market: m }: MarketCardProps) {
 				{/* Confidence bar */}
 				{confidence && <ConfidenceBar confidence={confidence} />}
 
-				{/* Expandable Technicals Area */}
-				<div>
-					<button
-						type="button"
-						aria-expanded={expanded}
-						aria-controls={`technicals-${m.id}`}
-						aria-label={expanded ? `Hide ${m.id} technical details` : `Show ${m.id} technical details`}
-						onClick={() => setExpanded(!expanded)}
-						className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors mx-auto"
-					>
-						{expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-						{expanded ? "Hide Technicals" : "Show Technicals"}
-					</button>
-
-					{expanded && (
-					<div
-						id={`technicals-${m.id}`}
-						role="region"
-						aria-label={`${m.id} technical indicators`}
-						className="mt-3 space-y-3 p-3 bg-muted/20 border border-border/50 rounded-lg animate-in slide-in-from-top-1 fade-in duration-200"
-					>
+				{/* Technical Indicators */}
+				<div
+					role="region"
+					aria-label={`${m.id} technical indicators`}
+					className="space-y-3 p-3 bg-muted/20 border border-border/50 rounded-lg"
+				>
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
 								<div className="space-y-1">
 									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">HA Trend</span>
@@ -246,9 +227,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 									</span>
 								</div>
 							</div>
-						</div>
-					)}
-				</div>
+					</div>
 
 				<div
 					className={cn(
