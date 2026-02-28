@@ -26,19 +26,23 @@ const threshold = LEVEL_PRIORITY[env.LOG_LEVEL];
 // ── factory ──────────────────────────────────────────────
 
 function createLogger(tag: string): Logger {
-	const _prefix = `[${tag}]`;
+	const prefix = `[${tag}]`;
 	return {
-		debug: (..._args: unknown[]) => {
-			if (threshold <= LEVEL_PRIORITY.debug)
+		debug: (...args: unknown[]) => {
+			// biome-ignore lint/suspicious/noConsole: logger is the authorized console wrapper
+			if (threshold <= LEVEL_PRIORITY.debug) console.debug(prefix, ...args);
 		},
-		info: (..._args: unknown[]) => {
-			if (threshold <= LEVEL_PRIORITY.info)
+		info: (...args: unknown[]) => {
+			// biome-ignore lint/suspicious/noConsole: logger is the authorized console wrapper
+			if (threshold <= LEVEL_PRIORITY.info) console.log(prefix, ...args);
 		},
-		warn: (..._args: unknown[]) => {
-			if (threshold <= LEVEL_PRIORITY.warn)
+		warn: (...args: unknown[]) => {
+			// biome-ignore lint/suspicious/noConsole: logger is the authorized console wrapper
+			if (threshold <= LEVEL_PRIORITY.warn) console.warn(prefix, ...args);
 		},
-		error: (..._args: unknown[]) => {
-			if (threshold <= LEVEL_PRIORITY.error)
+		error: (...args: unknown[]) => {
+			// biome-ignore lint/suspicious/noConsole: logger is the authorized console wrapper
+			if (threshold <= LEVEL_PRIORITY.error) console.error(prefix, ...args);
 		},
 	};
 }

@@ -17,6 +17,7 @@ describe("computeMacd", () => {
 
 	// Guard: non-array input
 	it("returns null for non-array input", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 		const result = computeMacd(null as any, 12, 26, 9);
 		expect(result).toBeNull();
 	});
@@ -74,8 +75,8 @@ describe("computeMacd", () => {
 		});
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
-		if (result?.histDelta !== null && result?.hist !== 0) {
-			expect(Math.sign(result?.histDelta)).not.toBe(Math.sign(result?.hist));
+		if (result !== null && result.histDelta !== null && result.hist !== 0) {
+			expect(Math.sign(result.histDelta)).not.toBe(Math.sign(result.hist));
 		}
 	});
 
@@ -95,8 +96,10 @@ describe("computeMacd", () => {
 		const closes = Array.from({ length: 60 }, () => 100);
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
-		expect(Math.abs(result?.macd)).toBeLessThan(0.01);
-		expect(Math.abs(result?.hist)).toBeLessThan(0.01);
+		if (result !== null) {
+			expect(Math.abs(result.macd)).toBeLessThan(0.01);
+			expect(Math.abs(result.hist)).toBeLessThan(0.01);
+		}
 	});
 
 	// Custom parameters: fast=5, slow=13, signal=5

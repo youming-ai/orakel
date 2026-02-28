@@ -10,6 +10,7 @@ function getFirst<T>(arr: T[]): T {
 	if (arr.length === 0) {
 		throw new Error("Array is empty");
 	}
+	// biome-ignore lint/style/noNonNullAssertion: function throws when empty
 	return arr[0]!;
 }
 
@@ -22,6 +23,7 @@ describe("computeSessionVwap", () => {
 
 	// Non-array (null as any) → null
 	it("returns null for non-array input", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 		const result = computeSessionVwap(null as any);
 		expect(result).toBeNull();
 	});
@@ -127,7 +129,9 @@ describe("computeVwapSeries", () => {
 		const candles = [makeCandle(100, 110, 90, 105, 1000), makeCandle(105, 115, 95, 110, 1000)];
 		const result = computeVwapSeries(candles);
 		const expectedFirst = computeSessionVwap([getFirst(candles)]);
-		expect(getFirst(result)).toBeCloseTo(expectedFirst!, 5);
+		if (expectedFirst !== null) {
+			expect(getFirst(result)).toBeCloseTo(expectedFirst, 5);
+		}
 	});
 
 	// Last element = computeSessionVwap(allCandles)
@@ -139,7 +143,9 @@ describe("computeVwapSeries", () => {
 		];
 		const result = computeVwapSeries(candles);
 		const expectedLast = computeSessionVwap(candles);
-		expect(result[result.length - 1]).toBeCloseTo(expectedLast!, 5);
+		if (expectedLast !== null) {
+			expect(result[result.length - 1]).toBeCloseTo(expectedLast, 5);
+		}
 	});
 
 	// Cumulative: each entry is VWAP of all candles up to that index
@@ -153,9 +159,11 @@ describe("computeVwapSeries", () => {
 		const vwap1 = computeSessionVwap(candles.slice(0, 1));
 		const vwap2 = computeSessionVwap(candles.slice(0, 2));
 		const vwap3 = computeSessionVwap(candles.slice(0, 3));
-		expect(result[0]).toBeCloseTo(vwap1!, 5);
-		expect(result[1]).toBeCloseTo(vwap2!, 5);
-		expect(result[2]).toBeCloseTo(vwap3!, 5);
+		if (vwap1 !== null && vwap2 !== null && vwap3 !== null) {
+			expect(result[0]).toBeCloseTo(vwap1, 5);
+			expect(result[1]).toBeCloseTo(vwap2, 5);
+			expect(result[2]).toBeCloseTo(vwap3, 5);
+		}
 	});
 
 	// Single candle
@@ -175,7 +183,12 @@ describe("computeVwapSeries", () => {
 			makeCandle(105, 110, 103, 108, 1000),
 		];
 		const result = computeVwapSeries(candles);
-		expect(result[0]).toBeLessThanOrEqual(result[1]!);
-		expect(result[1]).toBeLessThanOrEqual(result[2]!);
+		const v0 = result[0];
+		const v1 = result[1];
+		const v2 = result[2];
+		if (v0 !== undefined && v1 !== undefined && v2 !== undefined) {
+			expect(v0).toBeLessThanOrEqual(v1);
+			expect(v1).toBeLessThanOrEqual(v2);
+		}
 	});
 });

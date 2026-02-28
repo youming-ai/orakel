@@ -36,5 +36,6 @@ services:
       - ./web/tsconfig.json:/app/tsconfig.json
       - ./web/package.json:/app/package.json
     depends_on:
-      - bot
+      bot:
+        condition: service_healthy
     restart: unless-stopped
