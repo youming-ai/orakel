@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { calculateStatsFromTrades, convertTradeToLiveTrade } from "./liveStats.ts";
 
 // Helper to create mock Trade objects
-function makeTrade(overrides: Partial<Trade> = {}): Trade {
+function makeTrade(overrides: Record<string, unknown> = {}): Trade {
 	return {
 		id: "trade-1",
 		market: "BTC",
