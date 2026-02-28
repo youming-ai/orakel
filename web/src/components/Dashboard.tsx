@@ -2,9 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import {
 	useDashboardStateWithWs,
-	useLiveCancel,
 	useLiveToggle,
-	usePaperCancel,
 	usePaperStats,
 	usePaperToggle,
 	useTrades,
@@ -75,8 +73,6 @@ function DashboardContent() {
 	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
 	const paperToggle = usePaperToggle();
 	const liveToggle = useLiveToggle();
-	const paperCancel = usePaperCancel();
-	const liveCancel = useLiveCancel();
 
 	const paperTrades = paperStatsData?.trades ?? [];
 	const paperByMarket = paperStatsData?.byMarket ?? {};
@@ -111,24 +107,14 @@ function DashboardContent() {
 
 	const handlePaperToggle = useCallback(() => {
 		if (!state) return;
-		if (state.paperPendingStart || state.paperPendingStop) {
-			paperCancel.mutate();
-			toast({ type: "info", description: "Paper bot start/stop cancelled" });
-			return;
-		}
 		setConfirmAction(state.paperRunning ? "stop" : "start");
-	}, [state, paperCancel, setConfirmAction]);
+	}, [state, setConfirmAction]);
 
 	const handleLiveToggle = useCallback(() => {
 		if (!state) return;
-		if (state.livePendingStart || state.livePendingStop) {
-			liveCancel.mutate();
-			toast({ type: "info", description: "Live bot start/stop cancelled" });
-			return;
-		}
 		if (!state.liveRunning && !state.liveWallet?.clientReady) return;
 		setConfirmAction(state.liveRunning ? "stop" : "start");
-	}, [state, liveCancel, setConfirmAction]);
+	}, [state, setConfirmAction]);
 
 	const handleConfirm = useCallback(() => {
 		if (!state || !confirmAction) return;
@@ -182,16 +168,11 @@ function DashboardContent() {
 				paperRunning={state.paperRunning}
 				liveRunning={state.liveRunning}
 				liveWalletReady={state.liveWallet?.clientReady ?? false}
-				paperPendingStart={state.paperPendingStart ?? false}
-				paperPendingStop={state.paperPendingStop ?? false}
-				livePendingStart={state.livePendingStart ?? false}
-				livePendingStop={state.livePendingStop ?? false}
-			onViewModeChange={handleViewModeChange}
-			onPaperToggle={handlePaperToggle}
-			onLiveToggle={handleLiveToggle}
-			paperMutationPending={paperToggle.isPending || paperCancel.isPending}
-			liveMutationPending={liveToggle.isPending || liveCancel.isPending}
-		/>
+				mutationPending={paperToggle.isPending || liveToggle.isPending}
+				onViewModeChange={handleViewModeChange}
+				onPaperToggle={handlePaperToggle}
+				onLiveToggle={handleLiveToggle}
+			/>
 			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
 				{viewMode === "live" && (
 					<LiveConnect

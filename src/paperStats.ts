@@ -297,16 +297,10 @@ export function resolvePaperTrades(windowStartMs: number, finalPrices: Map<strin
 		const finalPrice = finalPrices.get(trade.marketId);
 		if (finalPrice === undefined || trade.priceToBeat <= 0) continue;
 
+		// Polymarket rule: price === PTB -> DOWN wins
 		const upWon = finalPrice > trade.priceToBeat;
-		const downWon = finalPrice < trade.priceToBeat;
-		const outcome: Side | null = upWon ? "UP" : downWon ? "DOWN" : null;
-
-		if (outcome === null) {
-			// Tie: price === PTB → treat as DOWN wins (standard Polymarket rule)
-			trade.won = trade.side === "DOWN";
-		} else {
-			trade.won = trade.side === outcome;
-		}
+		const downWon = finalPrice <= trade.priceToBeat;
+		trade.won = trade.side === "UP" ? upWon : downWon;
 
 		trade.settlePrice = finalPrice;
 		trade.resolved = true;
@@ -367,6 +361,46 @@ export function resolvePaperTrades(windowStartMs: number, finalPrices: Map<strin
 		save();
 	}
 	return resolved;
+}
+
+/**
+ * Clean up paper trades that were never settled within the timeout window.
+ * Trades older than 2 windows (30 min for 15-min windows) are force-settled as losses.
+ * This prevents phantom trades from occupying balance indefinitely.
+ */
+export function cleanupStalePaperTrades(currentWindowStartMs: number, windowMinutes: number): number {
+	const timeoutMs = windowMinutes * 60_000 * 2; // 2 windows
+	let cleaned = 0;
+
+	for (const trade of state.trades) {
+		if (trade.resolved) continue;
+		const age = currentWindowStartMs - trade.windowStartMs;
+		if (age <= timeoutMs) continue;
+
+		// Force-settle as loss — data was unavailable for too long
+		log.warn(
+			`Stale paper trade timeout: ${trade.marketId} ${trade.side} from window ${trade.windowStartMs} (age: ${(age / 60_000).toFixed(0)}min)`,
+		);
+		trade.resolved = true;
+		trade.won = false;
+		trade.pnl = -(trade.size * trade.price);
+		trade.settlePrice = 0;
+		state.losses++;
+		state.currentBalance += trade.size + trade.pnl;
+		const drawdown = state.initialBalance - state.currentBalance;
+		if (drawdown > state.maxDrawdown) state.maxDrawdown = drawdown;
+		state.totalPnl += trade.pnl;
+		updateDailyPnl(trade.id, trade.pnl);
+		upsertPaperTrade(trade);
+		cleaned++;
+	}
+
+	if (cleaned > 0) {
+		checkAndTriggerStopLoss();
+		save();
+		log.warn(`Force-settled ${cleaned} stale paper trade(s) as losses`);
+	}
+	return cleaned;
 }
 
 export function getPaperStats(): PaperStats {

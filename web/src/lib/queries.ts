@@ -79,10 +79,6 @@ export function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 						config: patch.config ?? prev.config,
 						paperRunning: patch.paperRunning ?? prev.paperRunning,
 						liveRunning: patch.liveRunning ?? prev.liveRunning,
-						paperPendingStart: patch.paperPendingStart ?? prev.paperPendingStart,
-						paperPendingStop: patch.paperPendingStop ?? prev.paperPendingStop,
-						livePendingStart: patch.livePendingStart ?? prev.livePendingStart,
-						livePendingStop: patch.livePendingStop ?? prev.livePendingStop,
 						paperStats: patch.paperStats ?? prev.paperStats,
 						liveStats: patch.liveStats ?? prev.liveStats,
 						liveWallet: patch.liveWallet ?? prev.liveWallet,
@@ -142,25 +138,6 @@ export function useLiveToggle() {
 	});
 }
 
-export function usePaperCancel() {
-	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: () => api.paperCancel(),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: queries.state().queryKey });
-		},
-	});
-}
-
-export function useLiveCancel() {
-	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: () => api.liveCancel(),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: queries.state().queryKey });
-		},
-	});
-}
 
 export function useConfigMutation(viewMode: ViewMode) {
 	const qc = useQueryClient();

@@ -63,10 +63,8 @@ export const api = {
 	saveConfig: (data: ConfigPayload) => put<{ ok: boolean }>("/config", data),
 	paperStart: () => post<{ ok: boolean }>("/paper/start"),
 	paperStop: () => post<{ ok: boolean }>("/paper/stop"),
-	paperCancel: () => post<{ ok: boolean }>("/paper/cancel"),
 	liveStart: () => post<{ ok: boolean }>("/live/start"),
 	liveStop: () => post<{ ok: boolean }>("/live/stop"),
-	liveCancel: () => post<{ ok: boolean }>("/live/cancel"),
 	paperClearStop: () => post<{ ok: boolean }>("/paper/clear-stop"),
 	liveConnect: (privateKey: string) =>
 		postJson<{ ok: boolean; address?: string; error?: string }>("/live/connect", { privateKey }),
@@ -129,10 +127,6 @@ export interface DashboardState {
 	updatedAt: string;
 	paperRunning: boolean;
 	liveRunning: boolean;
-	paperPendingStart: boolean;
-	paperPendingStop: boolean;
-	livePendingStart: boolean;
-	livePendingStop: boolean;
 	liveWallet: {
 		address: string;
 		connected: boolean;

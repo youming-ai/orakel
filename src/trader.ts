@@ -2,10 +2,10 @@ import fs from "node:fs";
 import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
-import { enrichPosition } from "./accountState.ts";
+import { enrichPosition, getUsdcBalance } from "./accountState.ts";
 import { storeSignalMetadata } from "./adaptiveState.ts";
 import { CONFIG } from "./config.ts";
-import { onchainStatements, PERSIST_BACKEND, statements } from "./db.ts";
+import { onchainStatements, PERSIST_BACKEND, pendingLiveStatements, statements } from "./db.ts";
 import { calculateKellyPositionSize } from "./engines/positionSizing.ts";
 import { env } from "./env.ts";
 import { clearLiveStatsCache, getLiveStatsLegacy } from "./liveStats.ts";
@@ -178,6 +178,28 @@ export function getOpenGtdOrderCount(): number {
 /** Check if heartbeat is in reconnection — live trades should be blocked */
 export function isHeartbeatReconnecting(): boolean {
 	return heartbeatReconnecting;
+}
+
+/**
+ * Cancel all open orders via CLOB API at window boundary.
+ * Prevents stale GTD orders from filling after the window ends.
+ * Returns true if cancellation succeeded or no orders to cancel.
+ */
+export async function cancelAllOpenOrders(): Promise<boolean> {
+	if (!client) return true;
+	if (openGtdOrders.size === 0) return true;
+
+	try {
+		log.info(`Cancelling ${openGtdOrders.size} open GTD order(s) at window boundary`);
+		await client.cancelAll();
+		openGtdOrders.clear();
+		log.info("All open orders cancelled successfully");
+		return true;
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		log.error("Failed to cancel open orders at window boundary:", msg);
+		return false;
+	}
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -449,6 +471,13 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 
 		if (heartbeatReconnecting) {
 			log.warn("Heartbeat reconnecting — blocking live trade");
+			return false;
+		}
+		// Pre-check USDC balance to avoid wasted CLOB API calls
+		const usdcBalance = getUsdcBalance();
+		const maxTradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+		if (usdcBalance > 0 && usdcBalance < maxTradeSize * 0.5) {
+			log.warn(`USDC balance too low for live trade: ${usdcBalance.toFixed(2)} < ${(maxTradeSize * 0.5).toFixed(2)}`);
 			return false;
 		}
 	}
@@ -786,62 +815,78 @@ export async function executeTrade(
 			mode,
 		);
 
-		if (resultOrderId || resultId) {
-			const finalOrderId = resultOrderId || resultId || "unknown";
-			emitTradeExecuted({
-				marketId: signal.marketId,
-				mode,
-				side,
-				price,
-				size: tradeSize,
-				timestamp: liveTradeTimestamp,
-				orderId: finalOrderId,
-				status: resultStatus || "placed",
-			});
-			liveDailyState.trades++;
-			saveDailyState("live");
+		if (!(resultOrderId || resultId)) {
+			log.error(`Order placed but no orderID returned — possible fire-and-forget: ${side} ${marketSlug}`);
+			return { success: false, reason: "no_order_id" };
+		}
 
-			// Clear stats cache after new trade
-			clearLiveStatsCache();
+		const finalOrderId = resultOrderId || resultId || "unknown";
+		emitTradeExecuted({
+			marketId: signal.marketId,
+			mode,
+			side,
+			price,
+			size: tradeSize,
+			timestamp: liveTradeTimestamp,
+			orderId: finalOrderId,
+			status: resultStatus || "placed",
+		});
+		liveDailyState.trades++;
+		saveDailyState("live");
 
-			if (tokenId && tokenId.length > 0) {
-				try {
-					onchainStatements.upsertKnownCtfToken().run({
-						$tokenId: tokenId,
-						$marketId: signal.marketId ?? "",
-						$side: side,
-						$conditionId: null,
-					});
-					enrichPosition(tokenId, signal.marketId ?? "", side);
-				} catch (err) {
-					log.warn("Failed to persist known CTF token:", err);
-				}
-			}
+		// Clear stats cache after new trade
+		clearLiveStatsCache();
 
-			// Start heartbeat and track order ONLY for GTD orders
-			// FOK orders fill immediately and don't need heartbeat
-			if (!isLatePhase || !isHighConfidence) {
-				registerOpenGtdOrder(finalOrderId);
-				startHeartbeat();
-			}
-
-			// Conservative PnL: debit full trade cost as worst-case loss.
-			// Daily loss limit in canTrade() now acts as a spending cap for live mode.
-			const liveTradeSize = tradeSize;
-			updatePnl(-liveTradeSize * price, "live");
-
-			// Track for settlement at window boundary
-			if (signal.priceToBeat && signal.priceToBeat > 0) {
-				const liveTiming = getCandleWindowTiming(15);
-				pendingLiveTrades.push({
-					orderId: finalOrderId,
-					marketId: signal.marketId ?? "",
-					side,
-					buyPrice: price,
-					size: liveTradeSize,
-					priceToBeat: signal.priceToBeat,
-					windowStartMs: liveTiming.startMs,
+		if (tokenId && tokenId.length > 0) {
+			try {
+				onchainStatements.upsertKnownCtfToken().run({
+					$tokenId: tokenId,
+					$marketId: signal.marketId ?? "",
+					$side: side,
+					$conditionId: null,
 				});
+				enrichPosition(tokenId, signal.marketId ?? "", side);
+			} catch (err) {
+				log.warn("Failed to persist known CTF token:", err);
+			}
+		}
+
+		// Start heartbeat and track order ONLY for GTD orders
+		// FOK orders fill immediately and don't need heartbeat
+		if (!isLatePhase || !isHighConfidence) {
+			registerOpenGtdOrder(finalOrderId);
+			startHeartbeat();
+		}
+
+		// Conservative PnL: debit full trade cost as worst-case loss.
+		// Daily loss limit in canTrade() now acts as a spending cap for live mode.
+		const liveTradeSize = tradeSize;
+		updatePnl(-liveTradeSize * price, "live");
+
+		// Track for settlement at window boundary
+		if (signal.priceToBeat && signal.priceToBeat > 0) {
+			const liveTiming = getCandleWindowTiming(15);
+			pendingLiveTrades.push({
+				orderId: finalOrderId,
+				marketId: signal.marketId ?? "",
+				side,
+				buyPrice: price,
+				size: liveTradeSize,
+				priceToBeat: signal.priceToBeat,
+				windowStartMs: liveTiming.startMs,
+			});
+			try {
+				pendingLiveStatements.insertPendingLiveTrade().run({
+					$orderId: finalOrderId,
+					$marketId: signal.marketId ?? "",
+					$side: side,
+					$buyPrice: price,
+					$size: liveTradeSize,
+					$priceToBeat: signal.priceToBeat,
+					$windowStartMs: liveTiming.startMs,
+				});
+			} catch (err) {
+				log.warn("Failed to persist pending live trade:", err);
 			}
 		}
 
@@ -983,7 +1028,87 @@ export function resolveLiveTrades(windowStartMs: number, finalPrices: Map<string
 
 	pendingLiveTrades.length = 0;
 	pendingLiveTrades.push(...remaining);
+
+	// Clean up resolved trades from DB
+	if (resolved > 0) {
+		try {
+			pendingLiveStatements.deleteResolvedPendingLiveTrades().run({ $windowStartMs: windowStartMs });
+		} catch (err) {
+			log.warn("Failed to clean up resolved pending live trades from DB:", err);
+		}
+	}
 	return resolved;
+}
+
+/**
+ * Restore pending live trades from SQLite on startup.
+ * Recovers trades that were not settled before a restart.
+ */
+export function restorePendingLiveTrades(): number {
+	try {
+		const rows = pendingLiveStatements.getAllPendingLiveTrades().all() as Array<{
+			order_id: string;
+			market_id: string;
+			side: string;
+			buy_price: number;
+			size: number;
+			price_to_beat: number;
+			window_start_ms: number;
+		}>;
+		for (const row of rows) {
+			pendingLiveTrades.push({
+				orderId: row.order_id,
+				marketId: row.market_id,
+				side: row.side as "UP" | "DOWN",
+				buyPrice: row.buy_price,
+				size: row.size,
+				priceToBeat: row.price_to_beat,
+				windowStartMs: row.window_start_ms,
+			});
+		}
+		if (rows.length > 0) {
+			log.info(`Restored ${rows.length} pending live trade(s) from DB`);
+		}
+		return rows.length;
+	} catch (err) {
+		log.warn("Failed to restore pending live trades from DB:", err);
+		return 0;
+	}
+}
+
+/**
+ * Clean up stale pending live trades that were never settled.
+ * For live trades, on-chain data is the source of truth — local tracking is just for logging.
+ * Trades older than 2 windows are dropped from local tracking and DB.
+ */
+export function cleanupStaleLiveTrades(currentWindowStartMs: number, windowMinutes: number): number {
+	const timeoutMs = windowMinutes * 60_000 * 2; // 2 windows
+	let cleaned = 0;
+	const remaining: PendingLiveTrade[] = [];
+
+	for (const trade of pendingLiveTrades) {
+		const age = currentWindowStartMs - trade.windowStartMs;
+		if (age > timeoutMs) {
+			log.warn(
+				`Stale live trade dropped from local tracking: ${trade.marketId} ${trade.side} orderId=${trade.orderId.slice(0, 12)} (age: ${(age / 60_000).toFixed(0)}min)`,
+			);
+			try {
+				pendingLiveStatements.deletePendingLiveTrade().run({ $orderId: trade.orderId });
+			} catch (err) {
+				log.warn("Failed to delete stale pending live trade from DB:", err);
+			}
+			cleaned++;
+		} else {
+			remaining.push(trade);
+		}
+	}
+
+	if (cleaned > 0) {
+		pendingLiveTrades.length = 0;
+		pendingLiveTrades.push(...remaining);
+		log.warn(`Dropped ${cleaned} stale live trade(s) from local tracking (on-chain is source of truth)`);
+	}
+	return cleaned;
 }
 
 /**

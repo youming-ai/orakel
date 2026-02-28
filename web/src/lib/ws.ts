@@ -26,10 +26,6 @@ export interface StateSnapshotData {
 	updatedAt: string;
 	paperRunning: boolean;
 	liveRunning: boolean;
-	paperPendingStart: boolean;
-	paperPendingStop: boolean;
-	livePendingStart: boolean;
-	livePendingStop: boolean;
 	paperStats: {
 		totalTrades: number;
 		wins: number;
