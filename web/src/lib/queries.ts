@@ -163,15 +163,6 @@ export function usePaperClearStop() {
 	});
 }
 
-export function useLiveConnect() {
-	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: (privateKey: string) => api.liveConnect(privateKey),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: queries.state().queryKey });
-		},
-	});
-}
 
 export function useLiveDisconnect() {
 	const qc = useQueryClient();

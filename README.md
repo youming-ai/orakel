@@ -104,8 +104,6 @@ cd web && bun run dev
 | `API_TOKEN` | - | API 认证令牌（保护变更接口）|
 | `ACTIVE_MARKETS` | - | 启用的市场（逗号分隔，如 `BTC,ETH,SOL,XRP`）|
 | `LOG_LEVEL` | `info` | 日志级别（debug/info/warn/error/silent）|
-| `PERSIST_BACKEND` | `sqlite` | 存储后端（sqlite/csv/dual）|
-| `READ_BACKEND` | `sqlite` | 读取后端（sqlite/csv）|
 | `POLYMARKET_SLUG` | - | Polymarket 市场 slug |
 | `POLYMARKET_AUTO_SELECT_LATEST` | `true` | 自动选择最新市场 |
 | `POLYMARKET_LIVE_WS_URL` | `wss://ws-live-data.polymarket.com` | Polymarket 实时数据 WS |

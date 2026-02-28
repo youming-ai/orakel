@@ -5,7 +5,7 @@ import { providers, Wallet } from "ethers";
 import { enrichPosition, getUsdcBalance } from "./accountState.ts";
 import { storeSignalMetadata } from "./adaptiveState.ts";
 import { CONFIG } from "./config.ts";
-import { onchainStatements, PERSIST_BACKEND, pendingLiveStatements, statements } from "./db.ts";
+import { onchainStatements, pendingLiveStatements, statements } from "./db.ts";
 import { calculateKellyPositionSize } from "./engines/positionSizing.ts";
 import { env } from "./env.ts";
 import {
@@ -25,8 +25,6 @@ import { getCandleWindowTiming } from "./utils.ts";
 
 const log = createLogger("trader");
 
-const PAPER_DAILY_PATH = "./data/paper-daily-state.json";
-const LIVE_DAILY_PATH = "./data/live-daily-state.json";
 const CREDS_PATH = "./data/api-creds.json";
 
 const HOST = CONFIG.clobBaseUrl;
@@ -145,69 +143,45 @@ function isApiCreds(value: unknown): value is ApiKeyCreds {
 
 // Restore daily state from SQLite or JSON
 export function initTraderState(): void {
-	if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
-		try {
-			const today = new Date().toDateString();
-			const paperRow = statements.getDailyStats().get({ $date: today, $mode: "paper" }) as {
-				pnl?: number;
-				trades?: number;
-			} | null;
-			if (paperRow) {
-				paperDailyState = { date: today, pnl: Number(paperRow.pnl ?? 0), trades: Number(paperRow.trades ?? 0) };
-			}
-			const liveRow = statements.getDailyStats().get({ $date: today, $mode: "live" }) as {
-				pnl?: number;
-				trades?: number;
-			} | null;
-			if (liveRow) {
-				liveDailyState = { date: today, pnl: Number(liveRow.pnl ?? 0), trades: Number(liveRow.trades ?? 0) };
-			}
-		} catch (err) {
-			log.warn("Failed to load daily state from SQLite:", err);
+	try {
+		const today = new Date().toDateString();
+		const paperRow = statements.getDailyStats().get({ $date: today, $mode: "paper" }) as {
+			pnl?: number;
+			trades?: number;
+		} | null;
+		if (paperRow) {
+			paperDailyState = { date: today, pnl: Number(paperRow.pnl ?? 0), trades: Number(paperRow.trades ?? 0) };
 		}
-	} else {
-		try {
-			const saved: DailyState = JSON.parse(fs.readFileSync(PAPER_DAILY_PATH, "utf8"));
-			if (saved.date === new Date().toDateString()) paperDailyState = saved;
-		} catch (err) {
-			log.warn("Failed to load paper daily state from JSON:", err);
+		const liveRow = statements.getDailyStats().get({ $date: today, $mode: "live" }) as {
+			pnl?: number;
+			trades?: number;
+		} | null;
+		if (liveRow) {
+			liveDailyState = { date: today, pnl: Number(liveRow.pnl ?? 0), trades: Number(liveRow.trades ?? 0) };
 		}
-		try {
-			const saved: DailyState = JSON.parse(fs.readFileSync(LIVE_DAILY_PATH, "utf8"));
-			if (saved.date === new Date().toDateString()) liveDailyState = saved;
-		} catch (err) {
-			log.warn("Failed to load live daily state from JSON:", err);
-		}
+	} catch (err) {
+		log.warn("Failed to load daily state from SQLite:", err);
 	}
 }
 // Call at module scope for backward compat
 initTraderState();
 
 function saveDailyState(mode: "paper" | "live"): void {
-	const dirPath = mode === "paper" ? "./data/paper" : "./data/live";
-	const filePath = mode === "paper" ? PAPER_DAILY_PATH : LIVE_DAILY_PATH;
 	const state = mode === "paper" ? paperDailyState : liveDailyState;
 
-	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
-		fs.mkdirSync(dirPath, { recursive: true });
-		fs.writeFileSync(filePath, JSON.stringify(state, null, 2));
-	}
+	const existing = statements.getDailyStats().get({
+		$date: state.date,
+		$mode: mode,
+	}) as { wins?: number | null; losses?: number | null } | null;
 
-	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-		const existing = statements.getDailyStats().get({
-			$date: state.date,
-			$mode: mode,
-		}) as { wins?: number | null; losses?: number | null } | null;
-
-		statements.upsertDailyStats().run({
-			$date: state.date,
-			$mode: mode,
-			$pnl: state.pnl,
-			$trades: state.trades,
-			$wins: Number(existing?.wins ?? 0),
-			$losses: Number(existing?.losses ?? 0),
-		});
-	}
+	statements.upsertDailyStats().run({
+		$date: state.date,
+		$mode: mode,
+		$pnl: state.pnl,
+		$trades: state.trades,
+		$wins: Number(existing?.wins ?? 0),
+		$losses: Number(existing?.losses ?? 0),
+	});
 }
 
 async function createProvider(): Promise<providers.JsonRpcProvider | null> {
@@ -360,21 +334,6 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 	return true;
 }
 
-function tradeLogPath(marketId: string | null | undefined, mode: "paper" | "live"): string {
-	const id = String(marketId || "GLOBAL").toUpperCase();
-	return `./data/${mode}/trades-${id}.csv`;
-}
-
-/**
- * Log trade to local storage (CSV and SQLite).
- *
- * IMPORTANT: This is for LOGGING ONLY.
- *
- * - Paper mode: Local DB is the primary data source
- * - Live mode: Local DB is ONLY for logging and reconciliation debugging.
- *              All live stats (win rate, PnL, etc.) are fetched from on-chain data
- *              via getLiveStats() -> liveStats.ts (CLOB API).
- */
 function logTrade(
 	trade: {
 		timestamp?: string;
@@ -388,47 +347,20 @@ function logTrade(
 	marketId: string | null | undefined,
 	mode: "paper" | "live",
 ): void {
-	const header = ["timestamp", "market", "side", "amount", "price", "orderId", "status", "mode"];
 	const timestamp = trade.timestamp ?? new Date().toISOString();
-	const row = [
-		timestamp,
-		trade.market || "",
-		trade.side,
-		trade.amount,
-		trade.price,
-		trade.orderId || "",
-		trade.status,
-		mode,
-	];
 
-	const line = `${row.join(",")}\n`;
-
-	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
-		const dirPath = `./data/${mode}`;
-		if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-
-		const logPath = tradeLogPath(marketId, mode);
-		if (!fs.existsSync(logPath)) {
-			fs.writeFileSync(logPath, `${header.join(",")}\n`);
-		}
-
-		fs.appendFileSync(logPath, line);
-	}
-
-	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-		statements.insertTrade().run({
-			$timestamp: timestamp,
-			$market: marketId ?? trade.market ?? "",
-			$side: trade.side,
-			$amount: trade.amount,
-			$price: trade.price,
-			$orderId: trade.orderId ?? "",
-			$status: trade.status,
-			$mode: mode,
-			$pnl: null,
-			$won: null,
-		});
-	}
+	statements.insertTrade().run({
+		$timestamp: timestamp,
+		$market: marketId ?? trade.market ?? "",
+		$side: trade.side,
+		$amount: trade.amount,
+		$price: trade.price,
+		$orderId: trade.orderId ?? "",
+		$status: trade.status,
+		$mode: mode,
+		$pnl: null,
+		$won: null,
+	});
 }
 
 export async function executeTrade(

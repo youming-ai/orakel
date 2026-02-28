@@ -1,10 +1,7 @@
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import { PERSIST_BACKEND, READ_BACKEND } from "./config.ts";
 import { createLogger } from "./logger.ts";
-
-export { PERSIST_BACKEND, READ_BACKEND };
 
 const log = createLogger("db");
 

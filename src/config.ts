@@ -21,9 +21,6 @@ export function offConfigReload(listener: ConfigReloadListener): void {
 
 import type { AppConfig, RiskConfig } from "./types.ts";
 
-export const PERSIST_BACKEND = env.PERSIST_BACKEND;
-export const READ_BACKEND = env.READ_BACKEND;
-
 const RISK_DEFAULTS = {
 	maxTradeSizeUsdc: 1,
 	limitDiscount: 0.05,
@@ -275,8 +272,6 @@ export const CONFIG: AppConfig = {
 	macdSignal: 9,
 
 	paperMode: env.PAPER_MODE,
-	persistBackend: PERSIST_BACKEND,
-	readBackend: READ_BACKEND,
 
 	polymarket: {
 		marketSlug: env.POLYMARKET_SLUG,

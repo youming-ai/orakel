@@ -142,8 +142,6 @@ export interface AppConfig {
 	macdSlow: number;
 	macdSignal: number;
 	paperMode: boolean;
-	persistBackend: StorageBackend;
-	readBackend: Exclude<StorageBackend, "dual">;
 	polymarket: {
 		marketSlug: string;
 		autoSelectLatest: boolean;
@@ -186,7 +184,6 @@ export type Phase = "EARLY" | "MID" | "LATE";
 export type Regime = "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP";
 export type Strength = "STRONG" | "GOOD" | "OPTIONAL";
 export type Side = "UP" | "DOWN";
-export type StorageBackend = "csv" | "dual" | "sqlite";
 
 // Confidence scoring
 export interface ConfidenceFactors {
