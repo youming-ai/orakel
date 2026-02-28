@@ -180,7 +180,7 @@ async function main(): Promise<void> {
 	const typedOrderTracker: OrderTracker = orderTracker;
 	void typedOrderTracker;
 
-	let prevWindowStartMs: number | null = null;
+	let prevWindowStartMs = 0; // Sentinel forces boundary detection on first tick (pending starts resolve immediately)
 
 	const shutdown = () => {
 		log.info("Shutdown signal received, stopping bot...");
