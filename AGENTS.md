@@ -13,7 +13,7 @@ bun run start                        # Start bot (src/index.ts, port 9999)
 cd web && bun run dev                # Start frontend dev server (port 9998)
 
 bun run typecheck                    # Typecheck all src/ (includes tests)
-bun run typecheck:ci                 # Typecheck src/ excluding test files
+bun run typecheck:check             # Typecheck src/ excluding test files
 bun run lint                         # Biome check (lint + format) src/
 bun run lint:fix                     # Biome check --write (auto-fix)
 bun run format                       # Biome format --write src/
@@ -24,12 +24,7 @@ bunx vitest run -t "clamp"           # Run tests matching name pattern
 bun run test:watch                   # Vitest in watch mode
 ```
 
-## CI Pipeline (.github/workflows/ci.yml)
-
-1. `bunx biome lint src/` — Lint only (stricter than `bun run lint`)
-2. `tsc --noEmit -p tsconfig.check.json` — Typecheck (excludes test files)
-3. `bun run test` — Tests
-4. `docker build -t orakel:ci .` — Docker build (runs after checks pass)
+## Pre-push Checks
 
 Always run `bun run lint && bun run typecheck && bun run test` before pushing.
 

@@ -40,7 +40,7 @@ Orakel 是一个针对 Polymarket 15 分钟加密货币涨跌市场的自动化�
 | [前端](./frontend.md) | 组件架构、状态管理、WebSocket 实时更新 |
 | [数据源](./data-sources.md) | Binance、Polymarket、Chainlink 集成 |
 | [技术指标](./indicators.md) | RSI、MACD、VWAP、Heiken Ashi |
-| [部署指南](./deployment.md) | Docker、CI/CD、环境配置 |
+| [部署指南](./deployment.md) | Docker、环境配置 |
 | [Polymarket 官方文档笔记](./POLYMARKET_OFFICIAL_DOCS.md) | Polymarket API 学习笔记 |
 
 ---

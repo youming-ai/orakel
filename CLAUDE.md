@@ -38,10 +38,7 @@ cd web && bun run build    # Build for production
 # Docker
 docker compose up --build  # Build and start all services
 
-# Deployment
-./scripts/vps-deploy.sh    # Deploy to VPS (requires SSH config)
-
-# CI Pre-push Check
+# Pre-push Check
 bun run lint && bun run typecheck && bun run test  # Run all checks
 ```
 

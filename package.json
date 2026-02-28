@@ -12,7 +12,7 @@
     "dev:mock": "bun run scripts/mock-server.ts",
     "setup": "bash scripts/setup.sh",
     "typecheck": "tsc --noEmit",
-    "typecheck:ci": "tsc --noEmit -p tsconfig.check.json",
+    "typecheck:check": "tsc --noEmit -p tsconfig.check.json",
     "typecheck:web": "cd web && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -27,14 +27,12 @@
     "db:seed": "bun run scripts/db-seed.ts",
     "db:migrate": "bun run src/db.ts",
     "hooks:install": "bash scripts/install-git-hooks.sh",
-    "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
-    "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
-    "docker:prod": "docker compose up --build",
-    "docker:prod:down": "docker compose down",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "clean": "rm -rf node_modules web/node_modules dist data/*.db data/*.db-* data/*.csv",
     "precommit": "bun run lint:fix && bun run format && bun run typecheck && bun run test",
-    "prepush": "bun run typecheck:ci && bun run test"
+    "prepush": "bun run typecheck:check && bun run test"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
