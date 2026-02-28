@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ConfidenceFactors, MarketSnapshot } from "@/lib/api";
 import { CHART_COLORS, TOOLTIP_CONTENT_STYLE } from "@/lib/charts";
 import { asNumber } from "@/lib/format";
+import { levelBadgeClass, levelColor } from "@/lib/marketCardHelpers";
 
 const FACTOR_LABELS: Record<string, string> = {
 	indicatorAlignment: "Indicators",
@@ -26,18 +27,6 @@ function buildRadarData(factors: ConfidenceFactors): RadarPoint[] {
 		{ factor: "Timing", value: Math.round((factors.timingScore ?? 0) * 100) },
 		{ factor: "Regime", value: Math.round((factors.regimeScore ?? 0) * 100) },
 	];
-}
-
-function levelColor(level: "HIGH" | "MEDIUM" | "LOW"): string {
-	if (level === "HIGH") return CHART_COLORS.positive;
-	if (level === "MEDIUM") return CHART_COLORS.pending;
-	return CHART_COLORS.negative;
-}
-
-function levelBadgeClass(level: "HIGH" | "MEDIUM" | "LOW"): string {
-	if (level === "HIGH") return "bg-emerald-500/15 text-emerald-400";
-	if (level === "MEDIUM") return "bg-amber-500/15 text-amber-400";
-	return "bg-red-500/15 text-red-400";
 }
 
 interface MarketRadarProps {
@@ -80,7 +69,7 @@ function MarketRadar({ market }: MarketRadarProps) {
 							fillOpacity={0.25}
 							strokeWidth={1.5}
 						/>
-					<Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} formatter={(value) => [`${asNumber(value, 0)}%`, "Score"]} />
+						<Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} formatter={(value) => [`${asNumber(value, 0)}%`, "Score"]} />
 					</RadarChart>
 				</ResponsiveContainer>
 				{/* Centered score overlay */}

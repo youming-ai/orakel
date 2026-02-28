@@ -154,7 +154,7 @@ export function Header({
 						</button>
 					</div>
 
-					<ConnectWallet />
+					{/* <ConnectWallet /> */}
 
 					<button
 						type="button"

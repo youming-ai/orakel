@@ -1,22 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { useReducedMotion } from "@/hooks/useReducedMotion";
-import {
-	useDashboardStateWithWs,
-	useLiveToggle,
-	usePaperStats,
-	usePaperToggle,
-	useTrades,
-} from "@/lib/queries";
-import { useUIStore } from "@/lib/store";
-import { useAlertHandler } from "@/lib/alerts";
-import type { ViewMode } from "@/lib/types";
-import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
-import { AnalyticsTabs } from "./AnalyticsTabs";
-import { Header } from "./Header";
-import { Web3Provider } from "./Web3Provider";
-import { AlertSystem } from "./AlertSystem";
-import { Toaster } from "@/components/ui/toaster";
-import { toast } from "@/lib/toast";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -27,6 +9,19 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Toaster } from "@/components/ui/toaster";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useAlertHandler } from "@/lib/alerts";
+import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
+import { useDashboardStateWithWs, useLiveToggle, usePaperStats, usePaperToggle, useTrades } from "@/lib/queries";
+import { useUIStore } from "@/lib/store";
+import { toast } from "@/lib/toast";
+import type { ViewMode } from "@/lib/types";
+import { AlertSystem } from "./AlertSystem";
+import { AnalyticsTabs } from "./AnalyticsTabs";
+import { AppErrorBoundary } from "./AppErrorBoundary";
+import { Header } from "./Header";
+import { Web3Provider } from "./Web3Provider";
 
 const DEFAULT_CONFIG: DashboardState["config"] = {
 	strategy: {
@@ -172,19 +167,21 @@ function DashboardContent() {
 				onPaperToggle={handlePaperToggle}
 				onLiveToggle={handleLiveToggle}
 			/>
-			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
-				<AnalyticsTabs
-					stats={viewMode === "paper" ? state.paperStats : state.liveStats}
-					trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
-					byMarket={viewMode === "paper" ? paperByMarket : undefined}
-				config={state.config ?? DEFAULT_CONFIG}
-					markets={state.markets ?? []}
-					liveTrades={trades}
-					viewMode={viewMode}
-					stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
-					todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
-				/>
-			</main>
+			<AppErrorBoundary>
+				<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
+					<AnalyticsTabs
+						stats={viewMode === "paper" ? state.paperStats : state.liveStats}
+						trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
+						byMarket={viewMode === "paper" ? paperByMarket : undefined}
+						config={state.config ?? DEFAULT_CONFIG}
+						markets={state.markets ?? []}
+						liveTrades={trades}
+						viewMode={viewMode}
+						stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
+						todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
+					/>
+				</main>
+			</AppErrorBoundary>
 
 			<AlertDialog
 				open={confirmAction !== null}

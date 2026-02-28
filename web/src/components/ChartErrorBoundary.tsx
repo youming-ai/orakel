@@ -25,6 +25,7 @@ export class ChartErrorBoundary extends Component<Props, State> {
 						<span className="text-red-400">Chart failed to render</span>
 						<button
 							type="button"
+							aria-label="Retry rendering chart"
 							onClick={() => this.setState({ hasError: false, error: undefined })}
 							className="px-2 py-1 text-[11px] rounded bg-muted hover:bg-accent transition-colors"
 						>

@@ -113,12 +113,12 @@ export class AdaptiveThresholdManager {
 		let minConfidenceDelta = 0;
 
 		if (winRate < 0.45) {
-			edgeMultiplier *= 1.5;
-			minProbDelta += 0.05;
-			minConfidenceDelta += 0.1;
+			edgeMultiplier *= 1.3;
+			minProbDelta += 0.03;
+			minConfidenceDelta += 0.05;
 		} else if (winRate < 0.5) {
-			edgeMultiplier *= 1.2;
-			minProbDelta += 0.02;
+			edgeMultiplier *= 1.15;
+			minProbDelta += 0.01;
 		} else if (winRate <= 0.55) {
 			edgeMultiplier *= 1;
 		} else if (winRate <= 0.6) {
@@ -134,12 +134,15 @@ export class AdaptiveThresholdManager {
 		}
 
 		if (params.regime === "CHOP") {
-			edgeMultiplier *= 1.2;
+			edgeMultiplier *= 1.15;
 		}
 
 		if (params.phase === "LATE") {
 			edgeMultiplier *= 1.1;
 		}
+
+		// Cap total adaptive multiplier to prevent death spiral
+		edgeMultiplier = Math.min(edgeMultiplier, 1.5);
 
 		const edgeThreshold = clamp(params.baseEdgeThreshold * edgeMultiplier, 0.03, 0.25);
 		const minProb = clamp(params.baseMinProb + minProbDelta, 0.5, 0.7);

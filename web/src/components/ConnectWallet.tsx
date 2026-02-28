@@ -68,9 +68,9 @@ export function ConnectWallet() {
 		return () => document.removeEventListener("keydown", handleEscape);
 	}, [showMenu]);
 
-	const usdcBalance = usdcData?.[0]?.result as bigint | undefined;
-	const usdcDecimals = (usdcData?.[1]?.result as number | undefined) ?? 6;
-	const usdcSymbol = (usdcData?.[2]?.result as string | undefined) ?? "USDC.e";
+	const usdcBalance = typeof usdcData?.[0]?.result === "bigint" ? usdcData[0].result : undefined;
+	const usdcDecimals = typeof usdcData?.[1]?.result === "number" ? usdcData[1].result : 6;
+	const usdcSymbol = typeof usdcData?.[2]?.result === "string" ? usdcData[2].result : "USDC.e";
 	const usdcFormatted = usdcBalance !== undefined ? (Number(usdcBalance) / 10 ** usdcDecimals).toFixed(2) : null;
 
 	if (!isConnected) {

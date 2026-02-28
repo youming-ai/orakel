@@ -455,6 +455,10 @@ export function decide(params: {
 		effectiveMinConfidence = Math.max(minConfidence, marketPerf.minConfidence ?? minConfidence);
 	}
 
+	// Clamp threshold: prevent impossibly high thresholds from compounding multipliers
+	const hardCapEdge = CONFIG.strategy.hardCapEdge ?? 0.3;
+	threshold = Math.min(threshold, hardCapEdge);
+
 	if (bestEdge < threshold) {
 		return {
 			action: "NO_TRADE",
@@ -474,7 +478,7 @@ export function decide(params: {
 		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "overconfident_hard_cap" };
 	}
 	if (Math.abs(bestEdge) > (CONFIG.strategy.softCapEdge ?? 0.22)) {
-		const penalizedThreshold = threshold * 1.4;
+		const penalizedThreshold = Math.min(threshold * 1.4, hardCapEdge);
 		if (bestEdge < penalizedThreshold) {
 			return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "overconfident_soft_cap" };
 		}

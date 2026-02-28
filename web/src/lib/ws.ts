@@ -155,7 +155,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 				onConnectRef.current?.();
 			};
 
-			ws.onclose = (event) => {
+			ws.onclose = (_event) => {
 				if (!mountedRef.current) return;
 				setIsConnected(false);
 				wsRef.current = null;
@@ -187,17 +187,20 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 						try {
 							handler(msg);
 						} catch (e) {
-							console.error("[ws] Handler error:", e);
+							// biome-ignore lint/suspicious/noConsole: DEV-only WS debugging
+							if (import.meta.env.DEV) console.error("[ws] Handler error:", e);
 						}
 					}
 				} catch (e) {
-					console.error("[ws] Parse error:", e);
+					// biome-ignore lint/suspicious/noConsole: DEV-only WS debugging
+					if (import.meta.env.DEV) console.error("[ws] Parse error:", e);
 				}
 			};
 
 			wsRef.current = ws;
 		} catch (e) {
-			console.error("[ws] Connection failed:", e);
+			// biome-ignore lint/suspicious/noConsole: DEV-only WS debugging
+			if (import.meta.env.DEV) console.error("[ws] Connection failed:", e);
 		}
 	}, [getWsUrl, reconnectAttempts, reconnectInterval, useExponentialBackoff]);
 
@@ -226,7 +229,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 			wsRef.current.send(JSON.stringify(data));
 			return true;
 		}
-		console.warn("[ws] Cannot send - not connected");
+		// biome-ignore lint/suspicious/noConsole: DEV-only WS debugging
+		if (import.meta.env.DEV) console.warn("[ws] Cannot send - not connected");
 		return false;
 	}, []);
 
@@ -269,7 +273,8 @@ export function initGlobalWebSocket(url?: string): () => void {
 				handler(msg);
 			}
 		} catch (e) {
-			console.error("[ws:global] Parse error:", e);
+			// biome-ignore lint/suspicious/noConsole: DEV-only WS debugging
+			if (import.meta.env.DEV) console.error("[ws:global] Parse error:", e);
 		}
 	};
 

@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { TradeRecord } from "@/lib/api";
+import { MARKETS } from "@/lib/constants";
 
-const MARKETS = ["BTC", "ETH", "SOL", "XRP"] as const;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 interface CellData {
@@ -91,7 +91,6 @@ function winRateTextColor(cell: CellData): string {
 	return "text-red-400";
 }
 
-
 interface HeatmapCellProps {
 	cell: CellData;
 	hour: number;
@@ -126,7 +125,7 @@ interface TradingHeatmapProps {
 	trades: TradeRecord[];
 }
 
-export function TradingHeatmap({ trades }: TradingHeatmapProps) {
+export const TradingHeatmap = memo(function TradingHeatmap({ trades }: TradingHeatmapProps) {
 	const grid = useMemo(() => buildHeatmap(trades), [trades]);
 	const totals = useMemo(() => hourlyTotals(grid), [grid]);
 
@@ -213,4 +212,4 @@ export function TradingHeatmap({ trades }: TradingHeatmapProps) {
 			</CardContent>
 		</Card>
 	);
-}
+});

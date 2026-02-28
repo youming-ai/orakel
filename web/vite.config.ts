@@ -18,6 +18,17 @@ export default defineConfig({
       "/ws": {
         target: apiTarget,
         ws: true,
+        // Suppress EPIPE noise when backend drops WS mid-stream
+        configure: (proxy) => {
+          const ignore = (err: { code?: string }) => {
+            if (err.code === "EPIPE" || err.code === "ECONNRESET") return;
+            console.error("[ws proxy]", err);
+          };
+          proxy.on("error", ignore);
+          proxy.on("proxyReqWs", (_proxyReq, _req, socket) => {
+            socket.on("error", ignore);
+          });
+        },
       },
     },
     host: true,

@@ -2,6 +2,14 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 import type { ConfigPayload, DashboardState } from "./api";
 
 import { api } from "./api";
+import {
+	QUERY_REFETCH_PAPER_STATS_MS,
+	QUERY_REFETCH_STATE_MS,
+	QUERY_REFETCH_TRADES_MS,
+	QUERY_STALE_STATE_HTTP_MS,
+	QUERY_STALE_STATE_WS_MS,
+	QUERY_STALE_TRADES_MS,
+} from "./constants";
 import type { ViewMode } from "./types";
 import type { WsMessage } from "./ws";
 import { useWebSocket } from "./ws";
@@ -18,24 +26,24 @@ export const queries = {
 			queryFn: api.getState,
 			// Only poll if WebSocket is not connected
 			// When WS is connected, rely on real-time updates
-			refetchInterval: wsConnected ? false : 5_000, // Increased from 2_000 to 5_000
-			staleTime: wsConnected ? 30_000 : 1_000, // Increased staleTime when WS connected
+			refetchInterval: wsConnected ? false : QUERY_REFETCH_STATE_MS,
+			staleTime: wsConnected ? QUERY_STALE_STATE_WS_MS : QUERY_STALE_STATE_HTTP_MS,
 		}),
 
 	trades: (mode: ViewMode) =>
 		queryOptions({
 			queryKey: ["trades", mode] as const,
 			queryFn: () => api.getTrades(mode),
-			refetchInterval: 15_000, // Increased from 10_000 to 15_000
-			staleTime: 12_000, // Increased from 8_000 to 12_000
+			refetchInterval: QUERY_REFETCH_TRADES_MS,
+			staleTime: QUERY_STALE_TRADES_MS,
 		}),
 
 	paperStats: () =>
 		queryOptions({
 			queryKey: ["paper-stats"] as const,
 			queryFn: api.getPaperStats,
-			refetchInterval: 15_000, // Increased from 10_000 to 15_000
-			staleTime: 12_000, // Increased from 8_000 to 12_000
+			refetchInterval: QUERY_REFETCH_TRADES_MS,
+			staleTime: QUERY_STALE_TRADES_MS,
 		}),
 };
 
@@ -55,7 +63,7 @@ export function usePaperStats(enabled: boolean) {
 	return useQuery({
 		...queries.paperStats(),
 		enabled,
-		refetchInterval: enabled ? 10_000 : false,
+		refetchInterval: enabled ? QUERY_REFETCH_PAPER_STATS_MS : false,
 	});
 }
 
@@ -138,7 +146,6 @@ export function useLiveToggle() {
 	});
 }
 
-
 export function useConfigMutation(viewMode: ViewMode) {
 	const qc = useQueryClient();
 	return useMutation({
@@ -162,7 +169,6 @@ export function usePaperClearStop() {
 		},
 	});
 }
-
 
 export function useLiveDisconnect() {
 	const qc = useQueryClient();
