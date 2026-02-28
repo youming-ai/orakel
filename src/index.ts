@@ -177,7 +177,7 @@ async function main(): Promise<void> {
 	const typedOrderTracker: OrderTracker = orderTracker;
 	void typedOrderTracker;
 
-	let prevWindowStartMs: number | null = null;
+	let prevWindowStartMs: number = 0;
 
 	const shutdown = () => {
 		log.info("Shutdown signal received, stopping bot...");
@@ -343,7 +343,7 @@ async function main(): Promise<void> {
 
 		// --- Cycle boundary: settlement + tracker reset ---
 		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
-		if (prevWindowStartMs !== null && timing.startMs !== prevWindowStartMs) {
+		if (prevWindowStartMs > 0 && timing.startMs !== prevWindowStartMs) {
 			await handleWindowBoundary({
 				prevWindowStartMs,
 				currentStartMs: timing.startMs,

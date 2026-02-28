@@ -70,7 +70,7 @@ export function OverviewTab({
 		const fourHoursMs = 4 * oneHourMs;
 
 		// Calculate time span of all trades
-		const oldestTrade = new Date(pnlTimeline[pnlTimeline.length - 1]?.ts || now).getTime();
+		const oldestTrade = new Date(pnlTimeline[0]?.ts || now).getTime();
 		const timeSpanHours = Math.max(1, (now - oldestTrade) / oneHourMs);
 
 		// Calculate average trades per hour

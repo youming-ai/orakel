@@ -28,7 +28,7 @@ function buildHeatmap(trades: TradeRecord[]): HeatmapGrid {
 		if (!MARKETS.includes(market as (typeof MARKETS)[number])) continue;
 		const ts = new Date(trade.timestamp);
 		if (Number.isNaN(ts.getTime())) continue;
-		const hour = ts.getHours();
+		const hour = ts.getUTCHours();
 		const cell = grid[market]?.[hour];
 		if (!cell) continue;
 

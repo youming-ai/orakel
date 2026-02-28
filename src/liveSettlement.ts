@@ -1,7 +1,7 @@
 import { pendingLiveStatements, statements } from "./db.ts";
 import { createLogger } from "./logger.ts";
 
-const log = createLogger("trader");
+const log = createLogger("liveSettlement");
 
 interface PendingLiveTrade {
 	orderId: string;
@@ -74,8 +74,10 @@ export function resolveLiveTrades(
 		resolved++;
 	}
 
+	// Atomically replace the array with remaining trades
+	const nextTrades = [...remaining];
 	pendingLiveTrades.length = 0;
-	pendingLiveTrades.push(...remaining);
+	pendingLiveTrades.push(...nextTrades);
 
 	// Clean up resolved trades from DB
 	if (resolved > 0) {

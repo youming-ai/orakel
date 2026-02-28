@@ -1,3 +1,6 @@
+// Vite config file - tooling requirement overrides apply:
+// - Default export is required by Vite (exceptions to CLAUDE.md named exports rule)
+// - console.error is acceptable here for proxy error logging (no app logger available)
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";

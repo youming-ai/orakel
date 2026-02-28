@@ -76,11 +76,11 @@ function asSignalConfidence(signal: TradeSignal): number {
 	return 0.5;
 }
 
-function asSignalRegime(signal: TradeSignal): string | null {
+function asSignalRegime(signal: TradeSignal): "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP" | null {
 	const signalRecord = asRecord(signal);
 	const regimeValue = signalRecord.regime;
 	if (typeof regimeValue === "string" && regimeValue.length > 0) {
-		return regimeValue;
+		return regimeValue as "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP";
 	}
 	return null;
 }
@@ -421,9 +421,9 @@ export async function executeTrade(
 
 		storeSignalMetadata(paperId, {
 			edge: Math.max(Number(signal.edgeUp ?? 0), Number(signal.edgeDown ?? 0)),
-			confidence: signal.confidence ?? 0.5,
+			confidence: asSignalConfidence(signal),
 			phase: signal.phase,
-			regime: signal.regime ?? null,
+			regime: asSignalRegime(signal),
 			volatility15m: Number(signal.volatility15m ?? 0),
 			modelUp: Number(signal.modelUp ?? 0.5),
 			orderbookImbalance: signal.orderbookImbalance ?? null,
