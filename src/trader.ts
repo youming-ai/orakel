@@ -76,11 +76,19 @@ function asSignalConfidence(signal: TradeSignal): number {
 	return 0.5;
 }
 
-function asSignalRegime(signal: TradeSignal): "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP" | null {
+const VALID_REGIMES = ["TREND_UP", "TREND_DOWN", "RANGE", "CHOP"] as const;
+type ValidRegime = (typeof VALID_REGIMES)[number];
+
+function asSignalRegime(signal: TradeSignal): ValidRegime | null {
 	const signalRecord = asRecord(signal);
 	const regimeValue = signalRecord.regime;
 	if (typeof regimeValue === "string" && regimeValue.length > 0) {
-		return regimeValue as "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP";
+		// Runtime validation: ensure regime is a valid value
+		if (VALID_REGIMES.includes(regimeValue as ValidRegime)) {
+			return regimeValue as ValidRegime;
+		}
+		// Log warning for invalid regime values
+		log.warn(`Invalid regime value "${regimeValue}" received, treating as null`);
 	}
 	return null;
 }
@@ -654,7 +662,7 @@ export async function executeTrade(
 		// Track for settlement at window boundary
 		if (signal.priceToBeat && signal.priceToBeat > 0) {
 			const liveTiming = getCandleWindowTiming(15);
-			addPendingLiveTrade({
+			const pendingTrade = {
 				orderId: finalOrderId,
 				marketId: signal.marketId ?? "",
 				side,
@@ -662,7 +670,9 @@ export async function executeTrade(
 				size: liveTradeSize,
 				priceToBeat: signal.priceToBeat,
 				windowStartMs: liveTiming.startMs,
-			});
+			};
+
+			// Persist to DB first for data consistency
 			try {
 				pendingLiveStatements.insertPendingLiveTrade().run({
 					$orderId: finalOrderId,
@@ -673,8 +683,11 @@ export async function executeTrade(
 					$priceToBeat: signal.priceToBeat,
 					$windowStartMs: liveTiming.startMs,
 				});
+				// Only add to memory after successful DB write
+				addPendingLiveTrade(pendingTrade);
 			} catch (err) {
-				log.warn("Failed to persist pending live trade:", err);
+				log.error("Failed to persist pending live trade to DB, skipping:", err);
+				// Do not add to memory if DB write failed - prevents inconsistency
 			}
 		}
 
