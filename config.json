@@ -3,7 +3,7 @@
     "risk": {
       "maxTradeSizeUsdc": 5,
       "limitDiscount": 0.04,
-      "dailyMaxLossUsdc": 40,
+      "dailyMaxLossUsdc": 50,
       "maxOpenPositions": 2,
       "minLiquidity": 15000,
       "maxTradesPerWindow": 1
@@ -14,7 +14,7 @@
     "risk": {
       "maxTradeSizeUsdc": 5,
       "limitDiscount": 0.04,
-      "dailyMaxLossUsdc": 40,
+      "dailyMaxLossUsdc": 50,
       "maxOpenPositions": 2,
       "minLiquidity": 15000,
       "maxTradesPerWindow": 1
@@ -34,9 +34,10 @@
       "TREND_ALIGNED": 0.75,
       "TREND_OPPOSED": 1.3
     },
-    "maxGlobalTradesPerWindow": 2,
+    "maxGlobalTradesPerWindow": 1,
     "minConfidence": 0.50,
     "skipMarkets": [],
+    "minTimeLeftMin": 3,
     "marketPerformance": {
       "BTC": { "winRate": 0.421, "edgeMultiplier": 1.5 },
       "ETH": { "winRate": 0.469, "edgeMultiplier": 1.2 },
