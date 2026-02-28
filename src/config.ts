@@ -33,18 +33,7 @@ const RISK_DEFAULTS = {
 	maxTradesPerWindow: 1,
 };
 
-const STRATEGY_DEFAULTS: {
-	edgeThresholdEarly: number;
-	edgeThresholdMid: number;
-	edgeThresholdLate: number;
-	minProbEarly: number;
-	minProbMid: number;
-	minProbLate: number;
-	blendWeights: { vol: number; ta: number };
-	regimeMultipliers: { CHOP: number; RANGE: number; TREND_ALIGNED: number; TREND_OPPOSED: number };
-	skipMarkets: string[];
-	minConfidence: number;
-} = {
+const STRATEGY_DEFAULTS = {
 	edgeThresholdEarly: 0.06,
 	edgeThresholdMid: 0.08,
 	edgeThresholdLate: 0.1,
@@ -53,8 +42,28 @@ const STRATEGY_DEFAULTS: {
 	minProbLate: 0.6,
 	blendWeights: { vol: 0.5, ta: 0.5 },
 	regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 },
-	skipMarkets: [],
+	skipMarkets: [] as string[],
 	minConfidence: 0.5,
+	// Extracted strategy constants
+	softCapEdge: 0.22,
+	hardCapEdge: 0.3,
+	arbitrageMinSpread: 0.02,
+	arbitrageMaxBoost: 0.05,
+	confidenceWeights: {
+		indicatorAlignment: 0.25,
+		volatilityScore: 0.15,
+		orderbookScore: 0.15,
+		timingScore: 0.25,
+		regimeScore: 0.2,
+	},
+	maxVig: 0.04,
+	kellyFraction: 0.5,
+	maxBankrollRisk: 0.25,
+	minTradeSize: 0.5,
+	fokConfidenceThreshold: 0.7,
+	maxVolatility15m: 0.004,
+	minVolatility15m: 0.0005,
+	safeModeThreshold: 3,
 };
 
 const RiskConfigSchema = z
@@ -101,9 +110,34 @@ const StrategyConfigSchema = z
 				z.object({
 					winRate: z.coerce.number(),
 					edgeMultiplier: z.coerce.number(),
+					minProb: z.coerce.number().optional(),
+					minConfidence: z.coerce.number().optional(),
+					skipChop: z.boolean().optional(),
 				}),
 			)
 			.optional(),
+		softCapEdge: z.coerce.number().optional(),
+		hardCapEdge: z.coerce.number().optional(),
+		arbitrageMinSpread: z.coerce.number().optional(),
+		arbitrageMaxBoost: z.coerce.number().optional(),
+		confidenceWeights: z
+			.object({
+				indicatorAlignment: z.coerce.number().optional(),
+				volatilityScore: z.coerce.number().optional(),
+				orderbookScore: z.coerce.number().optional(),
+				timingScore: z.coerce.number().optional(),
+				regimeScore: z.coerce.number().optional(),
+			})
+			.partial()
+			.optional(),
+		maxVig: z.coerce.number().optional(),
+		kellyFraction: z.coerce.number().optional(),
+		maxBankrollRisk: z.coerce.number().optional(),
+		minTradeSize: z.coerce.number().optional(),
+		fokConfidenceThreshold: z.coerce.number().optional(),
+		maxVolatility15m: z.coerce.number().optional(),
+		minVolatility15m: z.coerce.number().optional(),
+		safeModeThreshold: z.coerce.number().optional(),
 	})
 	.partial()
 	.transform((value) => ({
@@ -111,6 +145,7 @@ const StrategyConfigSchema = z
 		...value,
 		blendWeights: { ...STRATEGY_DEFAULTS.blendWeights, ...value.blendWeights },
 		regimeMultipliers: { ...STRATEGY_DEFAULTS.regimeMultipliers, ...value.regimeMultipliers },
+		confidenceWeights: { ...STRATEGY_DEFAULTS.confidenceWeights, ...value.confidenceWeights },
 		skipMarkets: value.skipMarkets ?? [],
 		marketPerformance: value.marketPerformance ?? {},
 	}));
@@ -271,6 +306,19 @@ export const CONFIG: AppConfig = {
 		skipMarkets: FILE_STRATEGY.skipMarkets,
 		minConfidence: FILE_STRATEGY.minConfidence,
 		marketPerformance: FILE_STRATEGY.marketPerformance,
+		softCapEdge: FILE_STRATEGY.softCapEdge,
+		hardCapEdge: FILE_STRATEGY.hardCapEdge,
+		arbitrageMinSpread: FILE_STRATEGY.arbitrageMinSpread,
+		arbitrageMaxBoost: FILE_STRATEGY.arbitrageMaxBoost,
+		confidenceWeights: FILE_STRATEGY.confidenceWeights,
+		maxVig: FILE_STRATEGY.maxVig,
+		kellyFraction: FILE_STRATEGY.kellyFraction,
+		maxBankrollRisk: FILE_STRATEGY.maxBankrollRisk,
+		minTradeSize: FILE_STRATEGY.minTradeSize,
+		fokConfidenceThreshold: FILE_STRATEGY.fokConfidenceThreshold,
+		maxVolatility15m: FILE_STRATEGY.maxVolatility15m,
+		minVolatility15m: FILE_STRATEGY.minVolatility15m,
+		safeModeThreshold: FILE_STRATEGY.safeModeThreshold,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -304,6 +352,19 @@ export function reloadConfig(): AppConfig {
 		skipMarkets: fileStrategy.skipMarkets,
 		minConfidence: fileStrategy.minConfidence,
 		marketPerformance: prevMarketPerformance ?? fileStrategy.marketPerformance,
+		softCapEdge: fileStrategy.softCapEdge,
+		hardCapEdge: fileStrategy.hardCapEdge,
+		arbitrageMinSpread: fileStrategy.arbitrageMinSpread,
+		arbitrageMaxBoost: fileStrategy.arbitrageMaxBoost,
+		confidenceWeights: fileStrategy.confidenceWeights,
+		maxVig: fileStrategy.maxVig,
+		kellyFraction: fileStrategy.kellyFraction,
+		maxBankrollRisk: fileStrategy.maxBankrollRisk,
+		minTradeSize: fileStrategy.minTradeSize,
+		fokConfidenceThreshold: fileStrategy.fokConfidenceThreshold,
+		maxVolatility15m: fileStrategy.maxVolatility15m,
+		minVolatility15m: fileStrategy.minVolatility15m,
+		safeModeThreshold: fileStrategy.safeModeThreshold,
 	};
 
 	CONFIG.risk = buildRiskConfig(filePaperRisk, fileRisk);

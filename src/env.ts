@@ -24,6 +24,16 @@ const envSchema = z.object({
 	// Auth (optional — if empty, mutation endpoints are unprotected)
 	API_TOKEN: z.string().default(""),
 
+	// Wallet private key (optional — if set, auto-connects wallet on startup)
+	// 64 hex chars without 0x prefix, or 66 chars with 0x prefix
+	PRIVATE_KEY: z
+		.string()
+		.optional()
+		.transform((v) => {
+			if (!v) return undefined;
+			return v.startsWith("0x") ? v.slice(2) : v;
+		}),
+
 	// Storage backends
 	PERSIST_BACKEND: z
 		.string()

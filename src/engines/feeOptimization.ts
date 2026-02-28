@@ -54,8 +54,9 @@ export function selectOrderStrategy(
 	confidence: number,
 	marketUp: number,
 	marketDown: number,
+	fokConfidenceThreshold = FOK_CONFIDENCE_THRESHOLD,
 ): OrderStrategyResult {
-	const useFok = phase === "LATE" && confidence >= FOK_CONFIDENCE_THRESHOLD;
+	const useFok = phase === "LATE" && confidence >= fokConfidenceThreshold;
 	const strategy: OrderStrategy = useFok ? "FOK" : "GTD_POST_ONLY";
 	const makerRebate = useFok ? TAKER_REBATE_RATE : MAKER_REBATE_RATE;
 	const referencePrice = getReferencePrice(marketUp, marketDown);

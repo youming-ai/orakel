@@ -82,6 +82,17 @@ export interface TakeProfitConfig {
 export interface MarketPerformance {
 	winRate: number;
 	edgeMultiplier: number;
+	minProb?: number;
+	minConfidence?: number;
+	skipChop?: boolean;
+}
+
+export interface ConfidenceWeights {
+	indicatorAlignment: number;
+	volatilityScore: number;
+	orderbookScore: number;
+	timingScore: number;
+	regimeScore: number;
 }
 
 export interface StrategyConfig {
@@ -101,6 +112,20 @@ export interface StrategyConfig {
 	skipMarkets?: string[];
 	minConfidence?: number;
 	marketPerformance?: Record<string, MarketPerformance>;
+	// Extracted strategy constants (all optional with defaults)
+	softCapEdge?: number;
+	hardCapEdge?: number;
+	arbitrageMinSpread?: number;
+	arbitrageMaxBoost?: number;
+	confidenceWeights?: ConfidenceWeights;
+	maxVig?: number;
+	kellyFraction?: number;
+	maxBankrollRisk?: number;
+	minTradeSize?: number;
+	fokConfidenceThreshold?: number;
+	maxVolatility15m?: number;
+	minVolatility15m?: number;
+	safeModeThreshold?: number;
 }
 
 export interface AppConfig {

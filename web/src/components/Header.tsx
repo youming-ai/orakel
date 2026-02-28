@@ -1,5 +1,6 @@
 import { Clock, Moon, Sun, Wallet, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ConnectWallet } from "@/components/ConnectWallet";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -152,6 +153,8 @@ export function Header({
 							Live
 						</button>
 					</div>
+
+					<ConnectWallet />
 
 					<button
 						type="button"

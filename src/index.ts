@@ -2,6 +2,7 @@ import { applyEvent, enrichPosition, initAccountState, resetAccountState, update
 import { adaptiveManager, signalQualityModel } from "./adaptiveState.ts";
 import { startApiServer } from "./api.ts";
 import { CONFIG } from "./config.ts";
+import { env } from "./env.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
 import { startBalancePolling } from "./data/polygonBalance.ts";
@@ -10,20 +11,15 @@ import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
 import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
 import { onchainStatements } from "./db.ts";
+import { startHeartbeat, stopHeartbeat, unregisterOpenGtdOrder } from "./heartbeat.ts";
+import { restorePendingLiveTrades } from "./liveSettlement.ts";
 import { createLogger } from "./logger.ts";
 import { getActiveMarkets } from "./markets.ts";
 import { OrderManager, type TrackedOrder } from "./orderManager.ts";
-import {
-	canAffordTradeWithStopCheck,
-	cleanupStalePaperTrades,
-	getPaperStats,
-	getPendingPaperTrades,
-	resolvePaperTrades,
-} from "./paperStats.ts";
+import { canAffordTradeWithStopCheck, getPaperStats, getPendingPaperTrades } from "./paperStats.ts";
 import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
 import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
 import { startReconciler } from "./reconciler.ts";
-import { redeemAll } from "./redeemer.ts";
 import {
 	emitBalanceSnapshot,
 	emitStateSnapshot,
@@ -37,23 +33,10 @@ import {
 } from "./state.ts";
 import { shouldTakeTrade } from "./strategyRefinement.ts";
 import { renderDashboard } from "./terminal.ts";
-import {
-	cancelAllOpenOrders,
-	cleanupStaleLiveTrades,
-	executeTrade,
-	getClientStatus,
-	getLiveStats,
-	getLiveTodayStats,
-	getWallet,
-	resolveLiveTrades,
-	restorePendingLiveTrades,
-	startHeartbeat,
-	stopHeartbeat,
-	unregisterOpenGtdOrder,
-	updatePnl,
-} from "./trader.ts";
+import { connectWallet, executeTrade, getClientStatus, getLiveStats, getLiveTodayStats, getWallet } from "./trader.ts";
 import type { MarketSnapshot, OrderTracker, StreamHandles, WsStreamHandle } from "./types.ts";
 import { getCandleWindowTiming, sleep } from "./utils.ts";
+import { handleWindowBoundary } from "./windowBoundary.ts";
 
 export type { ProcessMarketResult } from "./pipeline/processMarket.ts";
 
@@ -110,6 +93,18 @@ let reconcilerHandle: { runNow(): Promise<number>; close(): void } | null = null
 
 async function main(): Promise<void> {
 	startApiServer();
+
+	// Auto-connect wallet if PRIVATE_KEY is configured in .env
+	if (env.PRIVATE_KEY) {
+		try {
+			const result = await connectWallet(env.PRIVATE_KEY);
+			log.info(`Wallet auto-connected from .env: ${result.address}`);
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			log.error("Failed to auto-connect wallet from PRIVATE_KEY:", msg);
+		}
+	}
+
 
 	const orderManager = new OrderManager();
 
@@ -215,7 +210,7 @@ async function main(): Promise<void> {
 	process.on("SIGINT", shutdown);
 
 	let consecutiveAllFails = 0;
-	const SAFE_MODE_THRESHOLD = 3;
+	const SAFE_MODE_THRESHOLD = CONFIG.strategy.safeModeThreshold ?? 3;
 	let liveInitialized = false;
 
 	while (true) {
@@ -350,73 +345,14 @@ async function main(): Promise<void> {
 		// --- Cycle boundary: settlement + tracker reset ---
 		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
 		if (prevWindowStartMs !== null && timing.startMs !== prevWindowStartMs) {
-			paperTracker.setWindow(timing.startMs);
-			liveTracker.setWindow(timing.startMs);
-
-			// Settle paper trades from previous window (even if stopped, to resolve pending trades)
-			const finalPrices = new Map<string, number>();
-			for (const market of markets) {
-				const st = states.get(market.id);
-				if (st?.prevCurrentPrice !== null && st?.prevCurrentPrice !== undefined) {
-					finalPrices.set(market.id, st.prevCurrentPrice);
-				}
-			}
-			const prevPnl = getPaperStats().totalPnl;
-			const resolved = resolvePaperTrades(prevWindowStartMs, finalPrices);
-			if (resolved > 0) {
-				const stats = getPaperStats();
-				const pnlDelta = stats.totalPnl - prevPnl;
-				updatePnl(pnlDelta, "paper");
-				log.info(
-					`Resolved ${resolved} trade(s) | W:${stats.wins} L:${stats.losses} | WR:${(stats.winRate * 100).toFixed(0)}% | PnL:${stats.totalPnl.toFixed(2)}`,
-				);
-			}
-
-			// Cancel any open GTD orders before settlement to prevent stale fills
-			if (isLiveRunning()) {
-				await cancelAllOpenOrders();
-			}
-
-			if (isLiveRunning()) {
-				const liveFinalPrices = new Map<string, number>();
-				for (const market of markets) {
-					const st = states.get(market.id);
-					if (st?.prevCurrentPrice !== null && st?.prevCurrentPrice !== undefined) {
-						liveFinalPrices.set(market.id, st.prevCurrentPrice);
-					}
-				}
-				const liveResolved = resolveLiveTrades(prevWindowStartMs, liveFinalPrices);
-				if (liveResolved > 0) {
-					const stats = await getLiveStats();
-					log.info(
-						`Live settled ${liveResolved} trade(s) | W:${stats.wins} L:${stats.losses} | WR:${(stats.winRate * 100).toFixed(0)}% | PnL:${stats.totalPnl.toFixed(2)}`,
-					);
-				}
-			}
-
-			// Clean up trades that were never settled (data unavailable for 2+ windows)
-			const windowMin = CONFIG.candleWindowMinutes ?? 15;
-			cleanupStalePaperTrades(timing.startMs, windowMin);
-			if (isLiveRunning()) {
-				cleanupStaleLiveTrades(timing.startMs, windowMin);
-			}
-
-			if (isLiveRunning()) {
-				const wallet = getWallet();
-				if (wallet) {
-					log.info("Window changed, checking for redeemable positions...");
-					redeemAll(wallet)
-						.then((results) => {
-							if (results.length) {
-								log.info(`Redeemed ${results.length} position(s)`);
-							}
-						})
-						.catch((err: unknown) => {
-							const message = err instanceof Error ? err.message : String(err);
-							log.error("Redemption error:", message);
-						});
-				}
-			}
+			await handleWindowBoundary({
+				prevWindowStartMs,
+				currentStartMs: timing.startMs,
+				markets,
+				states,
+				paperTracker,
+				liveTracker,
+			});
 		}
 		prevWindowStartMs = timing.startMs;
 

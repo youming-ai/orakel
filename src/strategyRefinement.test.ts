@@ -1,23 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BACKTEST_INSIGHTS, MARKET_ADJUSTMENTS, shouldTakeTrade } from "./strategyRefinement.ts";
-
-describe("MARKET_ADJUSTMENTS", () => {
-	it("should set BTC skipChop to true", () => {
-		expect(MARKET_ADJUSTMENTS.BTC?.skipChop).toBe(true);
-	});
-
-	it("should set ETH skipChop to true", () => {
-		expect(MARKET_ADJUSTMENTS.ETH?.skipChop).toBe(true);
-	});
-
-	it("should set SOL skipChop to false", () => {
-		expect(MARKET_ADJUSTMENTS.SOL?.skipChop).toBe(false);
-	});
-
-	it("should set XRP skipChop to false", () => {
-		expect(MARKET_ADJUSTMENTS.XRP?.skipChop).toBe(false);
-	});
-});
+import { BACKTEST_INSIGHTS, shouldTakeTrade } from "./strategyRefinement.ts";
 
 describe("BACKTEST_INSIGHTS", () => {
 	it("should set maxVolatility15m to 0.004", () => {

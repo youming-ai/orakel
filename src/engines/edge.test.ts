@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Regime, StrategyConfig } from "../types.ts";
+import { CONFIG } from "../config.ts";
 import { computeConfidence, computeEdge, decide } from "./edge.ts";
 
 function makeStrategy(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -361,6 +362,11 @@ describe("computeEdge", () => {
 });
 
 describe("decide", () => {
+	// Clear config.json marketPerformance so tests use hardcoded defaults
+	beforeEach(() => {
+		CONFIG.strategy.marketPerformance = {};
+	});
+
 	it("classifies phase as EARLY when remainingMinutes > 10", () => {
 		const result = decide({
 			remainingMinutes: 11,
