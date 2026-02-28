@@ -1,21 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import {
-	Area,
-	AreaChart,
-	CartesianGrid,
-	ReferenceLine,
-	ResponsiveContainer,
-	Tooltip,
-	XAxis,
-	YAxis,
-} from "recharts";
+import { memo, useEffect, useRef, useState } from "react";
+import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { MarketSnapshot } from "@/lib/api";
 import { CHART_COLORS, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
+import { MARKETS } from "@/lib/constants";
 import { asNumber, fmtPrice, fmtTimeShort } from "@/lib/format";
 import { ChartErrorBoundary } from "./ChartErrorBoundary";
 
-const MARKETS = ["BTC", "ETH", "SOL", "XRP"] as const;
 const MAX_POINTS = 60;
 
 interface PricePoint {
@@ -52,7 +43,7 @@ function TradeDot({ cx = 0, cy = 0, payload }: CustomDotProps) {
 	);
 }
 
-export function PriceChart({ markets }: PriceChartProps) {
+export const PriceChart = memo(function PriceChart({ markets }: PriceChartProps) {
 	const [selectedMarket, setSelectedMarket] = useState<string>("BTC");
 	const priceHistoryRef = useRef<Record<string, PricePoint[]>>({
 		BTC: [],
@@ -63,9 +54,14 @@ export function PriceChart({ markets }: PriceChartProps) {
 	const [, forceUpdate] = useState(0);
 
 	const market = markets.find((m) => m.id === selectedMarket);
+	const marketId = market?.id;
+	const spotPrice = market?.spotPrice ?? null;
+	const marketPriceToBeat = market?.priceToBeat ?? null;
+	const marketAction = market?.action;
+	const marketSide = market?.side;
 
 	useEffect(() => {
-		if (!market || market.spotPrice === null) return;
+		if (!marketId || spotPrice === null) return;
 
 		const now = Date.now();
 		const history = priceHistoryRef.current;
@@ -73,17 +69,17 @@ export function PriceChart({ markets }: PriceChartProps) {
 		const newPoint: PricePoint = {
 			time: new Date(now).toISOString(),
 			ts: now,
-			price: market.spotPrice,
-			priceToBeat: market.priceToBeat,
-			isTrade: market.action === "ENTER",
-			tradeSide: market.action === "ENTER" ? (market.side as "UP" | "DOWN" | null) : null,
+			price: spotPrice,
+			priceToBeat: marketPriceToBeat,
+			isTrade: marketAction === "ENTER",
+			tradeSide: marketAction === "ENTER" ? (marketSide as "UP" | "DOWN" | null) : null,
 		};
 
-		const marketHistory = history[market.id] ?? [];
+		const marketHistory = history[marketId] ?? [];
 		const updated = [...marketHistory, newPoint].slice(-MAX_POINTS);
-		priceHistoryRef.current = { ...history, [market.id]: updated };
+		priceHistoryRef.current = { ...history, [marketId]: updated };
 		forceUpdate((n) => n + 1);
-	}, [market]);
+	}, [marketId, spotPrice, marketPriceToBeat, marketAction, marketSide]);
 
 	const history = priceHistoryRef.current[selectedMarket] ?? [];
 	const priceToBeat = market?.priceToBeat ?? null;
@@ -162,13 +158,16 @@ export function PriceChart({ markets }: PriceChartProps) {
 								<Tooltip
 									cursor={TOOLTIP_CURSOR_STYLE}
 									contentStyle={TOOLTIP_CONTENT_STYLE}
-						labelFormatter={(label) => fmtTimeShort(typeof label === "string" ? label : "")}
-						formatter={(value, _key, item) => {
-							const v = asNumber(value, 0);
-							const p = (item as { payload: PricePoint }).payload;
-							const priceLabel = fmtPrice(selectedMarket, v);
-							return p.isTrade ? [`${priceLabel} ▶ ${p.tradeSide} ENTRY`, "Price"] : [priceLabel, "Spot Price"];
-						}}
+									labelFormatter={(label) => fmtTimeShort(typeof label === "string" ? label : "")}
+									formatter={(value, _key, item) => {
+										const v = asNumber(value, 0);
+										const p = item?.payload as PricePoint | undefined;
+										if (!p) return [fmtPrice(selectedMarket, v), "Spot Price"];
+										const priceLabel = fmtPrice(selectedMarket, v);
+										return p.isTrade
+											? [`${priceLabel} \u25b6 ${p.tradeSide} ENTRY`, "Price"]
+											: [priceLabel, "Spot Price"];
+									}}
 								/>
 								<Area
 									type="monotone"
@@ -186,4 +185,4 @@ export function PriceChart({ markets }: PriceChartProps) {
 			</CardContent>
 		</Card>
 	);
-}
+});

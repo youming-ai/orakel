@@ -3,6 +3,7 @@ import type {
 	ConfidenceResult,
 	EdgeResult,
 	EnhancedRegimeResult,
+	MarketPerformance,
 	Phase,
 	Regime,
 	Side,
@@ -15,30 +16,27 @@ import type { AdjustedThresholds } from "./adaptiveThresholds.ts";
 import { detectArbitrage } from "./arbitrage.ts";
 import { shouldTradeBasedOnRegimeConfidence } from "./regime.ts";
 
-const SOFT_CAP_EDGE = 0.22;
-const HARD_CAP_EDGE = 0.3;
-const ARBITRAGE_MIN_SPREAD = 0.02;
-const ARBITRAGE_MAX_BOOST = 0.05;
 /** Sentinel multiplier: any regime multiplier >= this value means "skip trade entirely" */
 const REGIME_DISABLED = 999;
 
 // Market-specific performance from backtest (can be overridden in config.json)
 // edgeMultiplier > 1.0 = RAISE threshold (harder to trade) for poor performers
 // Use strategy.skipMarkets in config.json to skip markets entirely
-const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultiplier: number }> = {
-	BTC: { winRate: 0.421, edgeMultiplier: 1.5 }, // Worst performer → require 50% more edge
-	ETH: { winRate: 0.469, edgeMultiplier: 1.2 }, // Below avg → require 20% more edge
+const DEFAULT_MARKET_PERFORMANCE: Record<string, MarketPerformance> = {
+	BTC: { winRate: 0.421, edgeMultiplier: 1.5, minProb: 0.58, minConfidence: 0.6, skipChop: true },
+	ETH: { winRate: 0.469, edgeMultiplier: 1.2, skipChop: true },
 	SOL: { winRate: 0.51, edgeMultiplier: 1.0 }, // Good performer → standard
 	XRP: { winRate: 0.542, edgeMultiplier: 1.0 }, // Best performer → standard
 };
 
 /** Get market performance from config or use defaults */
-function getMarketPerformance(marketId: string): { winRate: number; edgeMultiplier: number } {
+export function getMarketPerformance(marketId: string): MarketPerformance {
+	const defaults = DEFAULT_MARKET_PERFORMANCE[marketId] ?? { winRate: 0.5, edgeMultiplier: 1.0 };
 	const configPerf = CONFIG.strategy.marketPerformance?.[marketId];
 	if (configPerf) {
-		return configPerf;
+		return { ...defaults, ...configPerf };
 	}
-	return DEFAULT_MARKET_PERFORMANCE[marketId] ?? { winRate: 0.5, edgeMultiplier: 1.0 };
+	return defaults;
 }
 
 // ============ Confidence Scoring ============
@@ -127,7 +125,7 @@ export function computeConfidence(params: {
 	else if (regime === "TREND_DOWN" && isUp) regimeScore = 0.3;
 
 	// Weighted average
-	const weights = {
+	const weights = CONFIG.strategy.confidenceWeights ?? {
 		indicatorAlignment: 0.25,
 		volatilityScore: 0.15,
 		orderbookScore: 0.15,
@@ -169,7 +167,7 @@ function regimeMultiplier(
 	// Skip CHOP completely for underperforming markets
 	if (regime === "CHOP") {
 		const marketPerf = getMarketPerformance(marketId);
-		if (marketPerf && marketPerf.winRate < 0.45) {
+		if (marketPerf.skipChop && marketPerf.winRate < 0.45) {
 			return REGIME_DISABLED;
 		}
 		return Number(multipliers?.CHOP ?? 1.3);
@@ -284,11 +282,12 @@ export function computeEdge(params: {
 	const arbitrageOpportunity =
 		binanceImpliedUp === null
 			? null
-			: detectArbitrage(marketId, marketUp, marketDown, binanceImpliedUp, ARBITRAGE_MIN_SPREAD);
+			: detectArbitrage(marketId, marketUp, marketDown, binanceImpliedUp, CONFIG.strategy.arbitrageMinSpread ?? 0.02);
 	const arbitrageDetected = arbitrageOpportunity !== null;
 
 	if (arbitrageOpportunity !== null) {
-		const arbitrageBoost = Math.min(arbitrageOpportunity.confidence * ARBITRAGE_MAX_BOOST, ARBITRAGE_MAX_BOOST);
+		const arbitrageMaxBoost = CONFIG.strategy.arbitrageMaxBoost ?? 0.05;
+		const arbitrageBoost = Math.min(arbitrageOpportunity.confidence * arbitrageMaxBoost, arbitrageMaxBoost);
 		if (arbitrageOpportunity.direction === "BUY_UP") {
 			effectiveEdgeUp += arbitrageBoost;
 		} else if (arbitrageOpportunity.direction === "BUY_DOWN") {
@@ -296,7 +295,7 @@ export function computeEdge(params: {
 		}
 	}
 
-	const maxVig = 0.04;
+	const maxVig = CONFIG.strategy.maxVig ?? 0.04;
 	const vigTooHigh = rawSum > 1 + maxVig;
 
 	return {
@@ -409,10 +408,11 @@ export function decide(params: {
 		const marketPerf = getMarketPerformance(marketId);
 		const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
 		threshold = adaptiveThresholds.edgeThreshold * marketMult;
-		// Apply BTC-specific probability and confidence thresholds (Issue #4 fix)
-		effectiveMinProb = marketId === "BTC" ? Math.max(adaptiveThresholds.minProb, 0.58) : adaptiveThresholds.minProb;
-		effectiveMinConfidence =
-			marketId === "BTC" ? Math.max(adaptiveThresholds.minConfidence, 0.6) : adaptiveThresholds.minConfidence;
+		effectiveMinProb = Math.max(adaptiveThresholds.minProb, marketPerf.minProb ?? adaptiveThresholds.minProb);
+		effectiveMinConfidence = Math.max(
+			adaptiveThresholds.minConfidence,
+			marketPerf.minConfidence ?? adaptiveThresholds.minConfidence,
+		);
 
 		// Check REGIME_DISABLED sentinel (same as static path)
 		const regimeMult = enhancedRegimeDecision?.useRangeMultiplier
@@ -451,10 +451,13 @@ export function decide(params: {
 					? Number(strategy?.minProbMid ?? 0.55)
 					: Number(strategy?.minProbLate ?? 0.6);
 
-		// Apply BTC-specific probability threshold (Issue #4 fix)
-		effectiveMinProb = marketId === "BTC" ? Math.max(staticMinProb, 0.58) : staticMinProb;
-		effectiveMinConfidence = marketId === "BTC" ? Math.max(minConfidence, 0.6) : minConfidence;
+		effectiveMinProb = Math.max(staticMinProb, marketPerf.minProb ?? staticMinProb);
+		effectiveMinConfidence = Math.max(minConfidence, marketPerf.minConfidence ?? minConfidence);
 	}
+
+	// Clamp threshold: prevent impossibly high thresholds from compounding multipliers
+	const hardCapEdge = CONFIG.strategy.hardCapEdge ?? 0.3;
+	threshold = Math.min(threshold, hardCapEdge);
 
 	if (bestEdge < threshold) {
 		return {
@@ -471,11 +474,11 @@ export function decide(params: {
 	}
 
 	// Overconfidence checks
-	if (Math.abs(bestEdge) > HARD_CAP_EDGE) {
+	if (Math.abs(bestEdge) > (CONFIG.strategy.hardCapEdge ?? 0.3)) {
 		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "overconfident_hard_cap" };
 	}
-	if (Math.abs(bestEdge) > SOFT_CAP_EDGE) {
-		const penalizedThreshold = threshold * 1.4;
+	if (Math.abs(bestEdge) > (CONFIG.strategy.softCapEdge ?? 0.22)) {
+		const penalizedThreshold = Math.min(threshold * 1.4, hardCapEdge);
 		if (bestEdge < penalizedThreshold) {
 			return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "overconfident_soft_cap" };
 		}
@@ -495,7 +498,6 @@ export function decide(params: {
 		side: bestSide,
 	});
 
-	// Reject low confidence trades (using BTC-adjusted threshold)
 	if (confidence.score < effectiveMinConfidence) {
 		return {
 			action: "NO_TRADE",

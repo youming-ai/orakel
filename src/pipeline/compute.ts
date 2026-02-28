@@ -1,8 +1,4 @@
-import {
-	signalQualityModel as defaultSignalQualityModel,
-	getRegimeTransitionTracker,
-	performanceTracker,
-} from "../adaptiveState.ts";
+import { signalQualityModel as defaultSignalQualityModel, getRegimeTransitionTracker } from "../adaptiveState.ts";
 import type { AdaptiveThresholdManager } from "../engines/adaptiveThresholds.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
 import { computeEnsemble } from "../engines/ensemble.ts";
@@ -230,18 +226,16 @@ export function computeMarketDecision(
 			: phase === "MID"
 				? Number(config.strategy.minProbMid ?? 0.55)
 				: Number(config.strategy.minProbLate ?? 0.6);
-	const snapshot = adaptiveManager ? performanceTracker.getSnapshot(market.id) : null;
-	const adaptiveThresholds =
-		adaptiveManager && snapshot
-			? adaptiveManager.getAdjustedThresholds({
-					marketId: market.id,
-					baseEdgeThreshold,
-					baseMinProb,
-					baseMinConfidence: config.strategy.minConfidence ?? 0.5,
-					phase,
-					regime: regimeInfo.regime,
-				})
-			: null;
+	const adaptiveThresholds = adaptiveManager
+		? adaptiveManager.getAdjustedThresholds({
+				marketId: market.id,
+				baseEdgeThreshold,
+				baseMinProb,
+				baseMinConfidence: config.strategy.minConfidence ?? 0.5,
+				phase,
+				regime: regimeInfo.regime,
+			})
+		: null;
 
 	const rec = edge.vigTooHigh
 		? ({

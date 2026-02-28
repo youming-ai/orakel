@@ -1,8 +1,6 @@
 # Orakel
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub Stars](https://img.shields.io/github/stars/youming-ai/orakel)](https://github.com/youming-ai/orakel/stargazers)
-[![Docker Pulls](https://img.shields.io/docker/pulls/orakel/bot)](https://hub.docker.com/r/orakel/bot)
 
 一个针对 Polymarket **15分钟涨跌** 加密货币市场的生产级自动化交易机器人，支持模拟交易、Web 仪表板和 Docker 部署。
 
@@ -106,8 +104,6 @@ cd web && bun run dev
 | `API_TOKEN` | - | API 认证令牌（保护变更接口）|
 | `ACTIVE_MARKETS` | - | 启用的市场（逗号分隔，如 `BTC,ETH,SOL,XRP`）|
 | `LOG_LEVEL` | `info` | 日志级别（debug/info/warn/error/silent）|
-| `PERSIST_BACKEND` | `sqlite` | 存储后端（sqlite/csv/dual）|
-| `READ_BACKEND` | `sqlite` | 读取后端（sqlite/csv）|
 | `POLYMARKET_SLUG` | - | Polymarket 市场 slug |
 | `POLYMARKET_AUTO_SELECT_LATEST` | `true` | 自动选择最新市场 |
 | `POLYMARKET_LIVE_WS_URL` | `wss://ws-live-data.polymarket.com` | Polymarket 实时数据 WS |
@@ -488,10 +484,12 @@ services:
       - PAPER_MODE=${PAPER_MODE:-true}
 
   web:
-    build: ./web
-    ports: ["9998:4321"]
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    ports: ["9998:9998"]
     volumes:
-      - ./web/src:/app/src      # 热重载
+      - ./web/src:/app/src
     environment:
       - API_URL=http://bot:9999
     depends_on: [bot]
@@ -503,7 +501,7 @@ services:
 
 ```bash
 bun run typecheck      # TypeScript 类型检查
-bun run typecheck:ci   # CI 模式类型检查
+bun run typecheck:check   # 类型检查（排除测试文件）
 ```
 
 ### 测试
@@ -534,44 +532,6 @@ docker compose down
 docker compose up --build
 ```
 
-## CI/CD 自动化部署 (VPS)
-
-项目支持 GitHub Actions 自动化部署到 VPS，**无需在 VPS 上构建**（解决 VPS CPU 不足导致构建缓慢的问题）。
-
-### 工作流程
-
-```
-推送到 main 分支 → GitHub Actions 构建 → 推送到 GHCR → VPS 自动拉取重启
-```
-
-### 快速设置 (15 分钟)
-
-1. **配置 GitHub Secrets** (5分钟)
-   - 进入 `Settings → Secrets and variables → Actions`
-   - 添加: `VPS_HOST`, `VPS_PORT`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_DEPLOY_PATH`
-
-2. **初始化 VPS** (10分钟)
-   ```bash
-   # 安装 Docker
-   curl -fsSL https://get.docker.com | sh
-   sudo usermod -aG docker $USER
-
-   # 登录 GHCR (需要 GitHub PAT)
-   docker login ghcr.io
-
-   # 克隆项目
-   git clone https://github.com/<you>/orakel.git ~/orakel
-   cd ~/orakel && cp .env.example .env && mkdir -p data
-   docker compose up -d
-   ```
-
-3. **测试部署**
-   ```bash
-   git commit --allow-empty -m "test: trigger CI/CD"
-   git push origin main
-   ```
-
-📖 **详细文档**: [.github/workflows/deploy/SETUP.md](.github/workflows/deploy/SETUP.md)
 
 ## 安全
 

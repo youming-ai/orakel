@@ -1,7 +1,5 @@
 services:
   bot:
-    # 使用预构建镜像（CI/CD）或本地构建
-    image: ${IMAGE_TAG:-orakel:local}
     build:
       context: .
       args:
@@ -22,3 +20,22 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    environment:
+      - API_URL=http://bot:9999
+    ports:
+      - "9998:9998"
+    volumes:
+      - ./web/src:/app/src
+      - ./web/index.html:/app/index.html
+      - ./web/vite.config.ts:/app/vite.config.ts
+      - ./web/tsconfig.json:/app/tsconfig.json
+      - ./web/package.json:/app/package.json
+    depends_on:
+      bot:
+        condition: service_healthy
+    restart: unless-stopped

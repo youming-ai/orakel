@@ -8,7 +8,7 @@ import {
 	padAnsi,
 	stripAnsi,
 } from "./terminal.ts";
-import type { MacdResult, TradeDecision } from "./types.ts";
+import type { MacdResult } from "./types.ts";
 
 describe("stripAnsi", () => {
 	it("should remove ANSI escape codes", () => {

@@ -1,4 +1,4 @@
-import { Bell, BellOff, Check, X } from "lucide-react";
+import { Bell, Check, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAlertStore } from "@/lib/alerts";
@@ -110,7 +110,6 @@ export function AlertConfig() {
 		[requestNotificationPermission, updatePreferences],
 	);
 
-	const canEnableNotifications = notificationStatus !== "denied";
 	const notificationDenied = notificationStatus === "denied";
 
 	return (

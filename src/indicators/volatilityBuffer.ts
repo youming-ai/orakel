@@ -34,6 +34,10 @@ export class RollingVolatilityCalculator {
 
 	/** Feed a single close price. Returns volatility or null if not enough data. */
 	update(close: number): number | null {
+		// Guard against non-positive values that would cause Math.log to return NaN/Infinity
+		if (!Number.isFinite(close) || close <= 0) {
+			return this.currentValue;
+		}
 		if (this.lastClose !== null && this.lastClose > 0) {
 			const logRet = Math.log(close / this.lastClose);
 

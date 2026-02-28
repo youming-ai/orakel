@@ -70,7 +70,7 @@ export function OverviewTab({
 		const fourHoursMs = 4 * oneHourMs;
 
 		// Calculate time span of all trades
-		const oldestTrade = new Date(pnlTimeline[pnlTimeline.length - 1]?.ts || now).getTime();
+		const oldestTrade = new Date(pnlTimeline[0]?.ts || now).getTime();
 		const timeSpanHours = Math.max(1, (now - oldestTrade) / oneHourMs);
 
 		// Calculate average trades per hour
@@ -311,10 +311,11 @@ export function OverviewTab({
 										}}
 										formatter={(value, key, item) => {
 											const v = asNumber(value, 0);
-											const payload = item.payload as { pnl: number };
+											const payload = (item?.payload ?? {}) as { pnl?: number };
 											if (String(key) === "cumulative")
 												return [`${v >= 0 ? "+" : ""}${v.toFixed(2)} USDC`, "Cumulative P&L"];
-											return [`${payload.pnl >= 0 ? "+" : ""}${payload.pnl.toFixed(2)} USDC`, "Per-Trade P&L"];
+											const pnl = payload.pnl ?? 0;
+											return [`${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} USDC`, "Per-Trade P&L"];
 										}}
 									/>
 									<Area

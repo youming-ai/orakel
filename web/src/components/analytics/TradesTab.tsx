@@ -151,13 +151,13 @@ export function TradesTab({
 											contentStyle={TOOLTIP_CONTENT_STYLE}
 											formatter={(value, _, item) => {
 												const v = Math.round(asNumber(value, 0));
-												const p = item.payload as {
-													winRate: number;
-													wins: number;
-													resolved: number;
+												const p = (item?.payload ?? {}) as {
+													winRate?: number;
+													wins?: number;
+													resolved?: number;
 												};
 												return [
-													`${v} trades, WR ${(p.winRate * 100).toFixed(1)}% (${p.wins}/${p.resolved})`,
+													`${v} trades, WR ${((p.winRate ?? 0) * 100).toFixed(1)}% (${p.wins ?? 0}/${p.resolved ?? 0})`,
 													"Entries",
 												];
 											}}

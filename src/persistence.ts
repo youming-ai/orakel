@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { PERSIST_BACKEND, statements } from "./db.ts";
+import { statements } from "./db.ts";
 import { createLogger } from "./logger.ts";
 import { emitSignalNew } from "./state.ts";
 import type {
@@ -12,7 +12,6 @@ import type {
 	TradeDecision,
 	TradeSignal,
 } from "./types.ts";
-import { appendCsvRow } from "./utils.ts";
 
 const log = createLogger("bot");
 
@@ -84,88 +83,31 @@ export function persistSignal({
 			? `${rec.side}:${rec.phase}:${rec.strength}`
 			: "NO_TRADE";
 
-	// @deprecated CSV persistence — scheduled for removal. SQLite is the primary backend.
-	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
-		appendCsvRow(
-			`./data/signals-${market.id}.csv`,
-			[
-				"timestamp",
-				"entry_minute",
-				"time_left_min",
-				"regime",
-				"signal",
-				"vol_implied_up",
-				"ta_raw_up",
-				"blended_up",
-				"blend_source",
-				"volatility_15m",
-				"price_to_beat",
-				"binance_chainlink_delta",
-				"orderbook_imbalance",
-				"model_up",
-				"model_down",
-				"mkt_up",
-				"mkt_down",
-				"raw_sum",
-				"arbitrage",
-				"edge_up",
-				"edge_down",
-				"recommendation",
-			],
-			[
-				signalTimestamp,
-				timing.elapsedMinutes.toFixed(3),
-				Number(timeLeftMin).toFixed(3),
-				regimeInfo.regime,
-				signalLabel,
-				volImplied,
-				scored.rawUp,
-				blended.blendedUp,
-				blended.source,
-				volatility15m,
-				priceToBeat,
-				binanceChainlinkDelta,
-				orderbookImbalance,
-				finalUp,
-				finalDown,
-				marketUp,
-				marketDown,
-				edge.rawSum,
-				edge.arbitrage ? 1 : 0,
-				edge.edgeUp,
-				edge.edgeDown,
-				recommendation,
-			],
-		);
-	}
-
-	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-		statements.insertSignal().run({
-			$timestamp: signalTimestamp,
-			$market: market.id,
-			$regime: regimeInfo.regime,
-			$signal: signalLabel,
-			$vol_implied_up: volImplied,
-			$ta_raw_up: scored.rawUp,
-			$blended_up: blended.blendedUp,
-			$blend_source: blended.source,
-			$volatility_15m: volatility15m,
-			$price_to_beat: priceToBeat,
-			$binance_chainlink_delta: binanceChainlinkDelta,
-			$orderbook_imbalance: orderbookImbalance,
-			$model_up: finalUp,
-			$model_down: finalDown,
-			$mkt_up: marketUp,
-			$mkt_down: marketDown,
-			$raw_sum: edge.rawSum,
-			$arbitrage: edge.arbitrage ? 1 : 0,
-			$edge_up: edge.edgeUp,
-			$edge_down: edge.edgeDown,
-			$recommendation: recommendation,
-			$entry_minute: timing.elapsedMinutes.toFixed(3),
-			$time_left_min: Number(timeLeftMin).toFixed(3),
-		});
-	}
+	statements.insertSignal().run({
+		$timestamp: signalTimestamp,
+		$market: market.id,
+		$regime: regimeInfo.regime,
+		$signal: signalLabel,
+		$vol_implied_up: volImplied,
+		$ta_raw_up: scored.rawUp,
+		$blended_up: blended.blendedUp,
+		$blend_source: blended.source,
+		$volatility_15m: volatility15m,
+		$price_to_beat: priceToBeat,
+		$binance_chainlink_delta: binanceChainlinkDelta,
+		$orderbook_imbalance: orderbookImbalance,
+		$model_up: finalUp,
+		$model_down: finalDown,
+		$mkt_up: marketUp,
+		$mkt_down: marketDown,
+		$raw_sum: edge.rawSum,
+		$arbitrage: edge.arbitrage ? 1 : 0,
+		$edge_up: edge.edgeUp,
+		$edge_down: edge.edgeDown,
+		$recommendation: recommendation,
+		$entry_minute: timing.elapsedMinutes.toFixed(3),
+		$time_left_min: Number(timeLeftMin).toFixed(3),
+	});
 
 	if (rec.action !== "ENTER") return null;
 

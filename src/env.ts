@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { StorageBackend } from "./types.ts";
 
 // ── helpers ──────────────────────────────────────────────
 
@@ -24,21 +23,15 @@ const envSchema = z.object({
 	// Auth (optional — if empty, mutation endpoints are unprotected)
 	API_TOKEN: z.string().default(""),
 
-	// Storage backends
-	PERSIST_BACKEND: z
+	// Wallet private key (optional — if set, auto-connects wallet on startup)
+	// 64 hex chars without 0x prefix, or 66 chars with 0x prefix
+	PRIVATE_KEY: z
 		.string()
-		.transform((v): StorageBackend => {
-			const l = v.toLowerCase();
-			return l === "csv" || l === "dual" || l === "sqlite" ? l : "sqlite";
-		})
-		.default("sqlite" as StorageBackend),
-	READ_BACKEND: z
-		.string()
-		.transform((v): Exclude<StorageBackend, "dual"> => {
-			const l = v.toLowerCase();
-			return l === "csv" || l === "sqlite" ? l : "sqlite";
-		})
-		.default("sqlite" as Exclude<StorageBackend, "dual">),
+		.optional()
+		.transform((v) => {
+			if (!v) return undefined;
+			return v.startsWith("0x") ? v.slice(2) : v;
+		}),
 
 	// Polymarket
 	POLYMARKET_SLUG: z.string().default(""),
@@ -63,8 +56,6 @@ const envSchema = z.object({
 function parseEnv() {
 	const result = envSchema.safeParse(process.env);
 	if (!result.success) {
-		console.error("❌ Invalid environment variables:\n");
-		console.error(z.prettifyError(result.error));
 		process.exit(1);
 	}
 	return Object.freeze(result.data);

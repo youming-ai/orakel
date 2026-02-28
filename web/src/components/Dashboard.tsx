@@ -1,25 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { useReducedMotion } from "@/hooks/useReducedMotion";
-import {
-	useDashboardStateWithWs,
-	useLiveCancel,
-	useLiveToggle,
-	usePaperCancel,
-	usePaperStats,
-	usePaperToggle,
-	useTrades,
-} from "@/lib/queries";
-import { useUIStore } from "@/lib/store";
-import { useAlertHandler } from "@/lib/alerts";
-import type { ViewMode } from "@/lib/types";
-import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
-import { AnalyticsTabs } from "./AnalyticsTabs";
-import { Header } from "./Header";
-import { Web3Provider } from "./Web3Provider";
-import { LiveConnect } from "./LiveConnect";
-import { AlertSystem } from "./AlertSystem";
-import { Toaster } from "@/components/ui/toaster";
-import { toast } from "@/lib/toast";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -30,6 +9,19 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Toaster } from "@/components/ui/toaster";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useAlertHandler } from "@/lib/alerts";
+import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
+import { useDashboardStateWithWs, useLiveToggle, usePaperStats, usePaperToggle, useTrades } from "@/lib/queries";
+import { useUIStore } from "@/lib/store";
+import { toast } from "@/lib/toast";
+import type { ViewMode } from "@/lib/types";
+import { AlertSystem } from "./AlertSystem";
+import { AnalyticsTabs } from "./AnalyticsTabs";
+import { AppErrorBoundary } from "./AppErrorBoundary";
+import { Header } from "./Header";
+import { Web3Provider } from "./Web3Provider";
 
 const DEFAULT_CONFIG: DashboardState["config"] = {
 	strategy: {
@@ -75,8 +67,6 @@ function DashboardContent() {
 	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
 	const paperToggle = usePaperToggle();
 	const liveToggle = useLiveToggle();
-	const paperCancel = usePaperCancel();
-	const liveCancel = useLiveCancel();
 
 	const paperTrades = paperStatsData?.trades ?? [];
 	const paperByMarket = paperStatsData?.byMarket ?? {};
@@ -111,24 +101,14 @@ function DashboardContent() {
 
 	const handlePaperToggle = useCallback(() => {
 		if (!state) return;
-		if (state.paperPendingStart || state.paperPendingStop) {
-			paperCancel.mutate();
-			toast({ type: "info", description: "Paper bot start/stop cancelled" });
-			return;
-		}
 		setConfirmAction(state.paperRunning ? "stop" : "start");
-	}, [state, paperCancel, setConfirmAction]);
+	}, [state, setConfirmAction]);
 
 	const handleLiveToggle = useCallback(() => {
 		if (!state) return;
-		if (state.livePendingStart || state.livePendingStop) {
-			liveCancel.mutate();
-			toast({ type: "info", description: "Live bot start/stop cancelled" });
-			return;
-		}
 		if (!state.liveRunning && !state.liveWallet?.clientReady) return;
 		setConfirmAction(state.liveRunning ? "stop" : "start");
-	}, [state, liveCancel, setConfirmAction]);
+	}, [state, setConfirmAction]);
 
 	const handleConfirm = useCallback(() => {
 		if (!state || !confirmAction) return;
@@ -182,35 +162,26 @@ function DashboardContent() {
 				paperRunning={state.paperRunning}
 				liveRunning={state.liveRunning}
 				liveWalletReady={state.liveWallet?.clientReady ?? false}
-				paperPendingStart={state.paperPendingStart ?? false}
-				paperPendingStop={state.paperPendingStop ?? false}
-				livePendingStart={state.livePendingStart ?? false}
-				livePendingStop={state.livePendingStop ?? false}
-			onViewModeChange={handleViewModeChange}
-			onPaperToggle={handlePaperToggle}
-			onLiveToggle={handleLiveToggle}
-			paperMutationPending={paperToggle.isPending || paperCancel.isPending}
-			liveMutationPending={liveToggle.isPending || liveCancel.isPending}
-		/>
-			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
-				{viewMode === "live" && (
-					<LiveConnect
-						clientReady={state.liveWallet?.clientReady ?? false}
-						walletAddress={state.liveWallet?.address ?? null}
+				mutationPending={paperToggle.isPending || liveToggle.isPending}
+				onViewModeChange={handleViewModeChange}
+				onPaperToggle={handlePaperToggle}
+				onLiveToggle={handleLiveToggle}
+			/>
+			<AppErrorBoundary>
+				<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
+					<AnalyticsTabs
+						stats={viewMode === "paper" ? state.paperStats : state.liveStats}
+						trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
+						byMarket={viewMode === "paper" ? paperByMarket : undefined}
+						config={state.config ?? DEFAULT_CONFIG}
+						markets={state.markets ?? []}
+						liveTrades={trades}
+						viewMode={viewMode}
+						stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
+						todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
 					/>
-				)}
-				<AnalyticsTabs
-					stats={viewMode === "paper" ? state.paperStats : state.liveStats}
-					trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
-					byMarket={viewMode === "paper" ? paperByMarket : undefined}
-				config={state.config ?? DEFAULT_CONFIG}
-					markets={state.markets ?? []}
-					liveTrades={trades}
-					viewMode={viewMode}
-					stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
-					todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
-				/>
-			</main>
+				</main>
+			</AppErrorBoundary>
 
 			<AlertDialog
 				open={confirmAction !== null}

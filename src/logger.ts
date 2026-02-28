@@ -29,15 +29,19 @@ function createLogger(tag: string): Logger {
 	const prefix = `[${tag}]`;
 	return {
 		debug: (...args: unknown[]) => {
+			// biome-ignore lint/suspicious/noConsole: logger is the authorized console wrapper
 			if (threshold <= LEVEL_PRIORITY.debug) console.debug(prefix, ...args);
 		},
 		info: (...args: unknown[]) => {
+			// biome-ignore lint/suspicious/noConsole: logger is the authorized console wrapper
 			if (threshold <= LEVEL_PRIORITY.info) console.log(prefix, ...args);
 		},
 		warn: (...args: unknown[]) => {
+			// biome-ignore lint/suspicious/noConsole: logger is the authorized console wrapper
 			if (threshold <= LEVEL_PRIORITY.warn) console.warn(prefix, ...args);
 		},
 		error: (...args: unknown[]) => {
+			// biome-ignore lint/suspicious/noConsole: logger is the authorized console wrapper
 			if (threshold <= LEVEL_PRIORITY.error) console.error(prefix, ...args);
 		},
 	};

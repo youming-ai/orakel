@@ -72,7 +72,7 @@ describe("calculateVolatilityStop", () => {
 		});
 
 		expect(result.stopPercent).toBe(0);
-		expect(result.stopPrice).toBe(100);
+		expect(result.stopPrice).toBe(0);
 		expect(result.reason).toBe("volatility_stop_disabled");
 	});
 

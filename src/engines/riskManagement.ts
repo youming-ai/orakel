@@ -32,7 +32,7 @@ export function calculateVolatilityStop(
 
 	if (!config.enableVolatilityStop) {
 		return {
-			stopPrice: normalizedEntry,
+			stopPrice: 0,
 			stopPercent: 0,
 			reason: "volatility_stop_disabled",
 		};

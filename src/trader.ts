@@ -2,23 +2,29 @@ import fs from "node:fs";
 import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
-import { enrichPosition } from "./accountState.ts";
+import { enrichPosition, getUsdcBalance } from "./accountState.ts";
 import { storeSignalMetadata } from "./adaptiveState.ts";
 import { CONFIG } from "./config.ts";
-import { onchainStatements, PERSIST_BACKEND, statements } from "./db.ts";
+import { onchainStatements, pendingLiveStatements, statements } from "./db.ts";
 import { calculateKellyPositionSize } from "./engines/positionSizing.ts";
 import { env } from "./env.ts";
+import {
+	isHeartbeatReconnecting,
+	registerOpenGtdOrder,
+	setHeartbeatClient,
+	startHeartbeat,
+	stopHeartbeat,
+} from "./heartbeat.ts";
+import { addPendingLiveTrade } from "./liveSettlement.ts";
 import { clearLiveStatsCache, getLiveStatsLegacy } from "./liveStats.ts";
 import { createLogger } from "./logger.ts";
 import { addPaperTrade, getPaperBalance } from "./paperStats.ts";
-import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "./state.ts";
+import { emitTradeExecuted } from "./state.ts";
 import type { DailyState, MarketConfig, PositionSizeResult, RiskConfig, TradeResult, TradeSignal } from "./types.ts";
 import { getCandleWindowTiming } from "./utils.ts";
 
 const log = createLogger("trader");
 
-const PAPER_DAILY_PATH = "./data/paper-daily-state.json";
-const LIVE_DAILY_PATH = "./data/live-daily-state.json";
 const CREDS_PATH = "./data/api-creds.json";
 
 const HOST = CONFIG.clobBaseUrl;
@@ -43,142 +49,6 @@ let liveDailyState: DailyState = {
 	pnl: 0,
 	trades: 0,
 };
-
-// ============ Pending Live Trade Settlement ============
-interface PendingLiveTrade {
-	orderId: string;
-	marketId: string;
-	side: "UP" | "DOWN";
-	buyPrice: number;
-	size: number;
-	priceToBeat: number;
-	windowStartMs: number;
-}
-const pendingLiveTrades: PendingLiveTrade[] = [];
-
-// ============ Heartbeat & Open Order Management ============
-// Polymarket cancels all open orders if no heartbeat received within 10s (5s buffer).
-// We send heartbeats every 5 seconds while live trading has active GTD orders.
-// FOK orders fill immediately and don't need heartbeat.
-const openGtdOrders = new Set<string>(); // Track open GTD order IDs
-let heartbeatId: string | null = null;
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let heartbeatFailures = 0;
-const MAX_HEARTBEAT_FAILURES = 3;
-
-// Reconnection state for heartbeat
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
-let heartbeatReconnecting = false;
-
-export function startHeartbeat(): boolean {
-	if (heartbeatTimer) return true; // already running
-	if (!client) {
-		// Client not initialized is expected when in paper mode or before wallet connection
-		log.debug("Cannot start heartbeat: client not initialized");
-		return false;
-	}
-	heartbeatFailures = 0;
-	reconnectAttempts = 0;
-	heartbeatReconnecting = false;
-	heartbeatTimer = setInterval(async () => {
-		if (!client) {
-			stopHeartbeat();
-			return;
-		}
-		// Only send heartbeat if we have open GTD orders
-		if (openGtdOrders.size === 0) {
-			return;
-		}
-		try {
-			const resp = await client.postHeartbeat(heartbeatId ?? undefined);
-			heartbeatId = resp.heartbeat_id;
-			heartbeatFailures = 0;
-			reconnectAttempts = 0; // Reset reconnect attempts on success
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : String(err);
-			heartbeatFailures++;
-			if (heartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
-				log.error(`Heartbeat failed ${heartbeatFailures} consecutive times, stopping live trading:`, msg);
-				stopHeartbeat();
-
-				// Attempt reconnection with exponential backoff
-				if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-					heartbeatReconnecting = true;
-					const backoffMs = Math.min(30_000, 5_000 * 2 ** reconnectAttempts);
-					reconnectAttempts++;
-					log.info(
-						`Attempting heartbeat reconnection ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${backoffMs}ms`,
-					);
-					// Keep liveRunning flag true during reconnection so the
-					// reconnect callback can actually proceed.
-					reconnectTimer = setTimeout(async () => {
-						if (client && isLiveRunning()) {
-							log.info("Attempting to restart heartbeat...");
-							const success = startHeartbeat();
-							if (success) {
-								log.info("Heartbeat reconnection successful");
-								reconnectAttempts = 0;
-							}
-						}
-					}, backoffMs);
-				} else {
-					// All reconnect attempts exhausted — NOW stop live trading
-					heartbeatReconnecting = false;
-					setLiveRunning(false);
-					log.error("Max heartbeat reconnection attempts reached, stopping live trading");
-				}
-			} else {
-				log.warn(`Heartbeat failed (${heartbeatFailures}/${MAX_HEARTBEAT_FAILURES}):`, msg);
-			}
-		}
-	}, 5_000);
-	log.info("Heartbeat started");
-	return true;
-}
-
-export function stopHeartbeat(): void {
-	const wasRunning = heartbeatTimer !== null;
-	if (heartbeatTimer) {
-		clearInterval(heartbeatTimer);
-		heartbeatTimer = null;
-	}
-	if (reconnectTimer) {
-		clearTimeout(reconnectTimer);
-		reconnectTimer = null;
-	}
-	heartbeatId = null;
-	heartbeatFailures = 0;
-	reconnectAttempts = 0;
-	openGtdOrders.clear(); // Clear open order tracking
-	heartbeatReconnecting = false;
-	if (wasRunning) log.info("Heartbeat stopped");
-}
-
-/** Register a GTD order for heartbeat tracking (FOK orders should not be tracked) */
-export function registerOpenGtdOrder(orderId: string): void {
-	openGtdOrders.add(orderId);
-	log.debug(`Registered GTD order ${orderId.slice(0, 12)}... (total open: ${openGtdOrders.size})`);
-}
-
-/** Unregister a GTD order (e.g., when filled, cancelled, or expired) */
-export function unregisterOpenGtdOrder(orderId: string): void {
-	const deleted = openGtdOrders.delete(orderId);
-	if (deleted) {
-		log.debug(`Unregistered GTD order ${orderId.slice(0, 12)}... (total open: ${openGtdOrders.size})`);
-	}
-}
-
-/** Get count of currently open GTD orders */
-export function getOpenGtdOrderCount(): number {
-	return openGtdOrders.size;
-}
-
-/** Check if heartbeat is in reconnection — live trades should be blocked */
-export function isHeartbeatReconnecting(): boolean {
-	return heartbeatReconnecting;
-}
 
 function asRecord(value: unknown): Record<string, unknown> {
 	if (value && typeof value === "object") {
@@ -206,11 +76,11 @@ function asSignalConfidence(signal: TradeSignal): number {
 	return 0.5;
 }
 
-function asSignalRegime(signal: TradeSignal): string | null {
+function asSignalRegime(signal: TradeSignal): "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP" | null {
 	const signalRecord = asRecord(signal);
 	const regimeValue = signalRecord.regime;
 	if (typeof regimeValue === "string" && regimeValue.length > 0) {
-		return regimeValue;
+		return regimeValue as "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP";
 	}
 	return null;
 }
@@ -245,6 +115,8 @@ function computeTradeSize(signal: TradeSignal, riskConfig: RiskConfig, balance: 
 		avgLossPayout,
 		bankroll: balance,
 		maxSize: configuredMaxSize,
+		minSize: CONFIG.strategy.minTradeSize ?? 0.5,
+		kellyFraction: CONFIG.strategy.kellyFraction ?? 0.5,
 		confidence: asSignalConfidence(signal),
 		regime: asSignalRegime(signal),
 		side: signal.side,
@@ -271,69 +143,45 @@ function isApiCreds(value: unknown): value is ApiKeyCreds {
 
 // Restore daily state from SQLite or JSON
 export function initTraderState(): void {
-	if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
-		try {
-			const today = new Date().toDateString();
-			const paperRow = statements.getDailyStats().get({ $date: today, $mode: "paper" }) as {
-				pnl?: number;
-				trades?: number;
-			} | null;
-			if (paperRow) {
-				paperDailyState = { date: today, pnl: Number(paperRow.pnl ?? 0), trades: Number(paperRow.trades ?? 0) };
-			}
-			const liveRow = statements.getDailyStats().get({ $date: today, $mode: "live" }) as {
-				pnl?: number;
-				trades?: number;
-			} | null;
-			if (liveRow) {
-				liveDailyState = { date: today, pnl: Number(liveRow.pnl ?? 0), trades: Number(liveRow.trades ?? 0) };
-			}
-		} catch (err) {
-			log.warn("Failed to load daily state from SQLite:", err);
+	try {
+		const today = new Date().toDateString();
+		const paperRow = statements.getDailyStats().get({ $date: today, $mode: "paper" }) as {
+			pnl?: number;
+			trades?: number;
+		} | null;
+		if (paperRow) {
+			paperDailyState = { date: today, pnl: Number(paperRow.pnl ?? 0), trades: Number(paperRow.trades ?? 0) };
 		}
-	} else {
-		try {
-			const saved: DailyState = JSON.parse(fs.readFileSync(PAPER_DAILY_PATH, "utf8"));
-			if (saved.date === new Date().toDateString()) paperDailyState = saved;
-		} catch (err) {
-			log.warn("Failed to load paper daily state from JSON:", err);
+		const liveRow = statements.getDailyStats().get({ $date: today, $mode: "live" }) as {
+			pnl?: number;
+			trades?: number;
+		} | null;
+		if (liveRow) {
+			liveDailyState = { date: today, pnl: Number(liveRow.pnl ?? 0), trades: Number(liveRow.trades ?? 0) };
 		}
-		try {
-			const saved: DailyState = JSON.parse(fs.readFileSync(LIVE_DAILY_PATH, "utf8"));
-			if (saved.date === new Date().toDateString()) liveDailyState = saved;
-		} catch (err) {
-			log.warn("Failed to load live daily state from JSON:", err);
-		}
+	} catch (err) {
+		log.warn("Failed to load daily state from SQLite:", err);
 	}
 }
 // Call at module scope for backward compat
 initTraderState();
 
 function saveDailyState(mode: "paper" | "live"): void {
-	const dirPath = mode === "paper" ? "./data/paper" : "./data/live";
-	const filePath = mode === "paper" ? PAPER_DAILY_PATH : LIVE_DAILY_PATH;
 	const state = mode === "paper" ? paperDailyState : liveDailyState;
 
-	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
-		fs.mkdirSync(dirPath, { recursive: true });
-		fs.writeFileSync(filePath, JSON.stringify(state, null, 2));
-	}
+	const existing = statements.getDailyStats().get({
+		$date: state.date,
+		$mode: mode,
+	}) as { wins?: number | null; losses?: number | null } | null;
 
-	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-		const existing = statements.getDailyStats().get({
-			$date: state.date,
-			$mode: mode,
-		}) as { wins?: number | null; losses?: number | null } | null;
-
-		statements.upsertDailyStats().run({
-			$date: state.date,
-			$mode: mode,
-			$pnl: state.pnl,
-			$trades: state.trades,
-			$wins: Number(existing?.wins ?? 0),
-			$losses: Number(existing?.losses ?? 0),
-		});
-	}
+	statements.upsertDailyStats().run({
+		$date: state.date,
+		$mode: mode,
+		$pnl: state.pnl,
+		$trades: state.trades,
+		$wins: Number(existing?.wins ?? 0),
+		$losses: Number(existing?.losses ?? 0),
+	});
 }
 
 async function createProvider(): Promise<providers.JsonRpcProvider | null> {
@@ -384,6 +232,7 @@ export async function connectWallet(privateKey: string): Promise<{ address: stri
 export function disconnectWallet(): void {
 	stopHeartbeat();
 	wallet = null;
+	setHeartbeatClient(null);
 	client = null;
 	log.info("Wallet disconnected");
 }
@@ -422,15 +271,18 @@ async function initClient(savedCreds: unknown): Promise<void> {
 
 		if (!isApiCreds(creds)) {
 			log.error("No API credentials available");
+			setHeartbeatClient(null);
 			client = null;
 			return;
 		}
 
 		client = new ClobClient(HOST, CHAIN_ID, wallet, creds, signatureType);
+		setHeartbeatClient(client);
 		log.info("Client ready (key:", creds.key, ")");
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);
 		log.error("Failed to initialize client:", msg);
+		setHeartbeatClient(null);
 		client = null;
 	}
 }
@@ -447,8 +299,15 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 			return false;
 		}
 
-		if (heartbeatReconnecting) {
+		if (isHeartbeatReconnecting()) {
 			log.warn("Heartbeat reconnecting — blocking live trade");
+			return false;
+		}
+		// Pre-check USDC balance to avoid wasted CLOB API calls
+		const usdcBalance = getUsdcBalance();
+		const maxTradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+		if (usdcBalance > 0 && usdcBalance < maxTradeSize * 0.5) {
+			log.warn(`USDC balance too low for live trade: ${usdcBalance.toFixed(2)} < ${(maxTradeSize * 0.5).toFixed(2)}`);
 			return false;
 		}
 	}
@@ -475,21 +334,6 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 	return true;
 }
 
-function tradeLogPath(marketId: string | null | undefined, mode: "paper" | "live"): string {
-	const id = String(marketId || "GLOBAL").toUpperCase();
-	return `./data/${mode}/trades-${id}.csv`;
-}
-
-/**
- * Log trade to local storage (CSV and SQLite).
- *
- * IMPORTANT: This is for LOGGING ONLY.
- *
- * - Paper mode: Local DB is the primary data source
- * - Live mode: Local DB is ONLY for logging and reconciliation debugging.
- *              All live stats (win rate, PnL, etc.) are fetched from on-chain data
- *              via getLiveStats() -> liveStats.ts (CLOB API).
- */
 function logTrade(
 	trade: {
 		timestamp?: string;
@@ -503,47 +347,20 @@ function logTrade(
 	marketId: string | null | undefined,
 	mode: "paper" | "live",
 ): void {
-	const header = ["timestamp", "market", "side", "amount", "price", "orderId", "status", "mode"];
 	const timestamp = trade.timestamp ?? new Date().toISOString();
-	const row = [
-		timestamp,
-		trade.market || "",
-		trade.side,
-		trade.amount,
-		trade.price,
-		trade.orderId || "",
-		trade.status,
-		mode,
-	];
 
-	const line = `${row.join(",")}\n`;
-
-	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
-		const dirPath = `./data/${mode}`;
-		if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-
-		const logPath = tradeLogPath(marketId, mode);
-		if (!fs.existsSync(logPath)) {
-			fs.writeFileSync(logPath, `${header.join(",")}\n`);
-		}
-
-		fs.appendFileSync(logPath, line);
-	}
-
-	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-		statements.insertTrade().run({
-			$timestamp: timestamp,
-			$market: marketId ?? trade.market ?? "",
-			$side: trade.side,
-			$amount: trade.amount,
-			$price: trade.price,
-			$orderId: trade.orderId ?? "",
-			$status: trade.status,
-			$mode: mode,
-			$pnl: null,
-			$won: null,
-		});
-	}
+	statements.insertTrade().run({
+		$timestamp: timestamp,
+		$market: marketId ?? trade.market ?? "",
+		$side: trade.side,
+		$amount: trade.amount,
+		$price: trade.price,
+		$orderId: trade.orderId ?? "",
+		$status: trade.status,
+		$mode: mode,
+		$pnl: null,
+		$won: null,
+	});
 }
 
 export async function executeTrade(
@@ -604,9 +421,9 @@ export async function executeTrade(
 
 		storeSignalMetadata(paperId, {
 			edge: Math.max(Number(signal.edgeUp ?? 0), Number(signal.edgeDown ?? 0)),
-			confidence: signal.confidence ?? 0.5,
+			confidence: asSignalConfidence(signal),
 			phase: signal.phase,
-			regime: signal.regime ?? null,
+			regime: asSignalRegime(signal),
 			volatility15m: Number(signal.volatility15m ?? 0),
 			modelUp: Number(signal.modelUp ?? 0.5),
 			orderbookImbalance: signal.orderbookImbalance ?? null,
@@ -786,62 +603,78 @@ export async function executeTrade(
 			mode,
 		);
 
-		if (resultOrderId || resultId) {
-			const finalOrderId = resultOrderId || resultId || "unknown";
-			emitTradeExecuted({
-				marketId: signal.marketId,
-				mode,
-				side,
-				price,
-				size: tradeSize,
-				timestamp: liveTradeTimestamp,
-				orderId: finalOrderId,
-				status: resultStatus || "placed",
-			});
-			liveDailyState.trades++;
-			saveDailyState("live");
+		if (!(resultOrderId || resultId)) {
+			log.error(`Order placed but no orderID returned — possible fire-and-forget: ${side} ${marketSlug}`);
+			return { success: false, reason: "no_order_id" };
+		}
 
-			// Clear stats cache after new trade
-			clearLiveStatsCache();
+		const finalOrderId = resultOrderId || resultId || "unknown";
+		emitTradeExecuted({
+			marketId: signal.marketId,
+			mode,
+			side,
+			price,
+			size: tradeSize,
+			timestamp: liveTradeTimestamp,
+			orderId: finalOrderId,
+			status: resultStatus || "placed",
+		});
+		liveDailyState.trades++;
+		saveDailyState("live");
 
-			if (tokenId && tokenId.length > 0) {
-				try {
-					onchainStatements.upsertKnownCtfToken().run({
-						$tokenId: tokenId,
-						$marketId: signal.marketId ?? "",
-						$side: side,
-						$conditionId: null,
-					});
-					enrichPosition(tokenId, signal.marketId ?? "", side);
-				} catch (err) {
-					log.warn("Failed to persist known CTF token:", err);
-				}
-			}
+		// Clear stats cache after new trade
+		clearLiveStatsCache();
 
-			// Start heartbeat and track order ONLY for GTD orders
-			// FOK orders fill immediately and don't need heartbeat
-			if (!isLatePhase || !isHighConfidence) {
-				registerOpenGtdOrder(finalOrderId);
-				startHeartbeat();
-			}
-
-			// Conservative PnL: debit full trade cost as worst-case loss.
-			// Daily loss limit in canTrade() now acts as a spending cap for live mode.
-			const liveTradeSize = tradeSize;
-			updatePnl(-liveTradeSize * price, "live");
-
-			// Track for settlement at window boundary
-			if (signal.priceToBeat && signal.priceToBeat > 0) {
-				const liveTiming = getCandleWindowTiming(15);
-				pendingLiveTrades.push({
-					orderId: finalOrderId,
-					marketId: signal.marketId ?? "",
-					side,
-					buyPrice: price,
-					size: liveTradeSize,
-					priceToBeat: signal.priceToBeat,
-					windowStartMs: liveTiming.startMs,
+		if (tokenId && tokenId.length > 0) {
+			try {
+				onchainStatements.upsertKnownCtfToken().run({
+					$tokenId: tokenId,
+					$marketId: signal.marketId ?? "",
+					$side: side,
+					$conditionId: null,
 				});
+				enrichPosition(tokenId, signal.marketId ?? "", side);
+			} catch (err) {
+				log.warn("Failed to persist known CTF token:", err);
+			}
+		}
+
+		// Start heartbeat and track order ONLY for GTD orders
+		// FOK orders fill immediately and don't need heartbeat
+		if (!isLatePhase || !isHighConfidence) {
+			registerOpenGtdOrder(finalOrderId);
+			startHeartbeat();
+		}
+
+		// Conservative PnL: debit full trade cost as worst-case loss.
+		// Daily loss limit in canTrade() now acts as a spending cap for live mode.
+		const liveTradeSize = tradeSize;
+		updatePnl(-liveTradeSize * price, "live");
+
+		// Track for settlement at window boundary
+		if (signal.priceToBeat && signal.priceToBeat > 0) {
+			const liveTiming = getCandleWindowTiming(15);
+			addPendingLiveTrade({
+				orderId: finalOrderId,
+				marketId: signal.marketId ?? "",
+				side,
+				buyPrice: price,
+				size: liveTradeSize,
+				priceToBeat: signal.priceToBeat,
+				windowStartMs: liveTiming.startMs,
+			});
+			try {
+				pendingLiveStatements.insertPendingLiveTrade().run({
+					$orderId: finalOrderId,
+					$marketId: signal.marketId ?? "",
+					$side: side,
+					$buyPrice: price,
+					$size: liveTradeSize,
+					$priceToBeat: signal.priceToBeat,
+					$windowStartMs: liveTiming.startMs,
+				});
+			} catch (err) {
+				log.warn("Failed to persist pending live trade:", err);
 			}
 		}
 
@@ -928,62 +761,6 @@ export function updatePnl(amount: number, mode: "paper" | "live"): void {
 		liveDailyState.pnl += amount;
 	}
 	saveDailyState(mode);
-}
-
-/**
- * Resolve pending live trades for a completed window.
- * Mirrors paper trade settlement logic: compare finalPrice vs priceToBeat,
- * determine win/loss, calculate PnL, and update the DB.
- * Returns the number of trades resolved.
- */
-export function resolveLiveTrades(windowStartMs: number, finalPrices: Map<string, number>): number {
-	let resolved = 0;
-	const remaining: PendingLiveTrade[] = [];
-
-	for (const trade of pendingLiveTrades) {
-		if (trade.windowStartMs !== windowStartMs) {
-			remaining.push(trade);
-			continue;
-		}
-
-		const finalPrice = finalPrices.get(trade.marketId);
-		if (finalPrice === undefined || trade.priceToBeat <= 0) {
-			remaining.push(trade);
-			continue;
-		}
-
-		// Polymarket rule: price === PTB → DOWN wins
-		const upWon = finalPrice > trade.priceToBeat;
-		const downWon = finalPrice <= trade.priceToBeat;
-		const won = trade.side === "UP" ? upWon : downWon;
-		const pnl = won ? trade.size * (1 - trade.buyPrice) : -(trade.size * trade.buyPrice);
-
-		try {
-			statements.updateTradeOutcome().run({
-				$pnl: pnl,
-				$won: won ? 1 : 0,
-				$orderId: trade.orderId,
-				$mode: "live",
-			});
-		} catch (err) {
-			log.warn(`Failed to update trade outcome for ${trade.orderId}:`, err);
-		}
-
-		// Correct daily PnL: at trade time we debited worst-case (-size*price).
-		// If won, actual PnL is +size*(1-price). Correction = actual - worstCase = size.
-		if (won) {
-			updatePnl(trade.size, "live");
-		}
-
-		log.info(
-			`Live settle: ${trade.marketId} ${trade.side} ${won ? "WON" : "LOST"} | PnL: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} | final=${finalPrice.toFixed(2)} ptb=${trade.priceToBeat.toFixed(2)}`,
-		);
-		resolved++;
-	}
-
-	pendingLiveTrades.length = 0;
-	pendingLiveTrades.push(...remaining);
-	return resolved;
 }
 
 /**

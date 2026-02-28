@@ -3,6 +3,9 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "bun";
 import path from "node:path";
+import { createLogger } from "../src/logger.ts";
+
+const log = createLogger("mock-server");
 
 /**
  * Orakel Mock Server
@@ -131,10 +134,10 @@ let db: Database;
 try {
 	db = new Database(DB_PATH);
 	db.exec("PRAGMA journal_mode = WAL");
-	console.log("✓ Database loaded");
+	log.info("✓ Database loaded");
 } catch (error) {
-	console.error("❌ Failed to load database:", error);
-	console.log("   Run 'bun run db:seed' first to create mock data");
+	log.error("❌ Failed to load database:", error);
+	log.info("   Run 'bun run db:seed' first to create mock data");
 	process.exit(1);
 }
 
@@ -393,25 +396,25 @@ app.get("/api", (c) => {
 });
 
 // Start server
-console.log("");
-console.log("🚀 Orakel Mock Server");
-console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-console.log("");
-console.log(`Server running at: http://localhost:${PORT}`);
-console.log("");
-console.log("Available endpoints:");
-console.log(`  GET  /api/health      - Health check`);
-console.log(`  GET  /api/state       - Full state (updated every request)`);
-console.log(`  GET  /api/trades      - Trade history`);
-console.log(`  GET  /api/signals     - Signal history`);
-console.log(`  GET  /api/paper-stats - Paper trading stats`);
-console.log("");
-console.log("Note: WebSocket is not supported in mock mode.");
-console.log("      The web dashboard will poll REST endpoints instead.");
-console.log("");
-console.log("Press Ctrl+C to stop");
-console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-console.log("");
+log.info("");
+log.info("🚀 Orakel Mock Server");
+log.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+log.info("");
+log.info(`Server running at: http://localhost:${PORT}`);
+log.info("");
+log.info("Available endpoints:");
+log.info(`  GET  /api/health      - Health check`);
+log.info(`  GET  /api/state       - Full state (updated every request)`);
+log.info(`  GET  /api/trades      - Trade history`);
+log.info(`  GET  /api/signals     - Signal history`);
+log.info(`  GET  /api/paper-stats - Paper trading stats`);
+log.info("");
+log.info("Note: WebSocket is not supported in mock mode.");
+log.info("      The web dashboard will poll REST endpoints instead.");
+log.info("");
+log.info("Press Ctrl+C to stop");
+log.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+log.info("");
 
 // Start Bun server
 serve({

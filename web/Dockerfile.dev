@@ -1,9 +1,12 @@
 # Development Dockerfile for Web Dashboard
-# This is optimized for development with hot-reload
+# Uses Node (not Bun) because Vite's http-proxy requires Node.js socket APIs
 
-FROM oven/bun:1-alpine
+FROM node:22-alpine
 
 WORKDIR /app
+
+# Install bun for dependency resolution (respects bun.lock)
+RUN npm i -g bun
 
 # Install dependencies
 COPY package.json bun.lock ./
@@ -15,5 +18,5 @@ COPY . .
 # Expose Vite dev server port
 EXPOSE 9998
 
-# Run Vite in development mode with HMR
-CMD ["bun", "run", "dev", "--host", "0.0.0.0"]
+# Run Vite via Node — Bun lacks socket.destroySoon() needed by http-proxy
+CMD ["npx", "vite", "--host", "0.0.0.0"]

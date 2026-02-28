@@ -1,12 +1,11 @@
 import fs from "node:fs";
-import path from "node:path";
 import { Hono } from "hono";
 import { createBunWebSocket, serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { getAccountSummary, getAllPositions } from "./accountState.ts";
 import { atomicWriteConfig, CONFIG, reloadConfig } from "./config.ts";
-import { getDbDiagnostics, READ_BACKEND, statements } from "./db.ts";
+import { getDbDiagnostics, statements } from "./db.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
 import {
@@ -22,23 +21,12 @@ import {
 import { getReconStatus } from "./reconciler.ts";
 import {
 	botEvents,
-	clearLivePending,
-	clearPaperPending,
-	getLivePendingSince,
 	getMarkets,
-	getPaperPendingSince,
 	getUpdatedAt,
-	isLivePendingStart,
-	isLivePendingStop,
 	isLiveRunning,
-	isPaperPendingStart,
-	isPaperPendingStop,
 	isPaperRunning,
-	setLivePendingStart,
-	setLivePendingStop,
 	setLiveRunning,
-	setPaperPendingStart,
-	setPaperPendingStop,
+	setPaperRunning,
 } from "./state.ts";
 import {
 	connectWallet,
@@ -56,7 +44,6 @@ const PORT = env.API_PORT;
 
 const log = createLogger("api");
 const wsLog = createLogger("ws");
-const LOGS_DIR = path.resolve("data");
 const SNAPSHOT_THROTTLE_MS = 500;
 
 interface TradeRowSqlite {
@@ -142,112 +129,12 @@ botEvents.on("balance:snapshot", (msg: unknown) => {
 });
 
 // ---------------------------------------------------------------------------
-// CSV helpers (unchanged)
+// Helpers
 // ---------------------------------------------------------------------------
 
 /** Convert nullable value to string, defaulting to "" */
 function str(v: string | number | null | undefined): string {
 	return v === null || v === undefined ? "" : String(v);
-}
-
-function parseCsvLine(line: string): string[] {
-	const result: string[] = [];
-	let current = "";
-	let inQuotes = false;
-
-	for (let i = 0; i < line.length; i++) {
-		const char = line[i];
-		if (char === '"') {
-			inQuotes = !inQuotes;
-		} else if (char === "," && !inQuotes) {
-			result.push(current.trim());
-			current = "";
-		} else {
-			current += char;
-		}
-	}
-	result.push(current.trim());
-	return result;
-}
-
-function parseCsv(filePath: string, limit = 200): Record<string, string>[] {
-	const header = ["timestamp", "market", "side", "amount", "price", "orderId", "status", "mode"];
-	try {
-		const raw = fs.readFileSync(filePath, "utf8").trim();
-		if (!raw) return [];
-		const lines = raw.split("\n");
-		const dataLines = lines[0]?.startsWith("timestamp") ? lines.slice(1) : lines;
-		return dataLines
-			.slice(-limit)
-			.map((line) => {
-				const vals = parseCsvLine(line);
-				if (vals.length < 6) return null;
-				const row: Record<string, string> = {};
-				for (let i = 0; i < header.length; i++) {
-					const key = header[i];
-					if (key) row[key] = vals[i]?.trim() ?? "";
-				}
-				return row;
-			})
-			.filter((row): row is Record<string, string> => row !== null);
-	} catch {
-		return [];
-	}
-}
-
-function parseSignalCsv(filePath: string, limit = 200): Record<string, string>[] {
-	const signalHeader = [
-		"timestamp",
-		"entry_minute",
-		"time_left_min",
-		"regime",
-		"signal",
-		"vol_implied_up",
-		"ta_raw_up",
-		"blended_up",
-		"blend_source",
-		"volatility_15m",
-		"price_to_beat",
-		"binance_chainlink_delta",
-		"orderbook_imbalance",
-		"model_up",
-		"model_down",
-		"mkt_up",
-		"mkt_down",
-		"raw_sum",
-		"arbitrage",
-		"edge_up",
-		"edge_down",
-		"recommendation",
-	];
-
-	try {
-		const raw = fs.readFileSync(filePath, "utf8").trim();
-		if (!raw) return [];
-		const lines = raw.split("\n");
-
-		let startIdx = 0;
-		if (lines.length > 0 && lines[0]?.startsWith("timestamp,entry_minute")) {
-			startIdx = 1;
-		}
-
-		return lines
-			.slice(startIdx)
-			.slice(-limit)
-			.map((line) => {
-				const vals = parseCsvLine(line);
-				if (vals.length < 5) return null;
-				const row: Record<string, string> = {};
-				for (let i = 0; i < signalHeader.length; i++) {
-					const key = signalHeader[i];
-					if (key) row[key] = vals[i]?.trim() ?? "";
-				}
-				return row;
-			})
-			.filter((row): row is Record<string, string> => row !== null);
-	} catch {
-		return [];
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -302,12 +189,6 @@ const apiRoutes = new Hono()
 				connected: status.walletLoaded,
 				clientReady: status.clientReady,
 			},
-			paperPendingStart: isPaperPendingStart(),
-			paperPendingStop: isPaperPendingStop(),
-			livePendingStart: isLivePendingStart(),
-			livePendingStop: isLivePendingStop(),
-			paperPendingSince: getPaperPendingSince(),
-			livePendingSince: getLivePendingSince(),
 			stopLoss: isStopped() ? stopLoss : null,
 			todayStats: todayStats,
 			liveTodayStats: getLiveTodayStats(),
@@ -317,105 +198,60 @@ const apiRoutes = new Hono()
 	.get("/trades", (c) => {
 		const mode = c.req.query("mode");
 
-		if (READ_BACKEND === "sqlite") {
-			const rows = (
-				mode === "paper" || mode === "live"
-					? statements.getRecentTrades().all({ $mode: mode, $limit: 100 })
-					: statements.getAllRecentTrades().all({ $limit: 100 })
-			) as TradeRowSqlite[];
+		const rows = (
+			mode === "paper" || mode === "live"
+				? statements.getRecentTrades().all({ $mode: mode, $limit: 100 })
+				: statements.getAllRecentTrades().all({ $limit: 100 })
+		) as TradeRowSqlite[];
 
-			return c.json(
-				rows.map((row) => ({
-					timestamp: row.timestamp ?? "",
-					market: row.market ?? "",
-					side: row.side ?? "",
-					amount: String(row.amount ?? ""),
-					price: String(row.price ?? ""),
-					orderId: row.order_id ?? "",
-					status: row.status ?? "",
-					mode: row.mode ?? "",
-					pnl: row.pnl ?? null,
-					won: row.won ?? null,
-				})),
-			);
-		}
-
-		const markets = ["BTC", "ETH", "SOL", "XRP"];
-		const all: Record<string, string>[] = [];
-		const modes = mode === "paper" || mode === "live" ? [mode] : ["paper", "live"];
-		for (const m of markets) {
-			for (const md of modes) {
-				const rows = parseCsv(path.join(LOGS_DIR, md, `trades-${m}.csv`), 50);
-				for (const row of rows) {
-					row.market = m;
-					if (!row.mode) row.mode = md;
-					all.push(row);
-				}
-			}
-		}
-		all.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
 		return c.json(
-			all.slice(0, 100).map((row) => ({
+			rows.map((row) => ({
 				timestamp: row.timestamp ?? "",
 				market: row.market ?? "",
 				side: row.side ?? "",
 				amount: String(row.amount ?? ""),
 				price: String(row.price ?? ""),
-				orderId: row.order_id ?? row.orderId ?? "",
+				orderId: row.order_id ?? "",
 				status: row.status ?? "",
 				mode: row.mode ?? "",
-				pnl: row.pnl !== undefined && row.pnl !== "" ? Number(row.pnl) : null,
-				won: row.won !== undefined && row.won !== "" ? Number(row.won) : null,
+				pnl: row.pnl ?? null,
+				won: row.won ?? null,
 			})),
 		);
 	})
 
 	.get("/signals", (c) => {
-		if (READ_BACKEND === "sqlite") {
-			const rows = statements.getRecentSignals().all({
-				$limit: 200,
-			}) as SignalRowSqlite[];
+		const rows = statements.getRecentSignals().all({
+			$limit: 200,
+		}) as SignalRowSqlite[];
 
-			return c.json(
-				rows.map((row) => ({
-					timestamp: row.timestamp ?? "",
-					entry_minute: str(row.entry_minute),
-					time_left_min: str(row.time_left_min),
-					regime: row.regime ?? "",
-					signal: row.signal ?? "",
-					vol_implied_up: str(row.vol_implied_up),
-					ta_raw_up: str(row.ta_raw_up),
-					blended_up: str(row.blended_up),
-					blend_source: row.blend_source ?? "",
-					volatility_15m: str(row.volatility_15m),
-					price_to_beat: str(row.price_to_beat),
-					binance_chainlink_delta: str(row.binance_chainlink_delta),
-					orderbook_imbalance: str(row.orderbook_imbalance),
-					model_up: str(row.model_up),
-					model_down: str(row.model_down),
-					mkt_up: str(row.mkt_up),
-					mkt_down: str(row.mkt_down),
-					raw_sum: str(row.raw_sum),
-					arbitrage: str(row.arbitrage),
-					edge_up: str(row.edge_up),
-					edge_down: str(row.edge_down),
-					recommendation: row.recommendation ?? "",
-					market: row.market ?? "",
-				})),
-			);
-		}
-
-		const markets = ["BTC", "ETH", "SOL", "XRP"];
-		const all: Record<string, string>[] = [];
-		for (const m of markets) {
-			const rows = parseSignalCsv(path.join(LOGS_DIR, `signals-${m}.csv`), 50);
-			for (const row of rows) {
-				row.market = m;
-				all.push(row);
-			}
-		}
-		all.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
-		return c.json(all.slice(0, 200));
+		return c.json(
+			rows.map((row) => ({
+				timestamp: row.timestamp ?? "",
+				entry_minute: str(row.entry_minute),
+				time_left_min: str(row.time_left_min),
+				regime: row.regime ?? "",
+				signal: row.signal ?? "",
+				vol_implied_up: str(row.vol_implied_up),
+				ta_raw_up: str(row.ta_raw_up),
+				blended_up: str(row.blended_up),
+				blend_source: row.blend_source ?? "",
+				volatility_15m: str(row.volatility_15m),
+				price_to_beat: str(row.price_to_beat),
+				binance_chainlink_delta: str(row.binance_chainlink_delta),
+				orderbook_imbalance: str(row.orderbook_imbalance),
+				model_up: str(row.model_up),
+				model_down: str(row.model_down),
+				mkt_up: str(row.mkt_up),
+				mkt_down: str(row.mkt_down),
+				raw_sum: str(row.raw_sum),
+				arbitrage: str(row.arbitrage),
+				edge_up: str(row.edge_up),
+				edge_down: str(row.edge_down),
+				recommendation: row.recommendation ?? "",
+				market: row.market ?? "",
+			})),
+		);
 	})
 
 	.get("/paper-stats", (c) => {
@@ -489,29 +325,13 @@ const apiRoutes = new Hono()
 	})
 
 	.post("/paper/start", (c) => {
-		setPaperPendingStart(true);
-		return c.json({
-			ok: true as const,
-			paperPendingStart: true,
-			message: "Starting at next cycle",
-		});
+		setPaperRunning(true);
+		return c.json({ ok: true as const, paperRunning: true });
 	})
 
 	.post("/paper/stop", (c) => {
-		setPaperPendingStop(true);
-		return c.json({
-			ok: true as const,
-			paperPendingStop: true,
-			message: "Stopping after current cycle settlement",
-		});
-	})
-
-	.post("/paper/cancel", (c) => {
-		clearPaperPending();
-		return c.json({
-			ok: true as const,
-			message: "Pending operation cancelled",
-		});
+		setPaperRunning(false);
+		return c.json({ ok: true as const, paperRunning: false });
 	})
 
 	.post("/paper/clear-stop", (c) => {
@@ -541,7 +361,6 @@ const apiRoutes = new Hono()
 	})
 
 	.post("/live/disconnect", (c) => {
-		clearLivePending();
 		setLiveRunning(false);
 		disconnectWallet();
 		return c.json({ ok: true as const, liveRunning: false });
@@ -558,29 +377,13 @@ const apiRoutes = new Hono()
 				400,
 			);
 		}
-		setLivePendingStart(true);
-		return c.json({
-			ok: true as const,
-			livePendingStart: true,
-			message: "Starting at next cycle",
-		});
+		setLiveRunning(true);
+		return c.json({ ok: true as const, liveRunning: true });
 	})
 
 	.post("/live/stop", (c) => {
-		setLivePendingStop(true);
-		return c.json({
-			ok: true as const,
-			livePendingStop: true,
-			message: "Stopping after current cycle settlement",
-		});
-	})
-
-	.post("/live/cancel", (c) => {
-		clearLivePending();
-		return c.json({
-			ok: true as const,
-			message: "Pending operation cancelled",
-		});
+		setLiveRunning(false);
+		return c.json({ ok: true as const, liveRunning: false });
 	})
 
 	.get("/live/balance", (c) => {
@@ -701,10 +504,6 @@ app.get(
 						updatedAt: getUpdatedAt(),
 						paperRunning: isPaperRunning(),
 						liveRunning: isLiveRunning(),
-						paperPendingStart: isPaperPendingStart(),
-						paperPendingStop: isPaperPendingStop(),
-						livePendingStart: isLivePendingStart(),
-						livePendingStop: isLivePendingStop(),
 						paperStats: getPaperStats(),
 						liveStats,
 						liveTodayStats: getLiveTodayStats(),
@@ -727,10 +526,6 @@ app.get(
 						updatedAt: getUpdatedAt(),
 						paperRunning: isPaperRunning(),
 						liveRunning: isLiveRunning(),
-						paperPendingStart: isPaperPendingStart(),
-						paperPendingStop: isPaperPendingStop(),
-						livePendingStart: isLivePendingStart(),
-						livePendingStop: isLivePendingStop(),
 						paperStats: getPaperStats(),
 						liveStats: { totalTrades: 0, wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0 },
 						liveTodayStats: getLiveTodayStats(),

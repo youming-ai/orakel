@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { CandleWindowTiming } from "./types.ts";
 
 export function clamp(x: number, min: number, max: number): number {
@@ -51,33 +49,6 @@ export function getCandleWindowTiming(windowMinutes: number): CandleWindowTiming
 		elapsedMinutes: elapsedMs / 60_000,
 		remainingMinutes: remainingMs / 60_000,
 	};
-}
-
-export function ensureDir(dirPath: string): void {
-	fs.mkdirSync(dirPath, { recursive: true });
-}
-
-/** @deprecated CSV persistence — scheduled for removal. SQLite is the primary backend. */
-export function appendCsvRow(filePath: string, header: string[], row: (string | number | null | undefined)[]): void {
-	ensureDir(path.dirname(filePath));
-	const exists = fs.existsSync(filePath);
-	const line = row
-		.map((v) => {
-			if (v === null || v === undefined) return "";
-			const s = String(v);
-			if (s.includes(",") || s.includes("\n") || s.includes('"')) {
-				return `"${s.replaceAll('"', '""')}"`;
-			}
-			return s;
-		})
-		.join(",");
-
-	if (!exists) {
-		fs.writeFileSync(filePath, `${header.join(",")}\n${line}\n`, "utf8");
-		return;
-	}
-
-	fs.appendFileSync(filePath, `${line}\n`, "utf8");
 }
 
 /**

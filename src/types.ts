@@ -82,6 +82,17 @@ export interface TakeProfitConfig {
 export interface MarketPerformance {
 	winRate: number;
 	edgeMultiplier: number;
+	minProb?: number;
+	minConfidence?: number;
+	skipChop?: boolean;
+}
+
+export interface ConfidenceWeights {
+	indicatorAlignment: number;
+	volatilityScore: number;
+	orderbookScore: number;
+	timingScore: number;
+	regimeScore: number;
 }
 
 export interface StrategyConfig {
@@ -101,6 +112,20 @@ export interface StrategyConfig {
 	skipMarkets?: string[];
 	minConfidence?: number;
 	marketPerformance?: Record<string, MarketPerformance>;
+	// Extracted strategy constants (all optional with defaults)
+	softCapEdge?: number;
+	hardCapEdge?: number;
+	arbitrageMinSpread?: number;
+	arbitrageMaxBoost?: number;
+	confidenceWeights?: ConfidenceWeights;
+	maxVig?: number;
+	kellyFraction?: number;
+	maxBankrollRisk?: number;
+	minTradeSize?: number;
+	fokConfidenceThreshold?: number;
+	maxVolatility15m?: number;
+	minVolatility15m?: number;
+	safeModeThreshold?: number;
 }
 
 export interface AppConfig {
@@ -117,8 +142,6 @@ export interface AppConfig {
 	macdSlow: number;
 	macdSignal: number;
 	paperMode: boolean;
-	persistBackend: StorageBackend;
-	readBackend: Exclude<StorageBackend, "dual">;
 	polymarket: {
 		marketSlug: string;
 		autoSelectLatest: boolean;
@@ -161,7 +184,6 @@ export type Phase = "EARLY" | "MID" | "LATE";
 export type Regime = "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP";
 export type Strength = "STRONG" | "GOOD" | "OPTIONAL";
 export type Side = "UP" | "DOWN";
-export type StorageBackend = "csv" | "dual" | "sqlite";
 
 // Confidence scoring
 export interface ConfidenceFactors {
@@ -465,10 +487,6 @@ export interface StateSnapshotPayload {
 	updatedAt: string;
 	paperRunning: boolean;
 	liveRunning: boolean;
-	paperPendingStart: boolean;
-	paperPendingStop: boolean;
-	livePendingStart: boolean;
-	livePendingStop: boolean;
 	paperStats: {
 		totalTrades: number;
 		wins: number;

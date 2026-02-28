@@ -1,5 +1,6 @@
-import { Clock, Loader2, Moon, Sun, Wallet, Zap } from "lucide-react";
+import { Clock, Moon, Sun, Wallet, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ConnectWallet } from "@/components/ConnectWallet";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -8,56 +9,31 @@ interface HeaderProps {
 	paperRunning: boolean;
 	liveRunning: boolean;
 	liveWalletReady: boolean;
-	paperPendingStart: boolean;
-	paperPendingStop: boolean;
-	livePendingStart: boolean;
-	livePendingStop: boolean;
-	paperMutationPending: boolean;
-	liveMutationPending: boolean;
+	mutationPending: boolean;
 	onViewModeChange: (mode: "paper" | "live") => void;
 	onPaperToggle: () => void;
 	onLiveToggle: () => void;
 }
 
-type BotStatus = "stopped" | "starting" | "running" | "stopping";
-
-function getBotStatus(running: boolean, pendingStart: boolean, pendingStop: boolean): BotStatus {
-	if (pendingStart) return "starting";
-	if (pendingStop) return "stopping";
-	if (running) return "running";
-	return "stopped";
-}
-
-const statusConfig: Record<BotStatus, { label: string; className: string }> = {
+const statusConfig = {
 	stopped: {
 		label: "Stopped",
 		className: "bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25",
-	},
-	starting: {
-		label: "Starting…",
-		className: "bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/25",
 	},
 	running: {
 		label: "Running",
 		className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25",
 	},
-	stopping: {
-		label: "Stopping…",
-		className: "bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/25",
-	},
-};
+} as const;
 
-function StatusIndicator({ status }: { status: BotStatus }) {
-	if (status === "running") {
+function StatusIndicator({ running }: { running: boolean }) {
+	if (running) {
 		return (
 			<span className="relative flex size-2">
 				<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
 				<span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
 			</span>
 		);
-	}
-	if (status === "starting" || status === "stopping") {
-		return <Loader2 className="size-3 animate-spin text-amber-400" />;
 	}
 	return <span className="inline-flex size-2 rounded-full bg-red-400" />;
 }
@@ -87,31 +63,21 @@ export function Header({
 	paperRunning,
 	liveRunning,
 	liveWalletReady,
-	paperPendingStart,
-	paperPendingStop,
-	livePendingStart,
-	livePendingStop,
-	paperMutationPending,
-	liveMutationPending,
+	mutationPending,
 	onViewModeChange,
 	onPaperToggle,
 	onLiveToggle,
 }: HeaderProps) {
 	const isRunning = viewMode === "paper" ? paperRunning : liveRunning;
-	const pendingStart = viewMode === "paper" ? paperPendingStart : livePendingStart;
-	const pendingStop = viewMode === "paper" ? paperPendingStop : livePendingStop;
-	const status = getBotStatus(isRunning, pendingStart, pendingStop);
-	const isPending = status === "starting" || status === "stopping";
-	const mutationPending = viewMode === "paper" ? paperMutationPending : liveMutationPending;
 	const timeLeft = useCycleCountdown();
 	const theme = useUIStore((s) => s.theme);
 	const toggleTheme = useUIStore((s) => s.toggleTheme);
 
 	const handleToggle = viewMode === "paper" ? onPaperToggle : onLiveToggle;
-	const canToggle = viewMode === "paper" || liveRunning || liveWalletReady || isPending;
+	const canToggle = viewMode === "paper" || liveRunning || liveWalletReady;
 	const noWallet = viewMode === "live" && !canToggle;
 
-	const cfg = statusConfig[canToggle ? status : "stopped"];
+	const cfg = statusConfig[canToggle && isRunning ? "running" : "stopped"];
 
 	return (
 		<div className="sticky top-3 z-50 flex justify-center px-3 pointer-events-none">
@@ -142,15 +108,8 @@ export function Header({
 							noWallet
 								? "bg-muted text-muted-foreground border-transparent cursor-not-allowed opacity-50"
 								: cfg.className,
-							isPending && "animate-pulse",
 						)}
-						title={
-							noWallet
-								? "Connect wallet first"
-								: isPending
-									? "Click to cancel"
-									: `Click to ${isRunning ? "stop" : "start"}`
-						}
+						title={noWallet ? "Connect wallet first" : `Click to ${isRunning ? "stop" : "start"}`}
 					>
 						{noWallet ? (
 							<>
@@ -159,7 +118,7 @@ export function Header({
 							</>
 						) : (
 							<>
-								<StatusIndicator status={status} />
+								<StatusIndicator running={isRunning} />
 								<span>{cfg.label}</span>
 							</>
 						)}
@@ -194,6 +153,8 @@ export function Header({
 							Live
 						</button>
 					</div>
+
+					{/* <ConnectWallet /> */}
 
 					<button
 						type="button"

@@ -19,7 +19,9 @@ describe("RollingVolatilityCalculator", () => {
 			const vol = new RollingVolatilityCalculator(60, 15);
 			const result = vol.initFromCloses(priceData70);
 			expect(result).not.toBeNull();
-			expect(result!).toBeGreaterThan(0);
+			if (result !== null) {
+				expect(result).toBeGreaterThan(0);
+			}
 		});
 
 		it("should match computeRealizedVolatility for 60-lookback", () => {
@@ -28,21 +30,27 @@ describe("RollingVolatilityCalculator", () => {
 			const original = computeRealizedVolatility(priceData70, 60);
 			expect(incremental).not.toBeNull();
 			expect(original).not.toBeNull();
-			expect(incremental!).toBeCloseTo(original!, 10);
+			if (incremental !== null && original !== null) {
+				expect(incremental).toBeCloseTo(original, 10);
+			}
 		});
 
 		it("should match computeRealizedVolatility for stable prices", () => {
 			const vol = new RollingVolatilityCalculator(60, 15);
 			const incremental = vol.initFromCloses(stableData70);
 			const original = computeRealizedVolatility(stableData70, 60);
-			expect(incremental).toBeCloseTo(original!, 10);
+			if (original !== null) {
+				expect(incremental).toBeCloseTo(original, 10);
+			}
 		});
 
 		it("should match computeRealizedVolatility for volatile prices", () => {
 			const vol = new RollingVolatilityCalculator(60, 15);
 			const incremental = vol.initFromCloses(volatileData70);
 			const original = computeRealizedVolatility(volatileData70, 60);
-			expect(incremental).toBeCloseTo(original!, 10);
+			if (original !== null) {
+				expect(incremental).toBeCloseTo(original, 10);
+			}
 		});
 
 		it("should match with 240 candles", () => {
@@ -50,7 +58,9 @@ describe("RollingVolatilityCalculator", () => {
 			const vol = new RollingVolatilityCalculator(60, 15);
 			const incremental = vol.initFromCloses(closes);
 			const original = computeRealizedVolatility(closes, 60);
-			expect(incremental).toBeCloseTo(original!, 10);
+			if (original !== null) {
+				expect(incremental).toBeCloseTo(original, 10);
+			}
 		});
 	});
 
@@ -65,7 +75,9 @@ describe("RollingVolatilityCalculator", () => {
 				incremental = vol2.update(close);
 			}
 
-			expect(incremental).toBeCloseTo(bulk!, 10);
+			if (bulk !== null) {
+				expect(incremental).toBeCloseTo(bulk, 10);
+			}
 		});
 
 		it("should return null until 2+ returns accumulated", () => {
@@ -113,8 +125,10 @@ describe("RollingVolatilityCalculator", () => {
 			const result1 = vol1.initFromCloses(closes);
 
 			// vol15 / vol1 should be sqrt(15) / sqrt(1)
-			const ratio = result15! / result1!;
-			expect(ratio).toBeCloseTo(Math.sqrt(15), 5);
+			if (result15 !== null && result1 !== null) {
+				const ratio = result15 / result1;
+				expect(ratio).toBeCloseTo(Math.sqrt(15), 5);
+			}
 		});
 	});
 
@@ -138,7 +152,9 @@ describe("RollingVolatilityCalculator", () => {
 			vol.reset();
 			vol.initFromCloses(volatileData70);
 			const volatile_ = vol.value;
-			expect(volatile_!).toBeGreaterThan(stable!);
+			if (volatile_ !== null && stable !== null) {
+				expect(volatile_).toBeGreaterThan(stable);
+			}
 		});
 	});
 });

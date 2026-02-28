@@ -11,6 +11,7 @@ describe("computeRsi", () => {
 	});
 
 	it("should return null for non-array input", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 		expect(computeRsi(null as any, 14)).toBeNull();
 	});
 
@@ -101,6 +102,7 @@ describe("sma", () => {
 	});
 
 	it("should return null for non-array input", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 		expect(sma(null as any, 3)).toBeNull();
 	});
 
@@ -169,6 +171,7 @@ describe("slopeLast", () => {
 	});
 
 	it("should return null for non-array input", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 		expect(slopeLast(null as any, 3)).toBeNull();
 	});
 

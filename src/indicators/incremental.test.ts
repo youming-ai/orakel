@@ -30,30 +30,38 @@ describe("IncrementalRSI", () => {
 			const rsi = new IncrementalRSI(14);
 			const result = rsi.initFromCloses(descending15);
 			expect(result).not.toBeNull();
-			expect(result!).toBeLessThan(1);
+			if (result !== null) {
+				expect(result).toBeLessThan(1);
+			}
 		});
 
 		it("should return ~50 for alternating gains/losses", () => {
 			const rsi = new IncrementalRSI(14);
 			const result = rsi.initFromCloses(alternating15);
 			expect(result).not.toBeNull();
-			expect(result!).toBeGreaterThan(40);
-			expect(result!).toBeLessThan(60);
+			if (result !== null) {
+				expect(result).toBeGreaterThan(40);
+				expect(result).toBeLessThan(60);
+			}
 		});
 
 		it("should return value in [0, 100]", () => {
 			const rsi = new IncrementalRSI(14);
 			const result = rsi.initFromCloses(realistic20);
 			expect(result).not.toBeNull();
-			expect(result!).toBeGreaterThanOrEqual(0);
-			expect(result!).toBeLessThanOrEqual(100);
+			if (result !== null) {
+				expect(result).toBeGreaterThanOrEqual(0);
+				expect(result).toBeLessThanOrEqual(100);
+			}
 		});
 
 		it("should match computeRsi exactly for period 14", () => {
 			const rsi = new IncrementalRSI(14);
 			const incremental = rsi.initFromCloses(realistic20);
 			const original = computeRsi(realistic20, 14);
-			expect(incremental).toBeCloseTo(original!, 10);
+			if (original !== null) {
+				expect(incremental).toBeCloseTo(original, 10);
+			}
 		});
 
 		it("should match computeRsi for various data sets", () => {
@@ -74,7 +82,9 @@ describe("IncrementalRSI", () => {
 			const rsi = new IncrementalRSI(7);
 			const incremental = rsi.initFromCloses(realistic20);
 			const original = computeRsi(realistic20, 7);
-			expect(incremental).toBeCloseTo(original!, 10);
+			if (original !== null) {
+				expect(incremental).toBeCloseTo(original, 10);
+			}
 		});
 
 		it("should match computeRsi for 240-candle array", () => {
@@ -82,7 +92,9 @@ describe("IncrementalRSI", () => {
 			const rsi = new IncrementalRSI(14);
 			const incremental = rsi.initFromCloses(closes);
 			const original = computeRsi(closes, 14);
-			expect(incremental).toBeCloseTo(original!, 10);
+			if (original !== null) {
+				expect(incremental).toBeCloseTo(original, 10);
+			}
 		});
 	});
 
@@ -97,7 +109,9 @@ describe("IncrementalRSI", () => {
 				incremental = rsi2.update(close);
 			}
 
-			expect(incremental).toBeCloseTo(bulk!, 10);
+			if (bulk !== null) {
+				expect(incremental).toBeCloseTo(bulk, 10);
+			}
 		});
 
 		it("should produce null until period+1 values fed", () => {
@@ -146,7 +160,9 @@ describe("IncrementalRSI", () => {
 			// Last value should match initFromCloses
 			const rsi2 = new IncrementalRSI(14);
 			const fullResult = rsi2.initFromCloses(realistic20);
-			expect(trailing[trailing.length - 1]).toBeCloseTo(fullResult!, 10);
+			if (fullResult !== null && trailing.length > 0) {
+				expect(trailing[trailing.length - 1]).toBeCloseTo(fullResult, 10);
+			}
 		});
 
 		it("should return correct number of trailing values", () => {

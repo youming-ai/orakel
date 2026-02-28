@@ -1,10 +1,7 @@
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import { PERSIST_BACKEND, READ_BACKEND } from "./config.ts";
 import { createLogger } from "./logger.ts";
-
-export { PERSIST_BACKEND, READ_BACKEND };
 
 const log = createLogger("db");
 
@@ -333,6 +330,26 @@ function runMigrations(db: Database): void {
 			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (3, strftime('%s', 'now'))");
 		})();
 	}
+
+	if (currentVersion < 4) {
+		db.transaction(() => {
+			db.run(`
+				CREATE TABLE IF NOT EXISTS pending_live_trades (
+					order_id TEXT PRIMARY KEY,
+					market_id TEXT NOT NULL,
+					side TEXT NOT NULL,
+					buy_price REAL NOT NULL,
+					size REAL NOT NULL,
+					price_to_beat REAL NOT NULL,
+					window_start_ms INTEGER NOT NULL,
+					created_at INTEGER DEFAULT (strftime('%s', 'now'))
+				)
+			`);
+			db.run("CREATE INDEX IF NOT EXISTS idx_pending_live_window ON pending_live_trades(window_start_ms)");
+
+			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (4, strftime('%s', 'now'))");
+		})();
+	}
 }
 
 // P2-3: Cache prepared statements — prepare once per SQL string, clear on DB reinit
@@ -559,6 +576,32 @@ export const statements = {
 	updateTradeOutcome: () =>
 		cachedPrepare(`
 			UPDATE trades SET pnl = $pnl, won = $won WHERE orderId = $orderId AND mode = $mode
+		`),
+};
+
+// === Pending Live Trade Statements ===
+
+export const pendingLiveStatements = {
+	insertPendingLiveTrade: () =>
+		cachedPrepare(`
+			INSERT OR REPLACE INTO pending_live_trades (order_id, market_id, side, buy_price, size, price_to_beat, window_start_ms)
+			VALUES ($orderId, $marketId, $side, $buyPrice, $size, $priceToBeat, $windowStartMs)
+		`),
+
+	deletePendingLiveTrade: () =>
+		cachedPrepare(`
+			DELETE FROM pending_live_trades WHERE order_id = $orderId
+		`),
+
+	deleteResolvedPendingLiveTrades: () =>
+		cachedPrepare(`
+			DELETE FROM pending_live_trades WHERE window_start_ms = $windowStartMs
+		`),
+
+	getAllPendingLiveTrades: () =>
+		cachedQuery(`
+			SELECT order_id, market_id, side, buy_price, size, price_to_beat, window_start_ms
+			FROM pending_live_trades ORDER BY created_at ASC
 		`),
 };
 

@@ -1,5 +1,9 @@
 import { Database } from "bun:sqlite";
 import path from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { createLogger } from "../src/logger.ts";
+
+const log = createLogger("db-seed");
 
 /**
  * Orakel Database Seed Script
@@ -125,12 +129,12 @@ function generateMockSignals(): SeedSignal[] {
 
 // Seed the database
 function seedDatabase(): void {
-	console.log("🌱 Seeding database with mock data...");
+	log.info("🌱 Seeding database with mock data...");
 
 	// Ensure data directory exists
 	const dataDir = path.join(process.cwd(), "data");
-	if (!require("node:fs").existsSync(dataDir)) {
-		require("node:fs").mkdirSync(dataDir, { recursive: true });
+	if (!existsSync(dataDir)) {
+		mkdirSync(dataDir, { recursive: true });
 	}
 
 	// Open database (will be created if it doesn't exist)
@@ -217,7 +221,7 @@ function seedDatabase(): void {
 	});
 
 	insertTradeTxn(trades);
-	console.log(`✓ Inserted ${trades.length} mock trades`);
+	log.info(`✓ Inserted ${trades.length} mock trades`);
 
 	// Insert signals
 	const insertSignal = db.prepare(`
@@ -244,7 +248,7 @@ function seedDatabase(): void {
 	});
 
 	insertSignalTxn(signals);
-	console.log(`✓ Inserted ${signals.length} mock signals`);
+	log.info(`✓ Inserted ${signals.length} mock signals`);
 
 	// Generate daily stats
 	const dailyStats = new Map<string, { pnl: number; trades: number; wins: number; losses: number }>();
@@ -284,25 +288,25 @@ function seedDatabase(): void {
 		insertDailyStats.run(date, mode, stats.pnl, stats.trades, stats.wins, stats.losses);
 	}
 
-	console.log(`✓ Generated daily stats for ${dailyStats.size} day-mode combinations`);
+	log.info(`✓ Generated daily stats for ${dailyStats.size} day-mode combinations`);
 
 	db.close();
 
-	console.log("");
-	console.log("✅ Database seeded successfully!");
-	console.log("");
-	console.log("Summary:");
-	console.log(`   - Trades: ${trades.length}`);
-	console.log(`   - Signals: ${signals.length}`);
-	console.log(`   - Daily Stats: ${dailyStats.size}`);
-	console.log("");
-	console.log("Run 'bun run start' to start the bot with mock data.");
+	log.info("");
+	log.info("✅ Database seeded successfully!");
+	log.info("");
+	log.info("Summary:");
+	log.info(`   - Trades: ${trades.length}`);
+	log.info(`   - Signals: ${signals.length}`);
+	log.info(`   - Daily Stats: ${dailyStats.size}`);
+	log.info("");
+	log.info("Run 'bun run start' to start the bot with mock data.");
 }
 
 // Run the seed
 try {
 	seedDatabase();
 } catch (error) {
-	console.error("❌ Error seeding database:", error);
+	log.error("❌ Error seeding database:", error);
 	process.exit(1);
 }

@@ -1,3 +1,6 @@
+// Vite config file - tooling requirement overrides apply:
+// - Default export is required by Vite (exceptions to CLAUDE.md named exports rule)
+// - console.error is acceptable here for proxy error logging (no app logger available)
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -18,10 +21,22 @@ export default defineConfig({
       "/ws": {
         target: apiTarget,
         ws: true,
+        // Suppress EPIPE noise when backend drops WS mid-stream
+        configure: (proxy) => {
+          const ignore = (err: { code?: string }) => {
+            if (err.code === "EPIPE" || err.code === "ECONNRESET") return;
+            console.error("[ws proxy]", err);
+          };
+          proxy.on("error", ignore);
+          proxy.on("proxyReqWs", (_proxyReq, _req, socket) => {
+            socket.on("error", ignore);
+          });
+        },
       },
     },
     host: true,
     allowedHosts: true,
+    port: 9998,
   },
   build: {
     // Reduce peak memory usage for low-RAM environments (1GB VPS)

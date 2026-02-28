@@ -10,6 +10,7 @@ function getFirst<T>(arr: T[]): T {
 	if (arr.length === 0) {
 		throw new Error("Array is empty");
 	}
+	// biome-ignore lint/style/noNonNullAssertion: function throws when empty
 	return arr[0]!;
 }
 
@@ -17,6 +18,7 @@ function getAt<T>(arr: T[], index: number): T {
 	if (arr.length <= index) {
 		throw new Error(`Array index ${index} out of bounds`);
 	}
+	// biome-ignore lint/style/noNonNullAssertion: function throws when out of bounds
 	return arr[index]!;
 }
 
@@ -35,6 +37,7 @@ describe("computeHeikenAshi", () => {
 
 	// Non-array → []
 	it("returns empty array for non-array input", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 		const result = computeHeikenAshi(null as any);
 		expect(result).toEqual([]);
 	});
@@ -214,6 +217,7 @@ describe("countConsecutive", () => {
 
 	// Non-array input
 	it("returns {color: null, count: 0} for non-array input", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: testing invalid input
 		const result = countConsecutive(null as any);
 		expect(result).toEqual({ color: null, count: 0 });
 	});

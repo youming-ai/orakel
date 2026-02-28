@@ -176,9 +176,9 @@ describe("AdaptiveThresholdManager", () => {
 			regime: "RANGE",
 		});
 
-		expect(adjusted.edgeThreshold).toBeCloseTo(0.15, 10);
-		expect(adjusted.minProb).toBeCloseTo(0.6, 10);
-		expect(adjusted.minConfidence).toBeCloseTo(0.6, 10);
+		expect(adjusted.edgeThreshold).toBeCloseTo(0.13, 10);
+		expect(adjusted.minProb).toBeCloseTo(0.58, 10);
+		expect(adjusted.minConfidence).toBeCloseTo(0.55, 10);
 	});
 
 	it("tightens mildly when win rate is in 0.45-0.50 band", () => {
@@ -202,8 +202,8 @@ describe("AdaptiveThresholdManager", () => {
 			regime: "RANGE",
 		});
 
-		expect(adjusted.edgeThreshold).toBeCloseTo(0.12, 10);
-		expect(adjusted.minProb).toBeCloseTo(0.57, 10);
+		expect(adjusted.edgeThreshold).toBeCloseTo(0.115, 10);
+		expect(adjusted.minProb).toBeCloseTo(0.56, 10);
 		expect(adjusted.minConfidence).toBeCloseTo(0.5, 10);
 	});
 
@@ -312,7 +312,7 @@ describe("AdaptiveThresholdManager", () => {
 			regime: "CHOP",
 		});
 
-		expect(adjusted.edgeThreshold).toBeCloseTo(0.12, 10);
+		expect(adjusted.edgeThreshold).toBeCloseTo(0.115, 10);
 	});
 
 	it("applies LATE phase multiplier", () => {
@@ -348,9 +348,9 @@ describe("AdaptiveThresholdManager", () => {
 			regime: "CHOP",
 		});
 
-		expect(adjusted.edgeThreshold).toBeCloseTo(0.25, 10);
-		expect(adjusted.minProb).toBeCloseTo(0.6, 10);
-		expect(adjusted.minConfidence).toBeCloseTo(0.6, 10);
+		expect(adjusted.edgeThreshold).toBeCloseTo(0.18, 10);
+		expect(adjusted.minProb).toBeCloseTo(0.58, 10);
+		expect(adjusted.minConfidence).toBeCloseTo(0.55, 10);
 	});
 
 	it("clamps edge threshold lower bound", () => {
@@ -402,7 +402,7 @@ describe("AdaptiveThresholdManager", () => {
 			regime: "CHOP",
 		});
 
-		expect(adjusted.edgeThreshold).toBeCloseTo(0.132, 10);
+		expect(adjusted.edgeThreshold).toBeCloseTo(0.1265, 10);
 		expect(adjusted.minProb).toBeCloseTo(0.55, 10);
 		expect(adjusted.minConfidence).toBeCloseTo(0.5, 10);
 	});

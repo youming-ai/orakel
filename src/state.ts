@@ -35,13 +35,6 @@ export interface DashboardState {
 	} | null;
 	paperBalance: { initial: number; current: number; maxDrawdown: number } | null;
 	liveWallet: { address: string | null; connected: boolean; clientReady: boolean };
-	// Cycle-aware pending start/stop states
-	paperPendingStart: boolean;
-	paperPendingStop: boolean;
-	livePendingStart: boolean;
-	livePendingStop: boolean;
-	paperPendingSince: number | null;
-	livePendingSince: number | null;
 }
 
 export const botEvents = new EventEmitter();
@@ -149,96 +142,15 @@ export function getOnchainBalance(): BalanceSnapshotPayload | null {
 
 let _paperRunning = CONFIG.paperMode !== false;
 let _liveRunning = false;
-// Pending states for cycle-aware start/stop
-let _paperPendingStart = false;
-let _paperPendingStop = false;
-let _livePendingStart = false;
-let _livePendingStop = false;
-
-// Timestamps for when pending was requested (for UI feedback)
-let _paperPendingSince: number | null = null;
-let _livePendingSince: number | null = null;
 export function isPaperRunning(): boolean {
 	return _paperRunning;
 }
 export function setPaperRunning(running: boolean): void {
 	_paperRunning = running;
-	if (running) {
-		// Clear pending states when actually running
-		_paperPendingStart = false;
-		_paperPendingSince = null;
-	}
 }
 export function isLiveRunning(): boolean {
 	return _liveRunning;
 }
 export function setLiveRunning(running: boolean): void {
 	_liveRunning = running;
-	if (running) {
-		_livePendingStart = false;
-		_livePendingSince = null;
-	}
-}
-
-// Pending start - bot will start at next cycle boundary
-export function isPaperPendingStart(): boolean {
-	return _paperPendingStart;
-}
-
-export function setPaperPendingStart(pending: boolean): void {
-	_paperPendingStart = pending;
-	_paperPendingSince = pending ? Date.now() : null;
-	if (pending) _paperPendingStop = false;
-}
-
-export function isLivePendingStart(): boolean {
-	return _livePendingStart;
-}
-
-export function setLivePendingStart(pending: boolean): void {
-	_livePendingStart = pending;
-	_livePendingSince = pending ? Date.now() : null;
-	if (pending) _livePendingStop = false;
-}
-
-// Pending stop - bot will stop after current cycle settlement
-export function isPaperPendingStop(): boolean {
-	return _paperPendingStop;
-}
-
-export function setPaperPendingStop(pending: boolean): void {
-	_paperPendingStop = pending;
-	_paperPendingSince = pending ? Date.now() : null;
-	if (pending) _paperPendingStart = false;
-}
-
-export function isLivePendingStop(): boolean {
-	return _livePendingStop;
-}
-
-export function setLivePendingStop(pending: boolean): void {
-	_livePendingStop = pending;
-	_livePendingSince = pending ? Date.now() : null;
-	if (pending) _livePendingStart = false;
-}
-
-export function getPaperPendingSince(): number | null {
-	return _paperPendingSince;
-}
-
-export function getLivePendingSince(): number | null {
-	return _livePendingSince;
-}
-
-// Clear all pending states (used when transitioning to actual running/stopped)
-export function clearPaperPending(): void {
-	_paperPendingStart = false;
-	_paperPendingStop = false;
-	_paperPendingSince = null;
-}
-
-export function clearLivePending(): void {
-	_livePendingStart = false;
-	_livePendingStop = false;
-	_livePendingSince = null;
 }

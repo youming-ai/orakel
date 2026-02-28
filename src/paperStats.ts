@@ -1,14 +1,11 @@
-import fs from "node:fs";
 import { getAndClearSignalMetadata, performanceTracker, signalQualityModel } from "./adaptiveState.ts";
 import { CONFIG, PAPER_INITIAL_BALANCE } from "./config.ts";
 import { createLogger } from "./logger.ts";
 
 const log = createLogger("paperStats");
 
-import { PERSIST_BACKEND, statements } from "./db.ts";
-import type { PaperStats, PaperTradeEntry, Side } from "./types.ts";
-
-const STATS_PATH = "./logs/paper-stats.json";
+import { statements } from "./db.ts";
+import type { PaperStats, PaperTradeEntry } from "./types.ts";
 
 interface DailyPnl {
 	date: string;
@@ -76,127 +73,81 @@ let state: PersistedPaperState = {
 // O(1) lookup mirror of state.dailyCountedTradeIds
 let dailyCountedTradeIdSet = new Set<string>();
 
-let loadedFromSqlite = false;
-
 export function initPaperStats(): void {
-	if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
-		try {
-			const row = statements.getPaperState().get() as PaperStateRow | null;
-			const tradeRows = statements.getAllPaperTrades().all() as PaperTradeRow[];
-			const trades = tradeRows.map((r) => ({
-				id: r.id,
-				marketId: r.market_id,
-				windowStartMs: r.window_start_ms,
-				side: r.side as "UP" | "DOWN",
-				price: r.price,
-				size: r.size,
-				priceToBeat: r.price_to_beat,
-				currentPriceAtEntry: r.current_price_at_entry,
-				timestamp: r.timestamp,
-				resolved: Boolean(r.resolved),
-				won: r.won === null ? null : Boolean(r.won),
-				pnl: r.pnl,
-				settlePrice: r.settle_price,
-			}));
+	try {
+		const row = statements.getPaperState().get() as PaperStateRow | null;
+		const tradeRows = statements.getAllPaperTrades().all() as PaperTradeRow[];
+		const trades = tradeRows.map((r) => ({
+			id: r.id,
+			marketId: r.market_id,
+			windowStartMs: r.window_start_ms,
+			side: r.side as "UP" | "DOWN",
+			price: r.price,
+			size: r.size,
+			priceToBeat: r.price_to_beat,
+			currentPriceAtEntry: r.current_price_at_entry,
+			timestamp: r.timestamp,
+			resolved: Boolean(r.resolved),
+			won: r.won === null ? null : Boolean(r.won),
+			pnl: r.pnl,
+			settlePrice: r.settle_price,
+		}));
 
-			if (row) {
-				// Normal path: paper_state row + trades both exist
-				state = {
-					trades,
-					wins: row.wins,
-					losses: row.losses,
-					totalPnl: row.total_pnl,
-					initialBalance: row.initial_balance,
-					currentBalance: row.current_balance,
-					maxDrawdown: row.max_drawdown,
-					dailyPnl: safeParseJson<DailyPnl[]>(row.daily_pnl, []),
-					dailyCountedTradeIds: safeParseJson<string[]>(row.daily_counted_trade_ids, []),
-					stoppedAt: row.stopped_at,
-					stopReason: row.stop_reason,
-				};
-				loadedFromSqlite = true;
-			} else if (trades.length > 0) {
-				// Recovery: paper_state missing but paper_trades exist — reconstruct
-				let wins = 0;
-				let losses = 0;
-				let totalPnl = 0;
-				let currentBalance = PAPER_INITIAL_BALANCE;
-				let maxDrawdown = 0;
+		if (row) {
+			state = {
+				trades,
+				wins: row.wins,
+				losses: row.losses,
+				totalPnl: row.total_pnl,
+				initialBalance: row.initial_balance,
+				currentBalance: row.current_balance,
+				maxDrawdown: row.max_drawdown,
+				dailyPnl: safeParseJson<DailyPnl[]>(row.daily_pnl, []),
+				dailyCountedTradeIds: safeParseJson<string[]>(row.daily_counted_trade_ids, []),
+				stoppedAt: row.stopped_at,
+				stopReason: row.stop_reason,
+			};
+		} else if (trades.length > 0) {
+			// Recovery: paper_state missing but paper_trades exist — reconstruct
+			let wins = 0;
+			let losses = 0;
+			let totalPnl = 0;
+			let currentBalance = PAPER_INITIAL_BALANCE;
+			let maxDrawdown = 0;
 
-				for (const t of trades) {
-					if (t.resolved) {
-						if (t.won) wins++;
-						else losses++;
-						const pnl = t.pnl ?? 0;
-						totalPnl += pnl;
-						currentBalance += pnl;
-					} else {
-						currentBalance -= t.size;
-					}
-					const drawdown = PAPER_INITIAL_BALANCE - currentBalance;
-					if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+			for (const t of trades) {
+				if (t.resolved) {
+					if (t.won) wins++;
+					else losses++;
+					const pnl = t.pnl ?? 0;
+					totalPnl += pnl;
+					currentBalance += pnl;
+				} else {
+					currentBalance -= t.size;
 				}
-
-				state = {
-					trades,
-					wins,
-					losses,
-					totalPnl,
-					initialBalance: PAPER_INITIAL_BALANCE,
-					currentBalance,
-					maxDrawdown,
-					dailyPnl: [],
-					dailyCountedTradeIds: [],
-					stoppedAt: null,
-					stopReason: null,
-				};
-
-				// Persist the reconstructed state so this recovery is one-time
-				savePaperState();
-				loadedFromSqlite = true;
+				const drawdown = PAPER_INITIAL_BALANCE - currentBalance;
+				if (drawdown > maxDrawdown) maxDrawdown = drawdown;
 			}
-		} catch (err) {
-			log.warn("Failed to load paper state from SQLite:", err);
-		}
-	}
 
-	// Fallback: load from JSON (csv mode, or first migration from JSON → SQLite)
-	if (!loadedFromSqlite) {
-		try {
-			if (fs.existsSync(STATS_PATH)) {
-				const raw = fs.readFileSync(STATS_PATH, "utf8");
-				const parsed: unknown = JSON.parse(raw);
-				if (parsed && typeof parsed === "object") {
-					const obj = parsed as Record<string, unknown>;
-					state = {
-						trades: Array.isArray(obj.trades) ? (obj.trades as PaperTradeEntry[]) : [],
-						wins: typeof obj.wins === "number" ? obj.wins : 0,
-						losses: typeof obj.losses === "number" ? obj.losses : 0,
-						totalPnl: typeof obj.totalPnl === "number" ? obj.totalPnl : 0,
-						initialBalance: typeof obj.initialBalance === "number" ? obj.initialBalance : PAPER_INITIAL_BALANCE,
-						currentBalance:
-							typeof obj.currentBalance === "number"
-								? obj.currentBalance
-								: PAPER_INITIAL_BALANCE + (typeof obj.totalPnl === "number" ? obj.totalPnl : 0),
-						maxDrawdown: typeof obj.maxDrawdown === "number" ? obj.maxDrawdown : 0,
-						dailyPnl: Array.isArray(obj.dailyPnl) ? (obj.dailyPnl as DailyPnl[]) : [],
-						dailyCountedTradeIds: Array.isArray(obj.dailyCountedTradeIds) ? (obj.dailyCountedTradeIds as string[]) : [],
-						stoppedAt: typeof obj.stoppedAt === "string" ? obj.stoppedAt : null,
-						stopReason: typeof obj.stopReason === "string" ? obj.stopReason : null,
-					};
+			state = {
+				trades,
+				wins,
+				losses,
+				totalPnl,
+				initialBalance: PAPER_INITIAL_BALANCE,
+				currentBalance,
+				maxDrawdown,
+				dailyPnl: [],
+				dailyCountedTradeIds: [],
+				stoppedAt: null,
+				stopReason: null,
+			};
 
-					// Migrate JSON data into SQLite on first run
-					if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
-						for (const trade of state.trades) {
-							upsertPaperTrade(trade);
-						}
-						savePaperState();
-					}
-				}
-			}
-		} catch (err) {
-			log.warn("Failed to load paper state from JSON:", err);
+			// Persist the reconstructed state so this recovery is one-time
+			savePaperState();
 		}
+	} catch (err) {
+		log.warn("Failed to load paper state from SQLite:", err);
 	}
 
 	// Initialize the Set mirror from persisted array
@@ -232,28 +183,19 @@ function savePaperState(): void {
 }
 
 function save(): void {
-	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
-		fs.mkdirSync("./logs", { recursive: true });
-		fs.writeFileSync(STATS_PATH, JSON.stringify(state, null, 2));
-	}
+	savePaperState();
 
-	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-		savePaperState();
-
-		statements.upsertDailyStats().run({
-			$date: new Date().toDateString(),
-			$mode: "paper",
-			$pnl: state.totalPnl,
-			$trades: state.trades.length,
-			$wins: state.wins,
-			$losses: state.losses,
-		});
-	}
+	statements.upsertDailyStats().run({
+		$date: new Date().toDateString(),
+		$mode: "paper",
+		$pnl: state.totalPnl,
+		$trades: state.trades.length,
+		$wins: state.wins,
+		$losses: state.losses,
+	});
 }
 
 function upsertPaperTrade(trade: PaperTradeEntry): void {
-	if (PERSIST_BACKEND !== "dual" && PERSIST_BACKEND !== "sqlite") return;
-
 	statements.insertPaperTrade().run({
 		$id: trade.id,
 		$marketId: trade.marketId,
@@ -297,16 +239,10 @@ export function resolvePaperTrades(windowStartMs: number, finalPrices: Map<strin
 		const finalPrice = finalPrices.get(trade.marketId);
 		if (finalPrice === undefined || trade.priceToBeat <= 0) continue;
 
+		// Polymarket rule: price === PTB -> DOWN wins
 		const upWon = finalPrice > trade.priceToBeat;
-		const downWon = finalPrice < trade.priceToBeat;
-		const outcome: Side | null = upWon ? "UP" : downWon ? "DOWN" : null;
-
-		if (outcome === null) {
-			// Tie: price === PTB → treat as DOWN wins (standard Polymarket rule)
-			trade.won = trade.side === "DOWN";
-		} else {
-			trade.won = trade.side === outcome;
-		}
+		const downWon = finalPrice <= trade.priceToBeat;
+		trade.won = trade.side === "UP" ? upWon : downWon;
 
 		trade.settlePrice = finalPrice;
 		trade.resolved = true;
@@ -367,6 +303,46 @@ export function resolvePaperTrades(windowStartMs: number, finalPrices: Map<strin
 		save();
 	}
 	return resolved;
+}
+
+/**
+ * Clean up paper trades that were never settled within the timeout window.
+ * Trades older than 2 windows (30 min for 15-min windows) are force-settled as losses.
+ * This prevents phantom trades from occupying balance indefinitely.
+ */
+export function cleanupStalePaperTrades(currentWindowStartMs: number, windowMinutes: number): number {
+	const timeoutMs = windowMinutes * 60_000 * 2; // 2 windows
+	let cleaned = 0;
+
+	for (const trade of state.trades) {
+		if (trade.resolved) continue;
+		const age = currentWindowStartMs - trade.windowStartMs;
+		if (age <= timeoutMs) continue;
+
+		// Force-settle as loss — data was unavailable for too long
+		log.warn(
+			`Stale paper trade timeout: ${trade.marketId} ${trade.side} from window ${trade.windowStartMs} (age: ${(age / 60_000).toFixed(0)}min)`,
+		);
+		trade.resolved = true;
+		trade.won = false;
+		trade.pnl = -(trade.size * trade.price);
+		trade.settlePrice = 0;
+		state.losses++;
+		state.currentBalance += trade.size + trade.pnl;
+		const drawdown = state.initialBalance - state.currentBalance;
+		if (drawdown > state.maxDrawdown) state.maxDrawdown = drawdown;
+		state.totalPnl += trade.pnl;
+		updateDailyPnl(trade.id, trade.pnl);
+		upsertPaperTrade(trade);
+		cleaned++;
+	}
+
+	if (cleaned > 0) {
+		checkAndTriggerStopLoss();
+		save();
+		log.warn(`Force-settled ${cleaned} stale paper trade(s) as losses`);
+	}
+	return cleaned;
 }
 
 export function getPaperStats(): PaperStats {

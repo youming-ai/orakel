@@ -1,56 +1,16 @@
+import { memo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { ConfidenceResult, MarketSnapshot } from "@/lib/api";
 import { fmtCents, fmtMinSec, fmtPrice } from "@/lib/format";
+import { confidenceBg, confidenceColor, MiniTrend, macdLabel, SignalLight } from "@/lib/marketCardHelpers";
 import { cn } from "@/lib/utils";
 
 interface MarketCardProps {
 	market: MarketSnapshot;
 }
 
-function macdLabel(macd: MarketSnapshot["macd"]): {
-	text: string;
-	color: string;
-} {
-	if (!macd) return { text: "---", color: "text-muted-foreground" };
-	if (macd.hist > 0 && (macd.histDelta ?? 0) > 0) return { text: "bullish", color: "text-emerald-400" };
-	if (macd.hist > 0) return { text: "green", color: "text-emerald-400/70" };
-	if (macd.hist < 0 && (macd.histDelta ?? 0) < 0) return { text: "bearish", color: "text-red-400" };
-	return { text: "red", color: "text-red-400/70" };
-}
-
-function confidenceColor(score: number): string {
-	if (score >= 0.7) return "text-emerald-400";
-	if (score >= 0.5) return "text-amber-400";
-	return "text-red-400";
-}
-
-function confidenceBg(score: number): string {
-	if (score >= 0.7) return "bg-emerald-500/15 border-emerald-500/30";
-	if (score >= 0.5) return "bg-amber-500/15 border-amber-500/30";
-	return "bg-red-500/15 border-red-500/30";
-}
-
-// Mini trend indicator showing HA colors
-function MiniTrend({ haColor, count }: { haColor: string | null; count: number }) {
-	const bars = [];
-	for (let i = 0; i < 5; i++) {
-		const isActive = i < count;
-		const isGreen = haColor === "green";
-		bars.push(
-			<div
-				key={i}
-				className={cn(
-					"w-1.5 h-3 rounded-sm transition-all",
-					isActive ? (isGreen ? "bg-emerald-400" : "bg-red-400") : "bg-muted/30",
-				)}
-			/>,
-		);
-	}
-	return <div className="flex gap-0.5 items-center">{bars}</div>;
-}
-
-// Confidence progress bar
+// Confidence progress bar (unique to compact MarketCard)
 function ConfidenceBar({ confidence }: { confidence?: ConfidenceResult }) {
 	if (!confidence) return null;
 
@@ -75,28 +35,7 @@ function ConfidenceBar({ confidence }: { confidence?: ConfidenceResult }) {
 	);
 }
 
-// Signal strength indicator (traffic light)
-function SignalLight({ action, edge }: { action: string; edge: number | null }) {
-	const edgeNum = edge ?? 0;
-	let color = "bg-muted/50";
-	let glow = "";
-
-	if (action === "ENTER") {
-		if (edgeNum >= 0.15) {
-			color = "bg-emerald-400";
-			glow = "shadow-emerald-400/50 shadow-md";
-		} else if (edgeNum >= 0.08) {
-			color = "bg-amber-400";
-			glow = "shadow-amber-400/50 shadow-md";
-		} else {
-			color = "bg-yellow-400";
-		}
-	}
-
-	return <div className={cn("w-2.5 h-2.5 rounded-full transition-all duration-300", color, glow)} />;
-}
-
-export function MarketCard({ market: m }: MarketCardProps) {
+export const MarketCard = memo(function MarketCard({ market: m }: MarketCardProps) {
 	if (!m.ok) {
 		return (
 			<Card className="border-red-500/30 bg-red-500/10">
@@ -117,7 +56,11 @@ export function MarketCard({ market: m }: MarketCardProps) {
 	const confidence = m.confidence;
 
 	return (
-		<Card role="region" aria-label={`${m.id} market card`} className={cn("relative overflow-hidden transition-all duration-200 hover:border-border/80 group", phaseBg)}>
+		<Card
+			role="region"
+			aria-label={`${m.id} market card`}
+			className={cn("relative overflow-hidden transition-all duration-200 hover:border-border/80 group", phaseBg)}
+		>
 			<CardHeader className="pb-3">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
@@ -166,68 +109,75 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					aria-label={`${m.id} technical indicators`}
 					className="space-y-3 p-3 bg-muted/20 border border-border/50 rounded-lg"
 				>
-						<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
-								<div className="space-y-1">
-									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">HA Trend</span>
-									<div className="flex items-center gap-1.5">
-										<MiniTrend haColor={m.haColor} count={m.haConsecutive} />
-									</div>
-								</div>
-								<div className="space-y-1">
-									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">RSI</span>
-									<span
-										className={cn(
-											"font-mono font-medium block",
-											(m.rsi ?? 50) > 70 ? "text-red-400" : (m.rsi ?? 50) < 30 ? "text-emerald-400" : "text-foreground",
-										)}
-									>
-										{m.rsi?.toFixed(1) ?? "-"}
-									</span>
-								</div>
-								<div className="space-y-1">
-									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">MACD</span>
-									<span className={cn("font-mono font-medium block", macdInfo.color)}>{macdInfo.text}</span>
-								</div>
-								<div className="space-y-1">
-									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">VWAP</span>
-									<span className={cn("font-mono font-medium block", (m.vwapSlope ?? 0) > 0 ? "text-emerald-400" : "text-red-400")}>
-										{(m.vwapSlope ?? 0) > 0 ? "Upward" : "Downward"}
-									</span>
-								</div>
+					<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
+						<div className="space-y-1">
+							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">HA Trend</span>
+							<div className="flex items-center gap-1.5">
+								<MiniTrend haColor={m.haColor} count={m.haConsecutive} />
 							</div>
-
-							<div className="h-px bg-border/50" />
-
-							<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
-								<div className="space-y-1">
-									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Vol (15m)</span>
-									<span className="font-mono font-medium block">
-										{m.volatility15m !== null ? `${(m.volatility15m * 100).toFixed(2)}%` : "-"}
-									</span>
-								</div>
-								<div className="space-y-1">
-									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Blend</span>
-									<span className="font-mono font-medium block truncate" title={m.blendSource ?? undefined}>{m.blendSource ?? "-"}</span>
-								</div>
-								<div className="space-y-1">
-									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Imbalance</span>
-									<span
-										className={cn(
-											"font-mono font-medium block",
-											m.orderbookImbalance !== null && m.orderbookImbalance > 0 ? "text-emerald-400" : "text-red-400",
-										)}
-									>
-										{m.orderbookImbalance !== null ? `${(m.orderbookImbalance * 100).toFixed(0)}%` : "-"}
-									</span>
-								</div>
-								<div className="space-y-1">
-									<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Arb Sum</span>
-									<span className={cn("font-mono font-medium block", m.arbitrage ? "text-amber-400" : "")}>
-										{m.rawSum !== null ? m.rawSum.toFixed(3) : "-"}
-									</span>
-								</div>
-							</div>
+						</div>
+						<div className="space-y-1">
+							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">RSI</span>
+							<span
+								className={cn(
+									"font-mono font-medium block",
+									(m.rsi ?? 50) > 70 ? "text-red-400" : (m.rsi ?? 50) < 30 ? "text-emerald-400" : "text-foreground",
+								)}
+							>
+								{m.rsi?.toFixed(1) ?? "-"}
+							</span>
+						</div>
+						<div className="space-y-1">
+							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">MACD</span>
+							<span className={cn("font-mono font-medium block", macdInfo.color)}>{macdInfo.text}</span>
+						</div>
+						<div className="space-y-1">
+							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">VWAP</span>
+							<span
+								className={cn(
+									"font-mono font-medium block",
+									(m.vwapSlope ?? 0) > 0 ? "text-emerald-400" : "text-red-400",
+								)}
+							>
+								{(m.vwapSlope ?? 0) > 0 ? "Upward" : "Downward"}
+							</span>
+						</div>
 					</div>
+
+					<div className="h-px bg-border/50" />
+
+					<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
+						<div className="space-y-1">
+							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Vol (15m)</span>
+							<span className="font-mono font-medium block">
+								{m.volatility15m !== null ? `${(m.volatility15m * 100).toFixed(2)}%` : "-"}
+							</span>
+						</div>
+						<div className="space-y-1">
+							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Blend</span>
+							<span className="font-mono font-medium block truncate" title={m.blendSource ?? undefined}>
+								{m.blendSource ?? "-"}
+							</span>
+						</div>
+						<div className="space-y-1">
+							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Imbalance</span>
+							<span
+								className={cn(
+									"font-mono font-medium block",
+									m.orderbookImbalance !== null && m.orderbookImbalance > 0 ? "text-emerald-400" : "text-red-400",
+								)}
+							>
+								{m.orderbookImbalance !== null ? `${(m.orderbookImbalance * 100).toFixed(0)}%` : "-"}
+							</span>
+						</div>
+						<div className="space-y-1">
+							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Arb Sum</span>
+							<span className={cn("font-mono font-medium block", m.arbitrage ? "text-amber-400" : "")}>
+								{m.rawSum !== null ? m.rawSum.toFixed(3) : "-"}
+							</span>
+						</div>
+					</div>
+				</div>
 
 				<div
 					className={cn(
@@ -254,4 +204,4 @@ export function MarketCard({ market: m }: MarketCardProps) {
 			</CardContent>
 		</Card>
 	);
-}
+});
