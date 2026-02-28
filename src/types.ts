@@ -126,6 +126,7 @@ export interface StrategyConfig {
 	maxVolatility15m?: number;
 	minVolatility15m?: number;
 	safeModeThreshold?: number;
+	minTimeLeftMin?: number;
 }
 
 export interface AppConfig {

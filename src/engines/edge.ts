@@ -365,6 +365,18 @@ export function decide(params: {
 	const phase: Phase = remainingMinutes > 10 ? "EARLY" : remainingMinutes > 5 ? "MID" : "LATE";
 	const effectiveRegime = enhancedRegime?.regime ?? regime;
 
+	// Hard floor: reject trades too close to window expiry (limit orders can't fill in time)
+	const minTimeLeft = strategy.minTimeLeftMin ?? 3;
+	if (remainingMinutes < minTimeLeft) {
+		return {
+			action: "NO_TRADE",
+			side: null,
+			phase,
+			regime,
+			reason: `time_left_${remainingMinutes.toFixed(1)}m_below_${minTimeLeft}m`,
+		};
+	}
+
 	// P0-1: Guard against NaN/Infinity in model probabilities
 	if ((modelUp !== null && !Number.isFinite(modelUp)) || (modelDown !== null && !Number.isFinite(modelDown))) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "model_prob_not_finite" };

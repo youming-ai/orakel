@@ -423,7 +423,7 @@ async function main(): Promise<void> {
 				const windowMin = CONFIG.candleWindowMinutes ?? 15;
 				const elapsed = windowMin - tl;
 				if (elapsed < 3) return false;
-				if (tl < 3) return false;
+				if (tl < (CONFIG.strategy.minTimeLeftMin ?? 3)) return false;
 				return true;
 			})
 			.filter((r) => {
