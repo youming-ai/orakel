@@ -11,7 +11,7 @@ import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
 import { onchainStatements } from "./db.ts";
 import { env } from "./env.ts";
-import { startHeartbeat, stopHeartbeat, unregisterOpenGtdOrder } from "./heartbeat.ts";
+import { setHeartbeatClient, startHeartbeat, stopHeartbeat, unregisterOpenGtdOrder } from "./heartbeat.ts";
 import { restorePendingLiveTrades } from "./liveSettlement.ts";
 import { createLogger } from "./logger.ts";
 import { getActiveMarkets } from "./markets.ts";
@@ -229,6 +229,8 @@ async function main(): Promise<void> {
 					const { ClobClient } = await import("@polymarket/clob-client");
 					const client = new ClobClient(CONFIG.clobBaseUrl, 137, wallet);
 					orderManager.setClient(client);
+					// Set heartbeat client before starting heartbeat
+					setHeartbeatClient(client);
 				}
 				const heartbeatOk = startHeartbeat();
 				if (heartbeatOk) {
