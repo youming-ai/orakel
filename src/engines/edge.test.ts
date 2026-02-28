@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Regime, StrategyConfig } from "../types.ts";
 import { CONFIG } from "../config.ts";
+import type { Regime, StrategyConfig } from "../types.ts";
 import { computeConfidence, computeEdge, decide } from "./edge.ts";
 
 function makeStrategy(overrides: Partial<StrategyConfig> = {}): StrategyConfig {

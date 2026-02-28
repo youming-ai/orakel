@@ -2,7 +2,6 @@ import { applyEvent, enrichPosition, initAccountState, resetAccountState, update
 import { adaptiveManager, signalQualityModel } from "./adaptiveState.ts";
 import { startApiServer } from "./api.ts";
 import { CONFIG } from "./config.ts";
-import { env } from "./env.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
 import { startBalancePolling } from "./data/polygonBalance.ts";
@@ -11,6 +10,7 @@ import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
 import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
 import { onchainStatements } from "./db.ts";
+import { env } from "./env.ts";
 import { startHeartbeat, stopHeartbeat, unregisterOpenGtdOrder } from "./heartbeat.ts";
 import { restorePendingLiveTrades } from "./liveSettlement.ts";
 import { createLogger } from "./logger.ts";
@@ -104,7 +104,6 @@ async function main(): Promise<void> {
 			log.error("Failed to auto-connect wallet from PRIVATE_KEY:", msg);
 		}
 	}
-
 
 	const orderManager = new OrderManager();
 

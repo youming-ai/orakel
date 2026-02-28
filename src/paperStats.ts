@@ -6,7 +6,7 @@ import { createLogger } from "./logger.ts";
 const log = createLogger("paperStats");
 
 import { PERSIST_BACKEND, statements } from "./db.ts";
-import type { PaperStats, PaperTradeEntry, Side } from "./types.ts";
+import type { PaperStats, PaperTradeEntry } from "./types.ts";
 
 const STATS_PATH = "./logs/paper-stats.json";
 

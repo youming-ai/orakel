@@ -22,6 +22,7 @@ export default defineConfig({
     },
     host: true,
     allowedHosts: true,
+    port: 9998,
   },
   build: {
     // Reduce peak memory usage for low-RAM environments (1GB VPS)
