@@ -62,6 +62,7 @@ const STRATEGY_DEFAULTS = {
 	minVolatility15m: 0.0005,
 	safeModeThreshold: 3,
 	minTimeLeftMin: 3,
+	minTradeQuality: 0.55,
 };
 
 const RiskConfigSchema = z
@@ -137,6 +138,7 @@ const StrategyConfigSchema = z
 		minVolatility15m: z.coerce.number().optional(),
 		safeModeThreshold: z.coerce.number().optional(),
 		minTimeLeftMin: z.coerce.number().optional(),
+		minTradeQuality: z.coerce.number().optional(),
 	})
 	.partial()
 	.transform((value) => ({
@@ -317,6 +319,7 @@ export const CONFIG: AppConfig = {
 		minVolatility15m: FILE_STRATEGY.minVolatility15m,
 		safeModeThreshold: FILE_STRATEGY.safeModeThreshold,
 		minTimeLeftMin: FILE_STRATEGY.minTimeLeftMin,
+		minTradeQuality: FILE_STRATEGY.minTradeQuality,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -364,6 +367,7 @@ export function reloadConfig(): AppConfig {
 		minVolatility15m: fileStrategy.minVolatility15m,
 		safeModeThreshold: fileStrategy.safeModeThreshold,
 		minTimeLeftMin: fileStrategy.minTimeLeftMin,
+		minTradeQuality: fileStrategy.minTradeQuality,
 	};
 
 	CONFIG.risk = buildRiskConfig(filePaperRisk, fileRisk);

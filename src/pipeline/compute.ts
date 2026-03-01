@@ -1,5 +1,4 @@
 import { signalQualityModel as defaultSignalQualityModel, getRegimeTransitionTracker } from "../adaptiveState.ts";
-import type { AdaptiveThresholdManager } from "../engines/adaptiveThresholds.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
 import { computeEnsemble } from "../engines/ensemble.ts";
 import {
@@ -16,7 +15,10 @@ import { computeMacd } from "../indicators/macd.ts";
 import { slopeLast } from "../indicators/rsi.ts";
 import { RollingVolatilityCalculator } from "../indicators/volatilityBuffer.ts";
 import { computeVwapSeries } from "../indicators/vwap.ts";
+import { createLogger } from "../logger.ts";
 import type { AppConfig, ComputeResult, MacdResult, RawMarketData, TradeDecision } from "../types.ts";
+
+const log = createLogger("compute");
 
 export function countVwapCrosses(closes: number[], vwapSeries: number[], lookback: number): number | null {
 	if (closes.length < lookback || vwapSeries.length < lookback) return null;
@@ -39,7 +41,6 @@ export function computeMarketDecision(
 	data: RawMarketData,
 	priceToBeat: number | null,
 	config: AppConfig,
-	adaptiveManager?: AdaptiveThresholdManager | null,
 	signalQualityModel?: SignalQualityModel | null,
 ): ComputeResult {
 	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin } = data;
@@ -197,6 +198,14 @@ export function computeMarketDecision(
 		});
 		finalUp = ensembleResult.finalUp;
 	}
+	const pipelineMode = ensembleResult !== null ? "V8-full" : "V8-degraded";
+	if (ensembleResult !== null) {
+		log.debug(
+			`[${data.market.id}] pipeline=${pipelineMode} ensemble.agreement=${ensembleResult.agreement.toFixed(2)} dominant=${ensembleResult.dominantModel}`,
+		);
+	} else {
+		log.debug(`[${data.market.id}] pipeline=${pipelineMode} using blend-only (finalUp=${finalUp.toFixed(3)})`);
+	}
 
 	const finalDown = 1 - finalUp;
 
@@ -213,29 +222,6 @@ export function computeMarketDecision(
 		orderbookSpreadUp: upBookSummary?.spread ?? null,
 		orderbookSpreadDown: downBookSummary?.spread ?? null,
 	});
-
-	const baseEdgeThreshold =
-		phase === "EARLY"
-			? Number(config.strategy.edgeThresholdEarly ?? 0.06)
-			: phase === "MID"
-				? Number(config.strategy.edgeThresholdMid ?? 0.08)
-				: Number(config.strategy.edgeThresholdLate ?? 0.1);
-	const baseMinProb =
-		phase === "EARLY"
-			? Number(config.strategy.minProbEarly ?? 0.52)
-			: phase === "MID"
-				? Number(config.strategy.minProbMid ?? 0.55)
-				: Number(config.strategy.minProbLate ?? 0.6);
-	const adaptiveThresholds = adaptiveManager
-		? adaptiveManager.getAdjustedThresholds({
-				marketId: market.id,
-				baseEdgeThreshold,
-				baseMinProb,
-				baseMinConfidence: config.strategy.minConfidence ?? 0.5,
-				phase,
-				regime: regimeInfo.regime,
-			})
-		: null;
 
 	const rec = edge.vigTooHigh
 		? ({
@@ -254,8 +240,6 @@ export function computeMarketDecision(
 				modelUp: finalUp,
 				modelDown: finalDown,
 				regime: regimeInfo.regime,
-				enhancedRegime: enhancedRegimeInfo,
-				modelSource: blended.source,
 				strategy: config.strategy,
 				marketId: market.id,
 				volatility15m,
@@ -264,8 +248,6 @@ export function computeMarketDecision(
 				rsi: rsiNow,
 				macdHist: macd?.hist ?? null,
 				haColor: consec.color,
-				minConfidence: config.strategy.minConfidence ?? 0.5,
-				adaptiveThresholds,
 			});
 
 	const pLong = Number.isFinite(finalUp) ? (finalUp * 100).toFixed(0) : "-";

@@ -207,6 +207,7 @@ export interface StrategyConfig {
 		TREND_OPPOSED: number;
 	};
 	minConfidence?: number;
+	minTradeQuality?: number;
 }
 
 export interface RiskConfig {

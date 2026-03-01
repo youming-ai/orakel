@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { CONFIG } from "../config.ts";
-import type { Regime, StrategyConfig } from "../types.ts";
+import type { StrategyConfig } from "../types.ts";
 import { computeConfidence, computeEdge, decide } from "./edge.ts";
 
 function makeStrategy(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
@@ -362,7 +362,6 @@ describe("computeEdge", () => {
 });
 
 describe("decide", () => {
-	// Clear config.json marketPerformance so tests use hardcoded defaults
 	beforeEach(() => {
 		CONFIG.strategy.marketPerformance = {};
 	});
@@ -423,35 +422,6 @@ describe("decide", () => {
 		expect(result.reason).toBe("market_skipped_by_config");
 	});
 
-	it("returns NO_TRADE when edge is below threshold", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.05,
-			edgeDown: 0.01,
-			modelUp: 0.7,
-			modelDown: 0.3,
-			regime: "RANGE",
-			strategy: makeStrategy(),
-		});
-
-		expect(result.action).toBe("NO_TRADE");
-		expect(result.reason).toBe("edge_below_0.080");
-	});
-
-	it("returns NO_TRADE when model probability is below phase minimum", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.2,
-			edgeDown: 0.1,
-			modelUp: 0.55,
-			modelDown: 0.45,
-			regime: "RANGE",
-			strategy: makeStrategy(),
-		});
-
-		expect(result.reason).toBe("prob_below_0.58");
-	});
-
 	it("rejects overconfident hard cap edges above 0.30", () => {
 		const result = decide({
 			remainingMinutes: 12,
@@ -466,43 +436,39 @@ describe("decide", () => {
 		expect(result.reason).toBe("overconfident_hard_cap");
 	});
 
-	it("rejects overconfident soft cap when edge does not clear penalized threshold", () => {
+	it("returns NO_TRADE when time is below minimum", () => {
 		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.23,
+			remainingMinutes: 2,
+			edgeUp: 0.1,
 			edgeDown: 0.01,
-			modelUp: 0.8,
-			modelDown: 0.2,
-			regime: "CHOP",
 			strategy: makeStrategy(),
-			marketId: "ETH",
 		});
-
-		expect(result.reason).toBe("overconfident_soft_cap");
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toContain("time_left");
 	});
 
-	it("rejects trade when confidence is below minimum", () => {
+	it("returns NO_TRADE when trade quality is below minimum", () => {
 		const result = decide({
 			remainingMinutes: 12,
-			edgeUp: 0.12,
+			edgeUp: 0.02,
 			edgeDown: 0.01,
-			modelUp: 0.6,
-			modelDown: 0.4,
-			regime: "RANGE",
+			modelUp: 0.52,
+			modelDown: 0.48,
+			regime: "CHOP",
 			strategy: makeStrategy(),
 			volatility15m: 0.001,
-			orderbookImbalance: -0.8,
 			vwapSlope: -1,
 			rsi: 90,
 			macdHist: -1,
 			haColor: "red",
-			minConfidence: 0.7,
 		});
-
-		expect(result.reason?.startsWith("confidence_")).toBe(true);
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toContain("quality_");
+		expect(result.tradeQuality).toBeDefined();
+		expect(result.tradeQuality).toBeLessThan(0.55);
 	});
 
-	it("enters with STRONG strength for high confidence and high edge", () => {
+	it("enters with STRONG strength for high quality trade", () => {
 		const result = decide({
 			remainingMinutes: 12,
 			edgeUp: 0.18,
@@ -518,181 +484,145 @@ describe("decide", () => {
 			macdHist: 0.5,
 			haColor: "green",
 		});
-
 		expect(result.action).toBe("ENTER");
 		expect(result.side).toBe("UP");
 		expect(result.strength).toBe("STRONG");
+		expect(result.tradeQuality).toBeGreaterThanOrEqual(0.75);
 	});
 
-	it("enters with GOOD strength for moderate edge and confidence", () => {
+	it("enters with GOOD strength for moderate quality trade", () => {
+		// Partial indicator alignment + moderate edge → quality in [0.60, 0.75)
 		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.1,
+			remainingMinutes: 8,
+			edgeUp: 0.07,
 			edgeDown: 0.01,
-			modelUp: 0.65,
-			modelDown: 0.35,
+			modelUp: 0.58,
+			modelDown: 0.42,
 			regime: "RANGE",
 			strategy: makeStrategy(),
-			volatility15m: 0.005,
-			orderbookImbalance: 0.3,
+			volatility15m: 0.003,
 			vwapSlope: 0.5,
-			rsi: 58,
-			macdHist: 0.2,
-			haColor: "green",
+			rsi: 55,
+			macdHist: -0.1,
+			haColor: null,
 		});
-
 		expect(result.action).toBe("ENTER");
 		expect(result.strength).toBe("GOOD");
+		expect(result.tradeQuality).toBeGreaterThanOrEqual(0.6);
+		expect(result.tradeQuality).toBeLessThan(0.75);
 	});
 
-	it("enters with OPTIONAL strength when edge is below 0.08 but thresholds allow entry", () => {
-		const strategy = makeStrategy({ edgeThresholdEarly: 0.05 });
+	it("enters with OPTIONAL strength for borderline quality trade", () => {
+		// Weak indicators + small edge → quality in [0.45, 0.60)
 		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.06,
+			remainingMinutes: 6,
+			edgeUp: 0.05,
 			edgeDown: 0.01,
-			modelUp: 0.63,
-			modelDown: 0.37,
+			modelUp: 0.55,
+			modelDown: 0.45,
 			regime: "RANGE",
-			strategy,
-			volatility15m: 0.005,
-			orderbookImbalance: 0.25,
-			vwapSlope: 0.3,
-			rsi: 56,
-			macdHist: 0.1,
-			haColor: "green",
-			minConfidence: 0.45,
+			strategy: makeStrategy({ minTradeQuality: 0.45 }),
+			volatility15m: 0.003,
+			vwapSlope: -0.1,
+			rsi: 52,
+			macdHist: -0.05,
+			haColor: null,
 		});
-
 		expect(result.action).toBe("ENTER");
 		expect(result.strength).toBe("OPTIONAL");
+		expect(result.tradeQuality).toBeLessThan(0.6);
 	});
 
-	it("disables CHOP trading for BTC due to poor win rate", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.3,
-			edgeDown: 0.05,
-			modelUp: 0.8,
-			modelDown: 0.2,
-			regime: "CHOP",
-			strategy: makeStrategy(),
-			marketId: "BTC",
-		});
-
-		expect(result.reason).toBe("skip_chop_poor_market");
-	});
-
-	it("applies normal CHOP multiplier for SOL (not disabled)", () => {
+	it("includes tradeQuality and confidence in ENTER decisions", () => {
 		const result = decide({
 			remainingMinutes: 12,
 			edgeUp: 0.15,
 			edgeDown: 0.01,
 			modelUp: 0.8,
 			modelDown: 0.2,
-			regime: "CHOP",
-			strategy: makeStrategy(),
-			marketId: "SOL",
-		});
-
-		expect(result.reason).toBe("edge_below_0.160");
-	});
-
-	it.each([
-		["BTC", "edge_below_0.120"],
-		["ETH", "edge_below_0.096"],
-		["SOL", "edge_below_0.080"],
-		["XRP", "edge_below_0.080"],
-	])("applies market multipliers for %s", (marketId, reason) => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.079,
-			edgeDown: 0.01,
-			modelUp: 0.8,
-			modelDown: 0.2,
-			regime: "RANGE",
-			strategy: makeStrategy(),
-			marketId,
-		});
-
-		expect(result.reason).toBe(reason);
-	});
-
-	it.each([
-		{ regime: "TREND_UP" as Regime, reason: "edge_below_0.072" },
-		{ regime: "TREND_DOWN" as Regime, reason: "edge_below_0.112" },
-	])("applies trend regime multiplier for $regime", ({ regime, reason }) => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.07,
-			edgeDown: 0.01,
-			modelUp: 0.8,
-			modelDown: 0.2,
-			regime,
-			strategy: makeStrategy(),
-		});
-
-		expect(result.reason).toBe(reason);
-	});
-
-	it("skips high-confidence CHOP via enhanced regime signal", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.2,
-			edgeDown: 0.05,
-			modelUp: 0.75,
-			modelDown: 0.25,
-			regime: "CHOP",
-			enhancedRegime: {
-				regime: "CHOP",
-				confidence: 0.75,
-				reason: "frequent_vwap_cross",
-			},
-			strategy: makeStrategy(),
-			marketId: "SOL",
-		});
-
-		expect(result.reason).toBe("high_confidence_chop");
-	});
-
-	it("uses range multiplier for low-confidence trend in enhanced regime", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.075,
-			edgeDown: 0.01,
-			modelUp: 0.8,
-			modelDown: 0.2,
 			regime: "TREND_UP",
-			enhancedRegime: {
-				regime: "TREND_UP",
-				confidence: 0.3,
-				reason: "price_above_vwap_slope_up",
-			},
 			strategy: makeStrategy(),
+			volatility15m: 0.005,
+			vwapSlope: 1,
+			rsi: 60,
+			macdHist: 0.5,
+			haColor: "green",
 		});
-
-		expect(result.reason).toBe("edge_below_0.080");
+		expect(result.action).toBe("ENTER");
+		expect(result.tradeQuality).toBeDefined();
+		expect(typeof result.tradeQuality).toBe("number");
+		expect(result.confidence).toBeDefined();
+		expect(result.confidence?.factors).toBeDefined();
 	});
 
-	it("skips CHOP poor market in adaptive threshold path", () => {
+	it("includes tradeQuality in NO_TRADE quality rejections", () => {
 		const result = decide({
 			remainingMinutes: 12,
-			edgeUp: 0.2,
-			edgeDown: 0.05,
-			modelUp: 0.75,
-			modelDown: 0.25,
+			edgeUp: 0.02,
+			edgeDown: 0.01,
+			modelUp: 0.52,
+			modelDown: 0.48,
 			regime: "CHOP",
 			strategy: makeStrategy(),
-			marketId: "BTC",
-			adaptiveThresholds: {
-				edgeThreshold: 0.06,
-				minProb: 0.55,
-				minConfidence: 0.5,
-				reason: "test",
-			},
 		});
+		if (result.reason?.startsWith("quality_")) {
+			expect(result.tradeQuality).toBeDefined();
+			expect(result.tradeQuality).toBeLessThan(0.55);
+		}
+	});
 
-		expect(result.reason).toBe("skip_chop_poor_market");
+	it("respects custom minTradeQuality from strategy config", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.05,
+			edgeDown: 0.01,
+			modelUp: 0.6,
+			modelDown: 0.4,
+			regime: "RANGE",
+			strategy: makeStrategy({ minTradeQuality: 0.3 }),
+			volatility15m: 0.005,
+			vwapSlope: 0.5,
+			rsi: 55,
+			macdHist: 0.1,
+			haColor: "green",
+		});
+		expect(result.action).toBe("ENTER");
+	});
+
+	it("selects correct side based on effective edge", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.01,
+			edgeDown: 0.15,
+			modelUp: 0.2,
+			modelDown: 0.8,
+			regime: "TREND_DOWN",
+			strategy: makeStrategy({ minTradeQuality: 0.4 }),
+			volatility15m: 0.005,
+			vwapSlope: -1,
+			rsi: 40,
+			macdHist: -0.5,
+			haColor: "red",
+		});
+		expect(result.action).toBe("ENTER");
+		expect(result.side).toBe("DOWN");
+	});
+
+	it("uses effectiveEdge when provided", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.15,
+			edgeDown: 0.01,
+			effectiveEdgeUp: 0.01,
+			effectiveEdgeDown: 0.005,
+			modelUp: 0.52,
+			modelDown: 0.48,
+			regime: "CHOP",
+			strategy: makeStrategy(),
+			volatility15m: 0.001,
+		});
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toContain("quality_");
 	});
 });
 

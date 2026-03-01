@@ -2,7 +2,6 @@ import { CONFIG } from "../config.ts";
 import type {
 	ConfidenceResult,
 	EdgeResult,
-	EnhancedRegimeResult,
 	MarketPerformance,
 	Phase,
 	Regime,
@@ -12,18 +11,13 @@ import type {
 	TradeDecision,
 } from "../types.ts";
 import { clamp, estimatePolymarketFee } from "../utils.ts";
-import type { AdjustedThresholds } from "./adaptiveThresholds.ts";
 import { detectArbitrage } from "./arbitrage.ts";
-import { shouldTradeBasedOnRegimeConfidence } from "./regime.ts";
-
-/** Sentinel multiplier: any regime multiplier >= this value means "skip trade entirely" */
-const REGIME_DISABLED = 999;
 
 // Market-specific performance from backtest (can be overridden in config.json)
 // edgeMultiplier > 1.0 = RAISE threshold (harder to trade) for poor performers
 // Use strategy.skipMarkets in config.json to skip markets entirely
 const DEFAULT_MARKET_PERFORMANCE: Record<string, MarketPerformance> = {
-	BTC: { winRate: 0.421, edgeMultiplier: 1.5, minProb: 0.58, minConfidence: 0.6, skipChop: true },
+	BTC: { winRate: 0.421, edgeMultiplier: 1.5, skipChop: true },
 	ETH: { winRate: 0.469, edgeMultiplier: 1.2, skipChop: true },
 	SOL: { winRate: 0.51, edgeMultiplier: 1.0 }, // Good performer → standard
 	XRP: { winRate: 0.542, edgeMultiplier: 1.0 }, // Best performer → standard
@@ -126,10 +120,10 @@ export function computeConfidence(params: {
 
 	// Weighted average
 	const weights = CONFIG.strategy.confidenceWeights ?? {
-		indicatorAlignment: 0.25,
-		volatilityScore: 0.15,
-		orderbookScore: 0.15,
-		timingScore: 0.25,
+		indicatorAlignment: 0.2,
+		volatilityScore: 0.2,
+		orderbookScore: 0.2,
+		timingScore: 0.2,
 		regimeScore: 0.2,
 	};
 
@@ -156,33 +150,6 @@ export function computeConfidence(params: {
 		},
 		level,
 	};
-}
-
-function regimeMultiplier(
-	regime: Regime | null | undefined,
-	side: Side,
-	multipliers: StrategyConfig["regimeMultipliers"] | null | undefined,
-	marketId: string = "",
-): number {
-	// Skip CHOP completely for underperforming markets
-	if (regime === "CHOP") {
-		const marketPerf = getMarketPerformance(marketId);
-		if (marketPerf.skipChop && marketPerf.winRate < 0.45) {
-			return REGIME_DISABLED;
-		}
-		return Number(multipliers?.CHOP ?? 1.3);
-	}
-
-	if (regime === "RANGE") return Number(multipliers?.RANGE ?? 1.0);
-
-	const trendUp = regime === "TREND_UP";
-	const trendDown = regime === "TREND_DOWN";
-	if (trendUp || trendDown) {
-		const aligned = (trendUp && side === "UP") || (trendDown && side === "DOWN");
-		return aligned ? Number(multipliers?.TREND_ALIGNED ?? 0.8) : Number(multipliers?.TREND_OPPOSED ?? 1.2);
-	}
-
-	return 1;
 }
 
 // ============ Enhanced Edge Computation with Orderbook ============
@@ -326,8 +293,6 @@ export function decide(params: {
 	modelUp?: number | null;
 	modelDown?: number | null;
 	regime?: Regime | null;
-	enhancedRegime?: EnhancedRegimeResult | null;
-	modelSource?: string;
 	strategy: StrategyConfig;
 	marketId?: string;
 	// Confidence params
@@ -337,8 +302,6 @@ export function decide(params: {
 	rsi?: number | null;
 	macdHist?: number | null;
 	haColor?: string | null;
-	minConfidence?: number;
-	adaptiveThresholds?: AdjustedThresholds | null;
 }): TradeDecision {
 	const {
 		remainingMinutes,
@@ -349,7 +312,6 @@ export function decide(params: {
 		modelUp = null,
 		modelDown = null,
 		regime = null,
-		enhancedRegime = null,
 		strategy,
 		marketId = "",
 		volatility15m = null,
@@ -358,14 +320,10 @@ export function decide(params: {
 		rsi = null,
 		macdHist = null,
 		haColor = null,
-		minConfidence = 0.5,
-		adaptiveThresholds = null,
 	} = params;
 
 	const phase: Phase = remainingMinutes > 10 ? "EARLY" : remainingMinutes > 5 ? "MID" : "LATE";
-	const effectiveRegime = enhancedRegime?.regime ?? regime;
 
-	// Hard floor: reject trades too close to window expiry (limit orders can't fill in time)
 	const minTimeLeft = strategy.minTimeLeftMin ?? 3;
 	if (remainingMinutes < minTimeLeft) {
 		return {
@@ -392,12 +350,7 @@ export function decide(params: {
 	// Check if market should be skipped entirely (via config)
 	const skipMarkets = strategy?.skipMarkets ?? [];
 	if (skipMarkets.includes(marketId)) {
-		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "market_skipped_by_config" };
-	}
-
-	const enhancedRegimeDecision = enhancedRegime === null ? null : shouldTradeBasedOnRegimeConfidence(enhancedRegime);
-	if (enhancedRegimeDecision && !enhancedRegimeDecision.shouldTrade) {
-		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: enhancedRegimeDecision.reason };
+		return { action: "NO_TRADE", side: null, phase, regime, reason: "market_skipped_by_config" };
 	}
 
 	// Use effective edge if available
@@ -406,101 +359,16 @@ export function decide(params: {
 
 	const bestSide: Side = effUp > effDown ? "UP" : "DOWN";
 	const bestEdge = bestSide === "UP" ? effUp : effDown;
-	const bestModel = bestSide === "UP" ? modelUp : modelDown;
 
-	// --- Threshold computation ---
-	// When adaptive thresholds are provided, they already incorporate phase/regime/trend.
-	// We still apply the market-specific multiplier and REGIME_DISABLED sentinel.
-	let threshold: number;
-	let effectiveMinProb: number;
-	let effectiveMinConfidence: number;
-
-	if (adaptiveThresholds) {
-		// Adaptive path: threshold already includes phase/regime/trend adjustments
-		const marketPerf = getMarketPerformance(marketId);
-		const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
-		threshold = adaptiveThresholds.edgeThreshold * marketMult;
-		effectiveMinProb = Math.max(adaptiveThresholds.minProb, marketPerf.minProb ?? adaptiveThresholds.minProb);
-		effectiveMinConfidence = Math.max(
-			adaptiveThresholds.minConfidence,
-			marketPerf.minConfidence ?? adaptiveThresholds.minConfidence,
-		);
-
-		// Check REGIME_DISABLED sentinel (same as static path)
-		const regimeMult = enhancedRegimeDecision?.useRangeMultiplier
-			? Number(strategy?.regimeMultipliers?.RANGE ?? 1)
-			: regimeMultiplier(effectiveRegime, bestSide, strategy?.regimeMultipliers, marketId);
-		if (regimeMult >= REGIME_DISABLED) {
-			return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "skip_chop_poor_market" };
-		}
-	} else {
-		// Static path (original behavior)
-		const baseThreshold =
-			phase === "EARLY"
-				? Number(strategy?.edgeThresholdEarly ?? 0.06)
-				: phase === "MID"
-					? Number(strategy?.edgeThresholdMid ?? 0.08)
-					: Number(strategy?.edgeThresholdLate ?? 0.1);
-
-		const marketPerf = getMarketPerformance(marketId);
-		const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
-		const adjustedThreshold = baseThreshold * marketMult;
-
-		const multiplier = enhancedRegimeDecision?.useRangeMultiplier
-			? Number(strategy?.regimeMultipliers?.RANGE ?? 1)
-			: regimeMultiplier(effectiveRegime, bestSide, strategy?.regimeMultipliers, marketId);
-		threshold = adjustedThreshold * multiplier;
-
-		// Skip regime entirely when multiplier is the disabled sentinel
-		if (multiplier >= REGIME_DISABLED) {
-			return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "skip_chop_poor_market" };
-		}
-
-		const staticMinProb =
-			phase === "EARLY"
-				? Number(strategy?.minProbEarly ?? 0.52)
-				: phase === "MID"
-					? Number(strategy?.minProbMid ?? 0.55)
-					: Number(strategy?.minProbLate ?? 0.6);
-
-		effectiveMinProb = Math.max(staticMinProb, marketPerf.minProb ?? staticMinProb);
-		effectiveMinConfidence = Math.max(minConfidence, marketPerf.minConfidence ?? minConfidence);
-	}
-
-	// Clamp threshold: prevent impossibly high thresholds from compounding multipliers
 	const hardCapEdge = CONFIG.strategy.hardCapEdge ?? 0.3;
-	threshold = Math.min(threshold, hardCapEdge);
-
-	if (bestEdge < threshold) {
-		return {
-			action: "NO_TRADE",
-			side: null,
-			phase,
-			regime: effectiveRegime,
-			reason: `edge_below_${threshold.toFixed(3)}`,
-		};
+	if (Math.abs(bestEdge) > hardCapEdge) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
 	}
 
-	if (bestModel !== null && bestModel < effectiveMinProb) {
-		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: `prob_below_${effectiveMinProb}` };
-	}
-
-	// Overconfidence checks
-	if (Math.abs(bestEdge) > (CONFIG.strategy.hardCapEdge ?? 0.3)) {
-		return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "overconfident_hard_cap" };
-	}
-	if (Math.abs(bestEdge) > (CONFIG.strategy.softCapEdge ?? 0.22)) {
-		const penalizedThreshold = Math.min(threshold * 1.4, hardCapEdge);
-		if (bestEdge < penalizedThreshold) {
-			return { action: "NO_TRADE", side: null, phase, regime: effectiveRegime, reason: "overconfident_soft_cap" };
-		}
-	}
-
-	// Compute confidence
 	const confidence = computeConfidence({
 		modelUp: modelUp ?? 0.5,
 		modelDown: modelDown ?? 0.5,
-		regime: effectiveRegime,
+		regime,
 		volatility15m,
 		orderbookImbalance,
 		vwapSlope,
@@ -510,22 +378,32 @@ export function decide(params: {
 		side: bestSide,
 	});
 
-	if (confidence.score < effectiveMinConfidence) {
+	const edgeScore = 1 / (1 + Math.exp(-25 * (bestEdge - 0.04)));
+	const timeScore = 1 / (1 + Math.exp(-0.8 * (remainingMinutes - 7)));
+
+	const { indicatorAlignment, regimeScore, volatilityScore } = confidence.factors;
+
+	const tradeQuality =
+		edgeScore * 0.4 + indicatorAlignment * 0.2 + regimeScore * 0.15 + timeScore * 0.15 + volatilityScore * 0.1;
+
+	const minTradeQuality = strategy.minTradeQuality ?? 0.55;
+
+	if (tradeQuality < minTradeQuality) {
 		return {
 			action: "NO_TRADE",
 			side: null,
 			phase,
-			regime: effectiveRegime,
-			reason: `confidence_${confidence.score.toFixed(2)}_below_${effectiveMinConfidence}`,
+			regime,
+			reason: `quality_${tradeQuality.toFixed(3)}_below_${minTradeQuality}`,
 			confidence,
+			tradeQuality,
 		};
 	}
 
-	// Adjust strength based on confidence
 	let strength: Strength;
-	if (confidence.score >= 0.75 && bestEdge >= 0.15) {
+	if (tradeQuality >= 0.75) {
 		strength = "STRONG";
-	} else if (confidence.score >= 0.5 && bestEdge >= 0.08) {
+	} else if (tradeQuality >= 0.6) {
 		strength = "GOOD";
 	} else {
 		strength = "OPTIONAL";
@@ -535,9 +413,10 @@ export function decide(params: {
 		action: "ENTER",
 		side: bestSide,
 		phase,
-		regime: effectiveRegime,
+		regime,
 		strength,
 		edge: bestEdge,
 		confidence,
+		tradeQuality,
 	};
 }

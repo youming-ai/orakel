@@ -11,7 +11,6 @@
  */
 
 import { CONFIG } from "./config.ts";
-import { getMarketPerformance } from "./engines/edge.ts";
 
 // Additional filtering rules learned from backtest
 export const BACKTEST_INSIGHTS = {
@@ -25,25 +24,12 @@ export const BACKTEST_INSIGHTS = {
 // NOTE: calculateAdjustedThreshold was removed -- market-specific threshold
 // adjustments are now consolidated in edge.ts (MARKET_PERFORMANCE.edgeMultiplier).
 
-// Filter function to check if trade should be taken
+// Deprecated: shouldTakeTrade is now a no-op.
+// All gating checks are consolidated in decide() in src/engines/edge.ts.
 export function shouldTakeTrade(params: { market: string; regime: string | null; volatility: number }): {
 	shouldTrade: boolean;
 	reason?: string;
 } {
-	const { market, regime, volatility } = params;
-	const marketPerf = getMarketPerformance(market);
-	// Skip CHOP entirely for markets with skipChop enabled
-	if (regime === "CHOP" && (marketPerf.skipChop ?? false)) {
-		return { shouldTrade: false, reason: "skip_chop_regime" };
-	}
-	// Volatility filters
-	const maxVol = CONFIG.strategy.maxVolatility15m ?? 0.004;
-	const minVol = CONFIG.strategy.minVolatility15m ?? 0.0005;
-	if (volatility > maxVol) {
-		return { shouldTrade: false, reason: "volatility_too_high" };
-	}
-	if (volatility < minVol) {
-		return { shouldTrade: false, reason: "volatility_too_low" };
-	}
+	void params;
 	return { shouldTrade: true };
 }

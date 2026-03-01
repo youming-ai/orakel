@@ -92,7 +92,13 @@ interface SignalStrengthProps {
 }
 
 export function SignalStrength({ markets }: SignalStrengthProps) {
-	const activeMarkets = markets.filter((m) => m.ok);
+	const order = ["BTC", "ETH", "SOL", "XRP"];
+	const sorted = [...markets].sort((a, b) => {
+		const ai = order.indexOf(a.id);
+		const bi = order.indexOf(b.id);
+		return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+	});
+	const activeMarkets = sorted.filter((m) => m.ok);
 
 	return (
 		<Card>
@@ -113,7 +119,7 @@ export function SignalStrength({ markets }: SignalStrengthProps) {
 					</div>
 				) : (
 					<div className="grid grid-cols-2 xl:grid-cols-4 gap-2 divide-x divide-border/30">
-						{markets.map((m) => (
+					{sorted.map((m) => (
 							<MarketRadar key={m.id} market={m} />
 						))}
 					</div>

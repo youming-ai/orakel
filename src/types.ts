@@ -127,6 +127,7 @@ export interface StrategyConfig {
 	minVolatility15m?: number;
 	safeModeThreshold?: number;
 	minTimeLeftMin?: number;
+	minTradeQuality?: number;
 }
 
 export interface AppConfig {
@@ -210,6 +211,7 @@ export interface TradeDecision {
 	edge?: number;
 	reason?: string;
 	confidence?: ConfidenceResult;
+	tradeQuality?: number;
 }
 
 export interface RegimeResult {

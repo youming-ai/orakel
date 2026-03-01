@@ -1,5 +1,5 @@
 import { applyEvent, enrichPosition, initAccountState, resetAccountState, updateFromSnapshot } from "./accountState.ts";
-import { adaptiveManager, signalQualityModel } from "./adaptiveState.ts";
+import { signalQualityModel } from "./adaptiveState.ts";
 import { startApiServer } from "./api.ts";
 import { CONFIG } from "./config.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
@@ -370,7 +370,6 @@ async function main(): Promise<void> {
 						timing,
 						streams,
 						state,
-						adaptiveManager,
 						signalQualityModel,
 					});
 				} catch (err: unknown) {
