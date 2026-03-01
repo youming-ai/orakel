@@ -343,14 +343,14 @@ export function decide(params: {
 	const bestSide: Side = effUp > effDown ? "UP" : "DOWN";
 	const bestEdge = bestSide === "UP" ? effUp : effDown;
 
-	const hardCapEdge = CONFIG.strategy.hardCapEdge ?? 0.3;
-	if (Math.abs(bestEdge) > hardCapEdge) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
-	}
-
 	// P1: Positive edge gate — composite score must not bypass fundamental edge requirement
 	if (bestEdge <= 0) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "non_positive_edge" };
+	}
+
+	const hardCapEdge = CONFIG.strategy.hardCapEdge ?? 0.3;
+	if (Math.abs(bestEdge) > hardCapEdge) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
 	}
 
 	// P1: Volatility hard limits — extreme volatility is too risky regardless of quality
