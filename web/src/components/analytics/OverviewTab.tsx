@@ -54,10 +54,11 @@ export function OverviewTab({
 	markets,
 }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {
+		const order = ["BTC", "ETH", "SOL", "XRP"];
 		return [...markets].sort((a, b) => {
-			if (a.action === "ENTER" && b.action !== "ENTER") return -1;
-			if (b.action === "ENTER" && a.action !== "ENTER") return 1;
-			return 0;
+			const ai = order.indexOf(a.id);
+			const bi = order.indexOf(b.id);
+			return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
 		});
 	}, [markets]);
 

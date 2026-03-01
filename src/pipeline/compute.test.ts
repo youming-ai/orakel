@@ -145,7 +145,7 @@ describe("computeMarketDecision", () => {
 		const config = makeConfig();
 		const data = makeRawMarketData();
 
-		const result = computeMarketDecision(data, 101.2, config, null, null);
+		const result = computeMarketDecision(data, 101.2, config);
 
 		expect(result).toHaveProperty("rec");
 		expect(result).toHaveProperty("consec");
@@ -175,7 +175,7 @@ describe("computeMarketDecision", () => {
 		const config = makeConfig();
 		const data = makeRawMarketData();
 
-		const result = computeMarketDecision(data, null, config, null, null);
+		const result = computeMarketDecision(data, null, config);
 
 		expect(result.volImplied).toBeNull();
 		expect(result.blended.source).toBe("ta_only");
@@ -189,7 +189,7 @@ describe("computeMarketDecision", () => {
 		const config = makeConfig();
 		const data = makeRawMarketData({ timeLeftMin });
 
-		const result = computeMarketDecision(data, 101.2, config, null, null);
+		const result = computeMarketDecision(data, 101.2, config);
 
 		expect(result.rec.phase).toBe(expectedPhase);
 	});
