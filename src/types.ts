@@ -128,6 +128,7 @@ export interface StrategyConfig {
 	safeModeThreshold?: number;
 	minTimeLeftMin?: number;
 	minTradeQuality?: number;
+	maxGlobalTradesPerWindow?: number;
 }
 
 export interface AppConfig {

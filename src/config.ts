@@ -47,10 +47,10 @@ const STRATEGY_DEFAULTS = {
 	arbitrageMinSpread: 0.02,
 	arbitrageMaxBoost: 0.05,
 	confidenceWeights: {
-		indicatorAlignment: 0.25,
-		volatilityScore: 0.15,
-		orderbookScore: 0.15,
-		timingScore: 0.25,
+		indicatorAlignment: 0.2,
+		volatilityScore: 0.2,
+		orderbookScore: 0.2,
+		timingScore: 0.2,
 		regimeScore: 0.2,
 	},
 	maxVig: 0.04,
@@ -63,6 +63,7 @@ const STRATEGY_DEFAULTS = {
 	safeModeThreshold: 3,
 	minTimeLeftMin: 3,
 	minTradeQuality: 0.55,
+	maxGlobalTradesPerWindow: 1,
 };
 
 const RiskConfigSchema = z
@@ -139,6 +140,7 @@ const StrategyConfigSchema = z
 		safeModeThreshold: z.coerce.number().optional(),
 		minTimeLeftMin: z.coerce.number().optional(),
 		minTradeQuality: z.coerce.number().optional(),
+		maxGlobalTradesPerWindow: z.coerce.number().optional(),
 	})
 	.partial()
 	.transform((value) => ({
@@ -320,6 +322,7 @@ export const CONFIG: AppConfig = {
 		safeModeThreshold: FILE_STRATEGY.safeModeThreshold,
 		minTimeLeftMin: FILE_STRATEGY.minTimeLeftMin,
 		minTradeQuality: FILE_STRATEGY.minTradeQuality,
+		maxGlobalTradesPerWindow: FILE_STRATEGY.maxGlobalTradesPerWindow,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -368,6 +371,7 @@ export function reloadConfig(): AppConfig {
 		safeModeThreshold: fileStrategy.safeModeThreshold,
 		minTimeLeftMin: fileStrategy.minTimeLeftMin,
 		minTradeQuality: fileStrategy.minTradeQuality,
+		maxGlobalTradesPerWindow: fileStrategy.maxGlobalTradesPerWindow,
 	};
 
 	CONFIG.risk = buildRiskConfig(filePaperRisk, fileRisk);

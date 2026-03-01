@@ -477,7 +477,7 @@ describe("decide", () => {
 			modelDown: 0.15,
 			regime: "TREND_UP",
 			strategy: makeStrategy(),
-			volatility15m: 0.005,
+			volatility15m: 0.003,
 			orderbookImbalance: 0.7,
 			vwapSlope: 1,
 			rsi: 60,
@@ -542,7 +542,7 @@ describe("decide", () => {
 			modelDown: 0.2,
 			regime: "TREND_UP",
 			strategy: makeStrategy(),
-			volatility15m: 0.005,
+			volatility15m: 0.003,
 			vwapSlope: 1,
 			rsi: 60,
 			macdHist: 0.5,
@@ -580,7 +580,7 @@ describe("decide", () => {
 			modelDown: 0.4,
 			regime: "RANGE",
 			strategy: makeStrategy({ minTradeQuality: 0.3 }),
-			volatility15m: 0.005,
+			volatility15m: 0.003,
 			vwapSlope: 0.5,
 			rsi: 55,
 			macdHist: 0.1,
@@ -598,7 +598,7 @@ describe("decide", () => {
 			modelDown: 0.8,
 			regime: "TREND_DOWN",
 			strategy: makeStrategy({ minTradeQuality: 0.4 }),
-			volatility15m: 0.005,
+			volatility15m: 0.003,
 			vwapSlope: -1,
 			rsi: 40,
 			macdHist: -0.5,
@@ -623,6 +623,135 @@ describe("decide", () => {
 		});
 		expect(result.action).toBe("NO_TRADE");
 		expect(result.reason).toContain("quality_");
+	});
+
+	it("rejects trades when bestEdge is zero", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0,
+			edgeDown: -0.05,
+			modelUp: 0.6,
+			modelDown: 0.4,
+			regime: "TREND_UP",
+			strategy: makeStrategy(),
+			volatility15m: 0.003,
+			vwapSlope: 1,
+			rsi: 60,
+			macdHist: 0.5,
+			haColor: "green",
+		});
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("non_positive_edge");
+	});
+
+	it("rejects trades when bestEdge is negative", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: -0.02,
+			edgeDown: -0.05,
+			modelUp: 0.6,
+			modelDown: 0.4,
+			regime: "TREND_UP",
+			strategy: makeStrategy(),
+			volatility15m: 0.003,
+		});
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("non_positive_edge");
+	});
+
+	it("rejects trades when volatility is too high", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.15,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			regime: "TREND_UP",
+			strategy: makeStrategy(),
+			volatility15m: 0.01,
+		});
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("volatility_too_high");
+	});
+
+	it("rejects trades when volatility is too low", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.15,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			regime: "TREND_UP",
+			strategy: makeStrategy(),
+			volatility15m: 0.0001,
+		});
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("volatility_too_low");
+	});
+
+	it("applies overconfidence penalty for edges above softCap", () => {
+		// Compare quality of edge=0.10 (below softCap) vs edge=0.25 (above softCap)
+		// With overconfidence dampening, edge=0.25 should NOT have much higher quality
+		const baseline = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.1,
+			edgeDown: 0.01,
+			modelUp: 0.7,
+			modelDown: 0.3,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+			volatility15m: 0.003,
+			vwapSlope: 0.5,
+			rsi: 55,
+			macdHist: 0.1,
+			haColor: "green",
+		});
+		const overconfident = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.25,
+			edgeDown: 0.01,
+			modelUp: 0.7,
+			modelDown: 0.3,
+			regime: "RANGE",
+			strategy: makeStrategy(),
+			volatility15m: 0.003,
+			vwapSlope: 0.5,
+			rsi: 55,
+			macdHist: 0.1,
+			haColor: "green",
+		});
+		// Both should enter, but overconfident edge quality should be dampened
+		expect(baseline.action).toBe("ENTER");
+		expect(overconfident.action).toBe("ENTER");
+		// The gap between them should be small due to dampening
+		const gap = (overconfident.tradeQuality ?? 0) - (baseline.tradeQuality ?? 0);
+		expect(gap).toBeLessThan(0.05);
+	});
+
+	it("produces lower quality for CHOP than TREND_ALIGNED under same conditions", () => {
+		const makeParams = (regime: "CHOP" | "TREND_UP") => ({
+			remainingMinutes: 12,
+			edgeUp: 0.08,
+			edgeDown: 0.01,
+			modelUp: 0.65,
+			modelDown: 0.35,
+			regime: regime as "CHOP" | "TREND_UP",
+			strategy: makeStrategy(),
+			volatility15m: 0.003,
+			vwapSlope: 0.5,
+			rsi: 55,
+			macdHist: 0.1,
+			haColor: "green",
+		});
+
+		const chopResult = decide(makeParams("CHOP"));
+		const trendResult = decide(makeParams("TREND_UP"));
+
+		// TREND_UP should have meaningfully higher quality than CHOP
+		const chopQ = chopResult.tradeQuality ?? 0;
+		const trendQ = trendResult.tradeQuality ?? 0;
+		expect(trendQ).toBeGreaterThan(chopQ);
+		expect(trendQ - chopQ).toBeGreaterThanOrEqual(0.1);
 	});
 });
 

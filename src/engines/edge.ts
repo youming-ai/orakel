@@ -2,7 +2,6 @@ import { CONFIG } from "../config.ts";
 import type {
 	ConfidenceResult,
 	EdgeResult,
-	MarketPerformance,
 	Phase,
 	Regime,
 	Side,
@@ -13,25 +12,9 @@ import type {
 import { clamp, estimatePolymarketFee } from "../utils.ts";
 import { detectArbitrage } from "./arbitrage.ts";
 
-// Market-specific performance from backtest (can be overridden in config.json)
-// edgeMultiplier > 1.0 = RAISE threshold (harder to trade) for poor performers
-// Use strategy.skipMarkets in config.json to skip markets entirely
-const DEFAULT_MARKET_PERFORMANCE: Record<string, MarketPerformance> = {
-	BTC: { winRate: 0.421, edgeMultiplier: 1.5, skipChop: true },
-	ETH: { winRate: 0.469, edgeMultiplier: 1.2, skipChop: true },
-	SOL: { winRate: 0.51, edgeMultiplier: 1.0 }, // Good performer → standard
-	XRP: { winRate: 0.542, edgeMultiplier: 1.0 }, // Best performer → standard
-};
-
-/** Get market performance from config or use defaults */
-export function getMarketPerformance(marketId: string): MarketPerformance {
-	const defaults = DEFAULT_MARKET_PERFORMANCE[marketId] ?? { winRate: 0.5, edgeMultiplier: 1.0 };
-	const configPerf = CONFIG.strategy.marketPerformance?.[marketId];
-	if (configPerf) {
-		return { ...defaults, ...configPerf };
-	}
-	return defaults;
-}
+// NOTE: DEFAULT_MARKET_PERFORMANCE and getMarketPerformance() removed in composite-score rewrite.
+// Market-specific behavior is now handled via skipMarkets in config.json and the composite quality score.
+// The MarketPerformance type and marketPerformance config field are retained for backward compatibility.
 
 // ============ Confidence Scoring ============
 
@@ -365,6 +348,23 @@ export function decide(params: {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
 	}
 
+	// P1: Positive edge gate — composite score must not bypass fundamental edge requirement
+	if (bestEdge <= 0) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: "non_positive_edge" };
+	}
+
+	// P1: Volatility hard limits — extreme volatility is too risky regardless of quality
+	if (volatility15m !== null) {
+		const maxVol = strategy.maxVolatility15m ?? 0.004;
+		const minVol = strategy.minVolatility15m ?? 0.0005;
+		if (volatility15m > maxVol) {
+			return { action: "NO_TRADE", side: null, phase, regime, reason: "volatility_too_high" };
+		}
+		if (volatility15m < minVol) {
+			return { action: "NO_TRADE", side: null, phase, regime, reason: "volatility_too_low" };
+		}
+	}
+
 	const confidence = computeConfidence({
 		modelUp: modelUp ?? 0.5,
 		modelDown: modelDown ?? 0.5,
@@ -378,13 +378,21 @@ export function decide(params: {
 		side: bestSide,
 	});
 
-	const edgeScore = 1 / (1 + Math.exp(-25 * (bestEdge - 0.04)));
+	let edgeScore = 1 / (1 + Math.exp(-25 * (bestEdge - 0.04)));
 	const timeScore = 1 / (1 + Math.exp(-0.8 * (remainingMinutes - 7)));
+
+	// Overconfidence dampening: backtest shows very high edges perform worse
+	const softCap = CONFIG.strategy.softCapEdge ?? 0.22;
+	if (bestEdge > softCap) {
+		const overconfidencePenalty = (bestEdge - softCap) * 3;
+		edgeScore = Math.max(0.4, edgeScore - overconfidencePenalty);
+	}
 
 	const { indicatorAlignment, regimeScore, volatilityScore } = confidence.factors;
 
+	// Rebalanced weights: edge 0.35, regime 0.20 (stronger CHOP penalty)
 	const tradeQuality =
-		edgeScore * 0.4 + indicatorAlignment * 0.2 + regimeScore * 0.15 + timeScore * 0.15 + volatilityScore * 0.1;
+		edgeScore * 0.35 + indicatorAlignment * 0.2 + regimeScore * 0.2 + timeScore * 0.15 + volatilityScore * 0.1;
 
 	const minTradeQuality = strategy.minTradeQuality ?? 0.55;
 

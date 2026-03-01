@@ -405,9 +405,7 @@ async function main(): Promise<void> {
 			clobWs.subscribe(newTokenIds);
 		}
 
-		const maxGlobalTrades = Number(
-			(CONFIG.strategy as { maxGlobalTradesPerWindow?: number }).maxGlobalTradesPerWindow ?? 1,
-		);
+		const maxGlobalTrades = CONFIG.strategy.maxGlobalTradesPerWindow ?? 1;
 		const candidates = results
 			.filter((r) => r.ok && r.rec?.action === "ENTER" && r.signalPayload)
 			.filter((r) => {
