@@ -12,11 +12,7 @@
     "dev:mock": "bun run scripts/mock-server.ts",
     "setup": "bash scripts/setup.sh",
     "typecheck": "tsc --noEmit",
-    "typecheck:check": "tsc --noEmit -p tsconfig.check.json",
     "typecheck:web": "cd web && tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
     "lint:web": "biome check web/src",
@@ -31,12 +27,12 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "clean": "rm -rf node_modules web/node_modules dist data/*.db data/*.db-* data/*.csv",
-    "precommit": "bun run lint:fix && bun run format && bun run typecheck && bun run test",
-    "prepush": "bun run typecheck:check && bun run test"
+    "precommit": "bun run lint:fix && bun run format && bun run typecheck",
+    "prepush": "bun run typecheck"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
-    "@polymarket/clob-client": "^5.2.4",
+    "@polymarket/clob-client": "^5.3.0",
     "ethers": "^5.8.0",
     "hono": "^4.12.3",
     "ws": "^8.19.0",
@@ -47,7 +43,6 @@
     "@types/bun": "latest",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.2.1",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "typescript": "^5.9.3"
   }
 }

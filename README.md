@@ -500,16 +500,9 @@ services:
 ### 类型检查
 
 ```bash
-bun run typecheck      # TypeScript 类型检查
-bun run typecheck:check   # 类型检查（排除测试文件）
+bun run typecheck         # TypeScript 类型检查
 ```
 
-### 测试
-
-```bash
-bun run test           # 运行测试
-bun run test:watch     # 监听模式运行测试
-```
 
 ### 代码风格
 

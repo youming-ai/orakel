@@ -83,13 +83,15 @@ export function getBtcSession(now: Date = new Date()): string {
 
 export function fmtEtTime(now: Date = new Date()): string {
 	try {
-		return new Intl.DateTimeFormat("en-US", {
+		const formatted = new Intl.DateTimeFormat("en-US", {
 			timeZone: "America/New_York",
 			hour: "2-digit",
 			minute: "2-digit",
 			second: "2-digit",
 			hour12: false,
 		}).format(now);
+		// Some runtimes may format midnight as 24:00:00 in 24h mode; normalize to 00:00:00.
+		return formatted.replace(/^24(?=:)/, "00");
 	} catch {
 		return "-";
 	}

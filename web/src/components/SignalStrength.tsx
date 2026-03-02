@@ -119,7 +119,7 @@ export function SignalStrength({ markets }: SignalStrengthProps) {
 					</div>
 				) : (
 					<div className="grid grid-cols-2 xl:grid-cols-4 gap-2 divide-x divide-border/30">
-					{sorted.map((m) => (
+						{sorted.map((m) => (
 							<MarketRadar key={m.id} market={m} />
 						))}
 					</div>

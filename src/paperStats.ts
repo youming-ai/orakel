@@ -1,11 +1,11 @@
 import { getAndClearSignalMetadata, performanceTracker, signalQualityModel } from "./adaptiveState.ts";
-import { CONFIG, PAPER_INITIAL_BALANCE } from "./config.ts";
+import { PAPER_INITIAL_BALANCE } from "./config.ts";
 import { createLogger } from "./logger.ts";
 
 const log = createLogger("paperStats");
 
 import { statements } from "./db.ts";
-import type { PaperStats, PaperTradeEntry } from "./types.ts";
+import type { PaperStats, PaperTradeEntry, TimeframeId } from "./types.ts";
 
 interface DailyPnl {
 	date: string;
@@ -44,6 +44,7 @@ interface PaperTradeRow {
 	id: string;
 	market_id: string;
 	window_start_ms: number;
+	timeframe: string | null;
 	side: string;
 	price: number;
 	size: number;
@@ -54,6 +55,11 @@ interface PaperTradeRow {
 	won: number | null;
 	pnl: number | null;
 	settle_price: number | null;
+}
+
+function parseTimeframe(timeframe: string | null | undefined): TimeframeId {
+	if (timeframe === "1h" || timeframe === "4h") return timeframe;
+	return "15m";
 }
 
 let state: PersistedPaperState = {
@@ -81,6 +87,7 @@ export function initPaperStats(): void {
 			id: r.id,
 			marketId: r.market_id,
 			windowStartMs: r.window_start_ms,
+			timeframe: parseTimeframe(r.timeframe),
 			side: r.side as "UP" | "DOWN",
 			price: r.price,
 			size: r.size,
@@ -200,6 +207,7 @@ function upsertPaperTrade(trade: PaperTradeEntry): void {
 		$id: trade.id,
 		$marketId: trade.marketId,
 		$windowStartMs: trade.windowStartMs,
+		$timeframe: trade.timeframe ?? "15m",
 		$side: trade.side,
 		$price: trade.price,
 		$size: trade.size,
@@ -230,10 +238,22 @@ export function addPaperTrade(entry: Omit<PaperTradeEntry, "id" | "resolved" | "
 	return id;
 }
 
-export function resolvePaperTrades(windowStartMs: number, finalPrices: Map<string, number>): number {
+function normalizeTimeframe(timeframe?: TimeframeId): TimeframeId {
+	return timeframe ?? "15m";
+}
+
+export function resolvePaperTrades(
+	windowStartMs: number,
+	finalPrices: Map<string, number>,
+	dailyLossLimitUsdc: number,
+	timeframe?: TimeframeId,
+): number {
 	let resolved = 0;
+	const targetTimeframe = normalizeTimeframe(timeframe);
 	for (const trade of state.trades) {
 		if (trade.resolved) continue;
+		const tradeTimeframe = normalizeTimeframe(trade.timeframe);
+		if (tradeTimeframe !== targetTimeframe) continue;
 		if (trade.windowStartMs !== windowStartMs) continue;
 
 		const finalPrice = finalPrices.get(trade.marketId);
@@ -299,7 +319,7 @@ export function resolvePaperTrades(windowStartMs: number, finalPrices: Map<strin
 
 	if (resolved > 0) {
 		// Check stop loss after resolving
-		checkAndTriggerStopLoss();
+		checkAndTriggerStopLoss(dailyLossLimitUsdc);
 		save();
 	}
 	return resolved;
@@ -310,12 +330,20 @@ export function resolvePaperTrades(windowStartMs: number, finalPrices: Map<strin
  * Trades older than 2 windows (30 min for 15-min windows) are force-settled as losses.
  * This prevents phantom trades from occupying balance indefinitely.
  */
-export function cleanupStalePaperTrades(currentWindowStartMs: number, windowMinutes: number): number {
+export function cleanupStalePaperTrades(
+	currentWindowStartMs: number,
+	windowMinutes: number,
+	dailyLossLimitUsdc: number,
+	timeframe?: TimeframeId,
+): number {
 	const timeoutMs = windowMinutes * 60_000 * 2; // 2 windows
 	let cleaned = 0;
+	const targetTimeframe = normalizeTimeframe(timeframe);
 
 	for (const trade of state.trades) {
 		if (trade.resolved) continue;
+		const tradeTimeframe = normalizeTimeframe(trade.timeframe);
+		if (tradeTimeframe !== targetTimeframe) continue;
 		const age = currentWindowStartMs - trade.windowStartMs;
 		if (age <= timeoutMs) continue;
 
@@ -338,7 +366,7 @@ export function cleanupStalePaperTrades(currentWindowStartMs: number, windowMinu
 	}
 
 	if (cleaned > 0) {
-		checkAndTriggerStopLoss();
+		checkAndTriggerStopLoss(dailyLossLimitUsdc);
 		save();
 		log.warn(`Force-settled ${cleaned} stale paper trade(s) as losses`);
 	}
@@ -448,18 +476,22 @@ export function getDailyPnl(): { date: string; pnl: number; trades: number }[] {
 	return [...state.dailyPnl].sort((a, b) => b.date.localeCompare(a.date));
 }
 
-export function getTodayStats(): { pnl: number; trades: number; limit: number } {
+export function getTodayStats(dailyLossLimitUsdc: number): {
+	pnl: number;
+	trades: number;
+	limit: number;
+} {
 	const today = getTodayPnl();
 	return {
 		pnl: today.pnl,
 		trades: today.trades,
-		limit: CONFIG.paperRisk.dailyMaxLossUsdc,
+		limit: dailyLossLimitUsdc,
 	};
 }
 
-export function isDailyLossLimitExceeded(): boolean {
+export function isDailyLossLimitExceeded(dailyLossLimitUsdc: number): boolean {
 	const today = getTodayPnl();
-	const limit = CONFIG.paperRisk.dailyMaxLossUsdc;
+	const limit = dailyLossLimitUsdc;
 	return today.pnl < -limit;
 }
 
@@ -474,13 +506,16 @@ export function getStopReason(): { stoppedAt: string | null; reason: string | nu
 	};
 }
 
-export function checkAndTriggerStopLoss(): { triggered: boolean; reason: string | null } {
+export function checkAndTriggerStopLoss(dailyLossLimitUsdc: number): {
+	triggered: boolean;
+	reason: string | null;
+} {
 	if (state.stoppedAt) {
 		return { triggered: true, reason: state.stopReason };
 	}
 
 	// Check daily loss limit
-	if (isDailyLossLimitExceeded()) {
+	if (isDailyLossLimitExceeded(dailyLossLimitUsdc)) {
 		state.stoppedAt = new Date().toISOString();
 		state.stopReason = `daily_loss_limit:${(-getTodayPnl().pnl).toFixed(2)}`;
 		save();
@@ -506,9 +541,12 @@ export function clearStopFlag(): void {
 }
 
 // Updated canAffordTrade with stop loss check
-export function canAffordTradeWithStopCheck(size: number): { canTrade: boolean; reason: string | null } {
+export function canAffordTradeWithStopCheck(
+	size: number,
+	dailyLossLimitUsdc: number,
+): { canTrade: boolean; reason: string | null } {
 	// Check if stopped
-	const stopCheck = checkAndTriggerStopLoss();
+	const stopCheck = checkAndTriggerStopLoss(dailyLossLimitUsdc);
 	if (stopCheck.triggered) {
 		return { canTrade: false, reason: `trading_stopped:${stopCheck.reason}` };
 	}
@@ -519,7 +557,7 @@ export function canAffordTradeWithStopCheck(size: number): { canTrade: boolean; 
 	}
 
 	// Check daily loss limit (pre-trade)
-	if (isDailyLossLimitExceeded()) {
+	if (isDailyLossLimitExceeded(dailyLossLimitUsdc)) {
 		return { canTrade: false, reason: "daily_loss_limit_exceeded" };
 	}
 

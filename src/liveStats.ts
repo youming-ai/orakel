@@ -270,3 +270,59 @@ export async function getLiveStatsLegacy(client: ClobClient): Promise<{
 		totalPnl: stats.totalPnl,
 	};
 }
+
+/**
+ * Per-market breakdown of live trading performance.
+ * Mirrors paperStats.getMarketBreakdown() for live trades.
+ * Data comes from CLOB API trades (cached via getLiveStatsFromChain).
+ *
+ * NOTE on data source consistency (#8):
+ * getLiveStatsFromChain() fetches ALL trades from CLOB API (up to 500),
+ * including trades from previous bot sessions. The local resolveLiveTrades()
+ * only tracks trades from the current session for daily PnL cap purposes.
+ * This is by design: CLOB API is the authoritative source for stats/portfolio,
+ * while local tracking is a fast estimate for risk management.
+ */
+export interface LiveMarketBreakdown {
+	wins: number;
+	losses: number;
+	pending: number;
+	winRate: number;
+	totalPnl: number;
+	tradeCount: number;
+}
+
+export function getLiveMarketBreakdown(trades: LiveTrade[]): Record<string, LiveMarketBreakdown> {
+	const breakdown: Record<string, LiveMarketBreakdown> = {};
+
+	for (const trade of trades) {
+		const marketId = trade.market || "unknown";
+		if (!breakdown[marketId]) {
+			breakdown[marketId] = { wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0, tradeCount: 0 };
+		}
+		const entry = breakdown[marketId];
+		if (!entry) continue;
+		entry.tradeCount++;
+
+		if (trade.won !== undefined && trade.pnl !== undefined) {
+			if (trade.won) {
+				entry.wins++;
+				entry.totalPnl += trade.pnl;
+			} else {
+				entry.losses++;
+				entry.totalPnl += trade.pnl;
+			}
+		} else {
+			entry.pending++;
+		}
+	}
+
+	// Calculate win rates
+	for (const entry of Object.values(breakdown)) {
+		const resolved = entry.wins + entry.losses;
+		entry.winRate = resolved > 0 ? entry.wins / resolved : 0;
+		entry.totalPnl = Number(entry.totalPnl.toFixed(2));
+	}
+
+	return breakdown;
+}

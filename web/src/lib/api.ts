@@ -114,6 +114,7 @@ export interface ConfidenceResult {
 
 // ============ Core Types ============
 
+export type TimeframeId = "15m" | "1h" | "4h";
 export interface DashboardState {
 	markets: MarketSnapshot[];
 	paperMode: boolean;
@@ -121,6 +122,8 @@ export interface DashboardState {
 	liveStats: PaperStats | null;
 	config: {
 		strategy: StrategyConfig;
+		strategies?: Partial<Record<TimeframeId, StrategyConfig>>;
+		enabledTimeframes?: TimeframeId[];
 		paperRisk: RiskConfig;
 		liveRisk: RiskConfig;
 	};
@@ -136,6 +139,7 @@ export interface DashboardState {
 	balance?: PaperBalance;
 	todayStats?: TodayStats;
 	liveTodayStats?: TodayStats;
+	liveByMarket?: Record<string, MarketBreakdown>;
 }
 
 export interface MarketSnapshot {
@@ -171,6 +175,7 @@ export interface MarketSnapshot {
 	binanceChainlinkDelta: number | null;
 	orderbookImbalance: number | null;
 	confidence?: ConfidenceResult;
+	timeframe?: TimeframeId;
 }
 
 export interface PaperStats {
@@ -245,7 +250,10 @@ export interface MarketBreakdown {
 }
 
 export interface ConfigPayload {
-	strategy: StrategyConfig;
+	strategy?: StrategyConfig;
+	strategies?: Partial<Record<TimeframeId, StrategyConfig>>;
+	timeframe?: TimeframeId;
+	enabledTimeframes?: TimeframeId[];
 	paperRisk?: RiskConfig;
 	liveRisk?: RiskConfig;
 }

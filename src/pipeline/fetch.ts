@@ -1,4 +1,3 @@
-import { CONFIG } from "../config.ts";
 import { fetchKlines, fetchLastPrice } from "../data/binance.ts";
 import { fetchChainlinkPrice } from "../data/chainlink.ts";
 import {
@@ -13,6 +12,7 @@ import {
 } from "../data/polymarket.ts";
 import { createLogger } from "../logger.ts";
 import type {
+	AppConfig,
 	Candle,
 	CandleWindowTiming,
 	FetchMarketDataResult,
@@ -22,6 +22,7 @@ import type {
 	PolymarketSnapshot,
 	PriceTick,
 	StreamHandles,
+	TimeframeId,
 } from "../types.ts";
 
 const log = createLogger("pipeline-fetch");
@@ -78,23 +79,30 @@ function parseJsonArray(value: unknown): unknown[] {
 
 const polymarketMarketCache: Map<string, { market: GammaMarket; fetchedAtMs: number }> = new Map();
 
-async function resolveCurrent15mMarket(marketDef: MarketConfig): Promise<GammaMarket | null> {
-	const customSlug = marketDef.id === "BTC" ? CONFIG.polymarket.marketSlug : "";
+async function resolveCurrentMarket(
+	marketDef: MarketConfig,
+	timeframe: TimeframeId,
+	config: AppConfig,
+): Promise<GammaMarket | null> {
+	// Custom slug override (legacy: only for BTC 15m)
+	const customSlug = marketDef.id === "BTC" && timeframe === "15m" ? config.polymarket.marketSlug : "";
 	if (customSlug) {
 		const bySlug = await fetchMarketBySlug(customSlug);
 		return bySlug;
 	}
 
-	if (!CONFIG.polymarket.autoSelectLatest) return null;
+	if (!config.polymarket.autoSelectLatest) return null;
 
+	const cacheKey = `${marketDef.id}:${timeframe}`;
 	const now = Date.now();
-	const cached = polymarketMarketCache.get(marketDef.id);
-	if (cached?.market && now - cached.fetchedAtMs < CONFIG.pollIntervalMs) {
+	const cached = polymarketMarketCache.get(cacheKey);
+	if (cached?.market && now - cached.fetchedAtMs < config.pollIntervalMs) {
 		return cached.market;
 	}
 
+	const seriesInfo = marketDef.polymarket.series[timeframe];
 	const events = await fetchLiveEventsBySeriesId({
-		seriesId: marketDef.polymarket.seriesId,
+		seriesId: seriesInfo.seriesId,
 		limit: 25,
 	});
 	const markets = flattenEventMarkets(events);
@@ -102,12 +110,16 @@ async function resolveCurrent15mMarket(marketDef: MarketConfig): Promise<GammaMa
 	if (!picked) return null;
 	const parsed = parseGammaMarket(picked);
 	if (!parsed) return null;
-	polymarketMarketCache.set(marketDef.id, { market: parsed, fetchedAtMs: now });
+	polymarketMarketCache.set(cacheKey, { market: parsed, fetchedAtMs: now });
 	return parsed;
 }
 
-async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<PolymarketSnapshot> {
-	const market = await resolveCurrent15mMarket(marketDef);
+async function fetchPolymarketSnapshot(
+	marketDef: MarketConfig,
+	timeframe: TimeframeId,
+	config: AppConfig,
+): Promise<PolymarketSnapshot> {
+	const market = await resolveCurrentMarket(marketDef, timeframe, config);
 	if (!market) return { ok: false, reason: "market_not_found" };
 
 	const outcomes = parseJsonArray(market.outcomes);
@@ -121,15 +133,15 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 		const tokenRaw = clobTokenIds[i];
 		const tokenId = tokenRaw ? String(tokenRaw) : null;
 		if (!tokenId) continue;
-		if (label === CONFIG.polymarket.upOutcomeLabel.toLowerCase()) upTokenId = tokenId;
-		if (label === CONFIG.polymarket.downOutcomeLabel.toLowerCase()) downTokenId = tokenId;
+		if (label === config.polymarket.upOutcomeLabel.toLowerCase()) upTokenId = tokenId;
+		if (label === config.polymarket.downOutcomeLabel.toLowerCase()) downTokenId = tokenId;
 	}
 
 	const upIndex = outcomes.findIndex(
-		(x) => String(x ?? "").toLowerCase() === CONFIG.polymarket.upOutcomeLabel.toLowerCase(),
+		(x) => String(x ?? "").toLowerCase() === config.polymarket.upOutcomeLabel.toLowerCase(),
 	);
 	const downIndex = outcomes.findIndex(
-		(x) => String(x ?? "").toLowerCase() === CONFIG.polymarket.downOutcomeLabel.toLowerCase(),
+		(x) => String(x ?? "").toLowerCase() === config.polymarket.downOutcomeLabel.toLowerCase(),
 	);
 	const gammaYes = upIndex >= 0 ? Number(outcomePrices[upIndex]) : null;
 	const gammaNo = downIndex >= 0 ? Number(outcomePrices[downIndex]) : null;
@@ -226,6 +238,8 @@ export async function fetchMarketData(
 	market: MarketConfig,
 	timing: CandleWindowTiming,
 	streams: StreamHandles,
+	config: AppConfig,
+	timeframe: TimeframeId = "15m",
 ): Promise<FetchMarketDataResult> {
 	try {
 		const wsTick = streams.binance.getLast(market.binanceSymbol);
@@ -263,7 +277,7 @@ export async function fetchMarketData(
 			fetchKlines({ symbol: market.binanceSymbol, interval: "1m", limit: 240 }),
 			fetchLastPrice({ symbol: market.binanceSymbol }),
 			chainlinkPromise,
-			fetchPolymarketSnapshot(market),
+			fetchPolymarketSnapshot(market, timeframe, config),
 		]);
 
 		const settlementMs = poly.ok && poly.market?.endDate ? new Date(String(poly.market.endDate)).getTime() : null;

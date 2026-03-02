@@ -23,14 +23,18 @@ export interface HaCandle {
 	body: number;
 }
 
+export interface PolymarketSeries {
+	seriesId: string;
+	seriesSlug: string;
+	slugPrefix: string;
+}
+
 export interface MarketConfig {
 	id: string;
 	label: string;
 	binanceSymbol: string;
 	polymarket: {
-		seriesId: string;
-		seriesSlug: string;
-		slugPrefix: string;
+		series: Record<TimeframeId, PolymarketSeries>;
 	};
 	chainlink: {
 		aggregator: string;
@@ -131,6 +135,10 @@ export interface StrategyConfig {
 	maxGlobalTradesPerWindow?: number;
 }
 
+// === Multi-Timeframe System ===
+
+export type TimeframeId = "15m" | "1h" | "4h";
+
 export interface AppConfig {
 	markets: MarketConfig[];
 	binanceBaseUrl: string;
@@ -163,6 +171,9 @@ export interface AppConfig {
 	risk: RiskConfig;
 	paperRisk: RiskConfig;
 	liveRisk: RiskConfig;
+	// Multi-timeframe: per-timeframe resolved strategies (all run concurrently)
+	strategies: Record<TimeframeId, StrategyConfig>;
+	enabledTimeframes: TimeframeId[];
 }
 
 export interface EdgeResult {
@@ -303,6 +314,7 @@ export type FetchMarketDataResult = RawMarketData | RawMarketDataError;
 
 export interface TradeSignal {
 	timestamp: string;
+	timeframe: TimeframeId;
 	marketId: string;
 	marketSlug: string;
 	side: Side;
@@ -419,6 +431,7 @@ export interface RedeemResult {
 
 export interface MarketSnapshot {
 	id: string;
+	timeframe: TimeframeId;
 	label: string;
 	ok: boolean;
 	error?: string;
@@ -460,6 +473,7 @@ export interface PaperTradeEntry {
 	price: number;
 	size: number;
 	priceToBeat: number;
+	timeframe?: TimeframeId;
 	currentPriceAtEntry: number | null;
 	timestamp: string;
 	resolved: boolean;

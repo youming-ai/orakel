@@ -4,7 +4,8 @@ import { createBunWebSocket, serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { getAccountSummary, getAllPositions } from "./accountState.ts";
-import { atomicWriteConfig, CONFIG, reloadConfig } from "./config.ts";
+import { getApiConfigSnapshot } from "./apiConfigSnapshot.ts";
+import { atomicWriteConfig, reloadConfig, TIMEFRAME_IDS } from "./config.ts";
 import { getDbDiagnostics, statements } from "./db.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
@@ -32,6 +33,7 @@ import {
 	connectWallet,
 	disconnectWallet,
 	getClientStatus,
+	getLiveByMarket,
 	getLiveDailyState,
 	getLiveStats,
 	getLiveTodayStats,
@@ -163,8 +165,9 @@ const apiRoutes = new Hono()
 	})
 
 	.get("/state", async (c) => {
+		const configSnapshot = getApiConfigSnapshot();
 		const status = getClientStatus();
-		const todayStats = getTodayStats();
+		const todayStats = getTodayStats(configSnapshot.paperDailyLossLimitUsdc);
 		const stopLoss = getStopReason();
 		const liveStats = await getLiveStats();
 
@@ -175,9 +178,11 @@ const apiRoutes = new Hono()
 			paperDaily: getPaperDailyState(),
 			liveDaily: getLiveDailyState(),
 			config: {
-				strategy: CONFIG.strategy,
-				paperRisk: CONFIG.paperRisk,
-				liveRisk: CONFIG.liveRisk,
+				strategy: configSnapshot.strategy,
+				strategies: configSnapshot.strategies,
+				enabledTimeframes: configSnapshot.enabledTimeframes,
+				paperRisk: configSnapshot.paperRisk,
+				liveRisk: configSnapshot.liveRisk,
 			},
 			paperRunning: isPaperRunning(),
 			liveRunning: isLiveRunning(),
@@ -191,7 +196,7 @@ const apiRoutes = new Hono()
 			},
 			stopLoss: isStopped() ? stopLoss : null,
 			todayStats: todayStats,
-			liveTodayStats: getLiveTodayStats(),
+			liveTodayStats: getLiveTodayStats(configSnapshot.liveDailyLossLimitUsdc),
 		});
 	})
 
@@ -255,13 +260,14 @@ const apiRoutes = new Hono()
 	})
 
 	.get("/paper-stats", (c) => {
+		const configSnapshot = getApiConfigSnapshot();
 		return c.json({
 			stats: getPaperStats(),
 			trades: getRecentPaperTrades(),
 			byMarket: getMarketBreakdown(),
 			balance: getPaperBalance(),
 			stopLoss: getStopReason(),
-			todayStats: getTodayStats(),
+			todayStats: getTodayStats(configSnapshot.paperDailyLossLimitUsdc),
 		});
 	})
 
@@ -270,15 +276,44 @@ const apiRoutes = new Hono()
 			const body = await c.req.json();
 
 			const currentConfig = JSON.parse(fs.readFileSync("./config.json", "utf8"));
+			const isV2 = currentConfig.version === 2;
 
-			const updated: Record<string, unknown> = {};
+			const updated: Record<string, unknown> = { ...currentConfig };
 
-			if (body.strategy && typeof body.strategy === "object") {
-				updated.strategy = { ...currentConfig.strategy, ...body.strategy };
+			if (isV2) {
+				// V2: update strategies per-timeframe
+				const currentStrategies =
+					currentConfig.strategies && typeof currentConfig.strategies === "object" ? currentConfig.strategies : {};
+				if (body.strategies && typeof body.strategies === "object") {
+					const merged: Record<string, unknown> = { ...currentStrategies };
+					for (const tf of TIMEFRAME_IDS) {
+						const incoming = (body.strategies as Record<string, unknown>)[tf];
+						if (incoming && typeof incoming === "object") {
+							const existing = (currentStrategies[tf] as Record<string, unknown>) ?? {};
+							merged[tf] = { ...existing, ...(incoming as Record<string, unknown>) };
+						}
+					}
+					updated.strategies = merged;
+				}
+				// Also support updating a single timeframe via body.strategy + body.timeframe
+				if (body.strategy && typeof body.strategy === "object" && typeof body.timeframe === "string") {
+					const tf = body.timeframe;
+					const cur = (currentStrategies[tf] as Record<string, unknown>) ?? {};
+					const strats = (updated.strategies as Record<string, unknown>) ?? { ...currentStrategies };
+					strats[tf] = { ...cur, ...(body.strategy as Record<string, unknown>) };
+					updated.strategies = strats;
+				}
+				if (body.enabledTimeframes && Array.isArray(body.enabledTimeframes)) {
+					updated.enabledTimeframes = body.enabledTimeframes;
+				}
 			} else {
-				updated.strategy = currentConfig.strategy;
+				// V1: update single strategy
+				if (body.strategy && typeof body.strategy === "object") {
+					updated.strategy = { ...currentConfig.strategy, ...body.strategy };
+				}
 			}
 
+			// Risk (shared across V1/V2)
 			const currentPaper = currentConfig.paper && typeof currentConfig.paper === "object" ? currentConfig.paper : {};
 			const currentPaperRisk = currentPaper.risk && typeof currentPaper.risk === "object" ? currentPaper.risk : {};
 			if (body.paperRisk && typeof body.paperRisk === "object") {
@@ -286,8 +321,6 @@ const apiRoutes = new Hono()
 					...currentPaper,
 					risk: { ...currentPaperRisk, ...body.paperRisk },
 				};
-			} else {
-				updated.paper = currentPaper;
 			}
 
 			const currentLive = currentConfig.live && typeof currentConfig.live === "object" ? currentConfig.live : {};
@@ -297,20 +330,21 @@ const apiRoutes = new Hono()
 					...currentLive,
 					risk: { ...currentLiveRisk, ...body.liveRisk },
 				};
-			} else {
-				updated.live = currentLive;
 			}
 
 			await atomicWriteConfig("./config.json", updated);
 
 			reloadConfig();
+			const configSnapshot = getApiConfigSnapshot();
 
 			return c.json({
 				ok: true as const,
 				config: {
-					strategy: CONFIG.strategy,
-					paperRisk: CONFIG.paperRisk,
-					liveRisk: CONFIG.liveRisk,
+					strategy: configSnapshot.strategy,
+					strategies: configSnapshot.strategies,
+					enabledTimeframes: configSnapshot.enabledTimeframes,
+					paperRisk: configSnapshot.paperRisk,
+					liveRisk: configSnapshot.liveRisk,
 				},
 			});
 		} catch (error) {
@@ -351,8 +385,9 @@ const apiRoutes = new Hono()
 		}
 		try {
 			const body = await c.req.json();
+			const configSnapshot = getApiConfigSnapshot();
 			const privateKey = typeof body.privateKey === "string" ? body.privateKey : "";
-			const result = await connectWallet(privateKey);
+			const result = await connectWallet(privateKey, configSnapshot.clobBaseUrl);
 			return c.json({ ok: true as const, address: result.address });
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : "Unknown error";
@@ -400,6 +435,11 @@ const apiRoutes = new Hono()
 
 	.get("/live/recon-status", (c) => {
 		return c.json({ ok: true as const, data: getReconStatus() });
+	})
+
+	.get("/live/market-breakdown", async (c) => {
+		const breakdown = await getLiveByMarket();
+		return c.json({ ok: true as const, data: breakdown });
 	});
 
 // ---------------------------------------------------------------------------
@@ -499,6 +539,7 @@ app.get(
 			// Fetch live stats from chain (async) before sending snapshot
 			getLiveStats()
 				.then((liveStats) => {
+					const configSnapshot = getApiConfigSnapshot();
 					const snapshot: StateSnapshotPayload = {
 						markets: getMarkets(),
 						updatedAt: getUpdatedAt(),
@@ -506,7 +547,7 @@ app.get(
 						liveRunning: isLiveRunning(),
 						paperStats: getPaperStats(),
 						liveStats,
-						liveTodayStats: getLiveTodayStats(),
+						liveTodayStats: getLiveTodayStats(configSnapshot.liveDailyLossLimitUsdc),
 					};
 
 					const initialMessage: WsMessage<StateSnapshotPayload> = {
@@ -520,6 +561,7 @@ app.get(
 				})
 				.catch((err) => {
 					wsLog.error("Failed to fetch live stats for WS snapshot:", err);
+					const configSnapshot = getApiConfigSnapshot();
 					// Send fallback snapshot with empty liveStats so client is not left blank
 					const fallbackSnapshot: StateSnapshotPayload = {
 						markets: getMarkets(),
@@ -528,7 +570,7 @@ app.get(
 						liveRunning: isLiveRunning(),
 						paperStats: getPaperStats(),
 						liveStats: { totalTrades: 0, wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0 },
-						liveTodayStats: getLiveTodayStats(),
+						liveTodayStats: getLiveTodayStats(configSnapshot.liveDailyLossLimitUsdc),
 					};
 					const fallbackMsg: WsMessage<StateSnapshotPayload> = {
 						type: "state:snapshot",

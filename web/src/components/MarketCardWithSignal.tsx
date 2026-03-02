@@ -61,7 +61,10 @@ export const MarketCardWithSignal = memo(function MarketCardWithSignal({ market:
 		return (
 			<Card className="border-red-500/30 bg-red-500/10">
 				<CardHeader className="pb-2">
-					<CardTitle className="text-base">{m.id}</CardTitle>
+					<CardTitle className="text-base">
+						{m.id}
+						{m.timeframe ? ` · ${m.timeframe}` : ""}
+					</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<p className="text-sm text-red-400">Error: {m.error ?? "Unknown"}</p>
@@ -79,7 +82,7 @@ export const MarketCardWithSignal = memo(function MarketCardWithSignal({ market:
 	return (
 		<Card
 			role="region"
-			aria-label={`${m.id} market card`}
+			aria-label={`${m.id} ${m.timeframe ?? ""} market card`}
 			className={cn("relative overflow-hidden transition-all duration-200 hover:border-border/80 group", phaseBg)}
 		>
 			<CardHeader className="pb-2">
@@ -87,6 +90,14 @@ export const MarketCardWithSignal = memo(function MarketCardWithSignal({ market:
 					<div className="flex items-center gap-2 min-w-0 flex-wrap">
 						<SignalLight action={m.action} edge={m.edge} />
 						<CardTitle className="text-base font-bold">{m.id}</CardTitle>
+						{m.timeframe && (
+							<Badge
+								variant="outline"
+								className="text-[9px] px-1.5 py-0 font-mono border-border/60 text-muted-foreground"
+							>
+								{m.timeframe}
+							</Badge>
+						)}
 						<span className="font-mono text-lg sm:text-xl font-bold tracking-tight">{fmtPrice(m.id, m.spotPrice)}</span>
 						{m.priceToBeat !== null && (
 							<span className="font-mono text-xs text-muted-foreground">PTB {fmtPrice(m.id, m.priceToBeat)}</span>

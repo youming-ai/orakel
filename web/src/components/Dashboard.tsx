@@ -23,17 +23,25 @@ import { AppErrorBoundary } from "./AppErrorBoundary";
 import { Header } from "./Header";
 import { Web3Provider } from "./Web3Provider";
 
+const DEFAULT_STRATEGY: DashboardState["config"]["strategy"] = {
+	edgeThresholdEarly: 0.06,
+	edgeThresholdMid: 0.08,
+	edgeThresholdLate: 0.1,
+	minProbEarly: 0.52,
+	minProbMid: 0.55,
+	minProbLate: 0.6,
+	blendWeights: { vol: 0.5, ta: 0.5 },
+	regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 },
+};
+
 const DEFAULT_CONFIG: DashboardState["config"] = {
-	strategy: {
-		edgeThresholdEarly: 0.06,
-		edgeThresholdMid: 0.08,
-		edgeThresholdLate: 0.1,
-		minProbEarly: 0.52,
-		minProbMid: 0.55,
-		minProbLate: 0.6,
-		blendWeights: { vol: 0.5, ta: 0.5 },
-		regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 },
+	strategy: DEFAULT_STRATEGY,
+	strategies: {
+		"15m": DEFAULT_STRATEGY,
+		"1h": DEFAULT_STRATEGY,
+		"4h": DEFAULT_STRATEGY,
 	},
+	enabledTimeframes: ["15m", "1h", "4h"],
 	paperRisk: {
 		maxTradeSizeUsdc: 1,
 		limitDiscount: 0.05,
@@ -172,7 +180,7 @@ function DashboardContent() {
 					<AnalyticsTabs
 						stats={viewMode === "paper" ? state.paperStats : state.liveStats}
 						trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
-						byMarket={viewMode === "paper" ? paperByMarket : undefined}
+						byMarket={viewMode === "paper" ? paperByMarket : state.liveByMarket}
 						config={state.config ?? DEFAULT_CONFIG}
 						markets={state.markets ?? []}
 						liveTrades={trades}

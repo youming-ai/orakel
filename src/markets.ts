@@ -7,9 +7,11 @@ export const MARKETS: MarketConfig[] = [
 		label: "Bitcoin",
 		binanceSymbol: "BTCUSDT",
 		polymarket: {
-			seriesId: "10192",
-			seriesSlug: "btc-up-or-down-15m",
-			slugPrefix: "btc-updown-15m-",
+			series: {
+				"15m": { seriesId: "10192", seriesSlug: "btc-up-or-down-15m", slugPrefix: "btc-updown-15m-" },
+				"1h": { seriesId: "10114", seriesSlug: "btc-up-or-down-hourly", slugPrefix: "bitcoin-up-or-down-" },
+				"4h": { seriesId: "10331", seriesSlug: "btc-up-or-down-4h", slugPrefix: "btc-updown-4h-" },
+			},
 		},
 		chainlink: {
 			aggregator: "0xc907E116054Ad103354f2D350FD2514433D57F6f",
@@ -23,9 +25,11 @@ export const MARKETS: MarketConfig[] = [
 		label: "Ethereum",
 		binanceSymbol: "ETHUSDT",
 		polymarket: {
-			seriesId: "10191",
-			seriesSlug: "eth-up-or-down-15m",
-			slugPrefix: "eth-updown-15m-",
+			series: {
+				"15m": { seriesId: "10191", seriesSlug: "eth-up-or-down-15m", slugPrefix: "eth-updown-15m-" },
+				"1h": { seriesId: "10117", seriesSlug: "eth-up-or-down-hourly", slugPrefix: "ethereum-up-or-down-" },
+				"4h": { seriesId: "10332", seriesSlug: "eth-up-or-down-4h", slugPrefix: "eth-updown-4h-" },
+			},
 		},
 		chainlink: {
 			aggregator: "0xF9680D99D6C9589e2a93a78A04A279e509205945",
@@ -39,9 +43,11 @@ export const MARKETS: MarketConfig[] = [
 		label: "Solana",
 		binanceSymbol: "SOLUSDT",
 		polymarket: {
-			seriesId: "10423",
-			seriesSlug: "sol-up-or-down-15m",
-			slugPrefix: "sol-updown-15m-",
+			series: {
+				"15m": { seriesId: "10423", seriesSlug: "sol-up-or-down-15m", slugPrefix: "sol-updown-15m-" },
+				"1h": { seriesId: "10122", seriesSlug: "solana-up-or-down-hourly", slugPrefix: "solana-up-or-down-" },
+				"4h": { seriesId: "10333", seriesSlug: "sol-up-or-down-4h", slugPrefix: "sol-updown-4h-" },
+			},
 		},
 		chainlink: {
 			aggregator: "0x10C8264C0935b3B9870013e4003f3875af17dE23",
@@ -55,9 +61,11 @@ export const MARKETS: MarketConfig[] = [
 		label: "XRP",
 		binanceSymbol: "XRPUSDT",
 		polymarket: {
-			seriesId: "10422",
-			seriesSlug: "xrp-up-or-down-15m",
-			slugPrefix: "xrp-updown-15m-",
+			series: {
+				"15m": { seriesId: "10422", seriesSlug: "xrp-up-or-down-15m", slugPrefix: "xrp-updown-15m-" },
+				"1h": { seriesId: "10123", seriesSlug: "xrp-up-or-down-hourly", slugPrefix: "xrp-up-or-down-" },
+				"4h": { seriesId: "10327", seriesSlug: "xrp-up-or-down-4h", slugPrefix: "xrp-updown-4h-" },
+			},
 		},
 		chainlink: {
 			aggregator: "0x785ba89291f676b5386652eB12b30cF361020694",

@@ -211,14 +211,15 @@ function runMigrations(db: Database): void {
 			db.run("CREATE INDEX IF NOT EXISTS idx_signals_market ON signals(market, timestamp DESC)");
 
 			db.run(`
-        CREATE TABLE IF NOT EXISTS paper_trades (
-          id TEXT PRIMARY KEY,
-          market_id TEXT NOT NULL,
-          window_start_ms INTEGER NOT NULL,
-          side TEXT NOT NULL,
-          price REAL NOT NULL,
-          size REAL NOT NULL,
-          price_to_beat REAL NOT NULL,
+	        CREATE TABLE IF NOT EXISTS paper_trades (
+	          id TEXT PRIMARY KEY,
+	          market_id TEXT NOT NULL,
+	          window_start_ms INTEGER NOT NULL,
+	          timeframe TEXT DEFAULT '15m',
+	          side TEXT NOT NULL,
+	          price REAL NOT NULL,
+	          size REAL NOT NULL,
+	          price_to_beat REAL NOT NULL,
           current_price_at_entry REAL,
           timestamp TEXT NOT NULL,
           resolved INTEGER DEFAULT 0,
@@ -342,12 +343,34 @@ function runMigrations(db: Database): void {
 					size REAL NOT NULL,
 					price_to_beat REAL NOT NULL,
 					window_start_ms INTEGER NOT NULL,
+					timeframe TEXT DEFAULT '15m',
 					created_at INTEGER DEFAULT (strftime('%s', 'now'))
 				)
 			`);
 			db.run("CREATE INDEX IF NOT EXISTS idx_pending_live_window ON pending_live_trades(window_start_ms)");
 
 			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (4, strftime('%s', 'now'))");
+		})();
+	}
+
+	if (currentVersion < 5) {
+		db.transaction(() => {
+			const paperColumns = db.query("PRAGMA table_info(paper_trades)").all() as Array<{ name?: string }>;
+			if (!paperColumns.some((col) => col.name === "timeframe")) {
+				db.run("ALTER TABLE paper_trades ADD COLUMN timeframe TEXT DEFAULT '15m'");
+			}
+
+			const pendingLiveColumns = db.query("PRAGMA table_info(pending_live_trades)").all() as Array<{ name?: string }>;
+			if (!pendingLiveColumns.some((col) => col.name === "timeframe")) {
+				db.run("ALTER TABLE pending_live_trades ADD COLUMN timeframe TEXT DEFAULT '15m'");
+			}
+
+			db.run("CREATE INDEX IF NOT EXISTS idx_paper_trades_window_tf ON paper_trades(window_start_ms, timeframe)");
+			db.run(
+				"CREATE INDEX IF NOT EXISTS idx_pending_live_window_tf ON pending_live_trades(window_start_ms, timeframe)",
+			);
+
+			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (5, strftime('%s', 'now'))");
 		})();
 	}
 }
@@ -452,13 +475,14 @@ export const statements = {
 
 	insertPaperTrade: () =>
 		cachedPrepare(`
-      INSERT INTO paper_trades (
-        id,
-        market_id,
-        window_start_ms,
-        side,
-        price,
-        size,
+	      INSERT INTO paper_trades (
+	        id,
+	        market_id,
+	        window_start_ms,
+	        timeframe,
+	        side,
+	        price,
+	        size,
         price_to_beat,
         current_price_at_entry,
         timestamp,
@@ -468,12 +492,13 @@ export const statements = {
         settle_price
       )
       VALUES (
-        $id,
-        $marketId,
-        $windowStartMs,
-        $side,
-        $price,
-        $size,
+	        $id,
+	        $marketId,
+	        $windowStartMs,
+	        $timeframe,
+	        $side,
+	        $price,
+	        $size,
         $priceToBeat,
         $currentPriceAtEntry,
         $timestamp,
@@ -482,10 +507,11 @@ export const statements = {
         $pnl,
         $settlePrice
       )
-      ON CONFLICT(id) DO UPDATE SET
-        resolved = $resolved,
-        won = $won,
-        pnl = $pnl,
+	      ON CONFLICT(id) DO UPDATE SET
+	        timeframe = COALESCE($timeframe, timeframe),
+	        resolved = $resolved,
+	        won = $won,
+	        pnl = $pnl,
         settle_price = $settlePrice
     `),
 
@@ -514,6 +540,11 @@ export const statements = {
 		cachedQuery(`
       SELECT * FROM daily_stats WHERE date = $date AND mode = $mode
     `),
+
+	getRecentDailyStatsByMode: () =>
+		cachedQuery(`
+			SELECT date, pnl FROM daily_stats WHERE mode = $mode ORDER BY date DESC LIMIT $limit
+		`),
 
 	getPaperState: () =>
 		cachedQuery(`
@@ -584,8 +615,8 @@ export const statements = {
 export const pendingLiveStatements = {
 	insertPendingLiveTrade: () =>
 		cachedPrepare(`
-			INSERT OR REPLACE INTO pending_live_trades (order_id, market_id, side, buy_price, size, price_to_beat, window_start_ms)
-			VALUES ($orderId, $marketId, $side, $buyPrice, $size, $priceToBeat, $windowStartMs)
+			INSERT OR REPLACE INTO pending_live_trades (order_id, market_id, side, buy_price, size, price_to_beat, window_start_ms, timeframe)
+			VALUES ($orderId, $marketId, $side, $buyPrice, $size, $priceToBeat, $windowStartMs, $timeframe)
 		`),
 
 	deletePendingLiveTrade: () =>
@@ -595,12 +626,13 @@ export const pendingLiveStatements = {
 
 	deleteResolvedPendingLiveTrades: () =>
 		cachedPrepare(`
-			DELETE FROM pending_live_trades WHERE window_start_ms = $windowStartMs
+			DELETE FROM pending_live_trades
+			WHERE window_start_ms = $windowStartMs AND COALESCE(timeframe, '15m') = $timeframe
 		`),
 
 	getAllPendingLiveTrades: () =>
 		cachedQuery(`
-			SELECT order_id, market_id, side, buy_price, size, price_to_beat, window_start_ms
+			SELECT order_id, market_id, side, buy_price, size, price_to_beat, window_start_ms, timeframe
 			FROM pending_live_trades ORDER BY created_at ASC
 		`),
 };

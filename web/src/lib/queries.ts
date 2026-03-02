@@ -95,6 +95,7 @@ export function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 						todayStats: patch.todayStats ?? prev.todayStats,
 						liveTodayStats: patch.liveTodayStats ?? prev.liveTodayStats,
 						paperMode: patch.paperMode ?? prev.paperMode,
+						liveByMarket: patch.liveByMarket ?? prev.liveByMarket,
 					});
 				}
 				break;

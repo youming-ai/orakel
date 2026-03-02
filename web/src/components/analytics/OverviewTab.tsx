@@ -54,11 +54,16 @@ export function OverviewTab({
 	markets,
 }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {
-		const order = ["BTC", "ETH", "SOL", "XRP"];
+		const assetOrder = ["BTC", "ETH", "SOL", "XRP"];
+		const tfOrder = ["15m", "1h", "4h"];
 		return [...markets].sort((a, b) => {
-			const ai = order.indexOf(a.id);
-			const bi = order.indexOf(b.id);
-			return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+			const ai = assetOrder.indexOf(a.id);
+			const bi = assetOrder.indexOf(b.id);
+			const assetDiff = (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+			if (assetDiff !== 0) return assetDiff;
+			const ati = tfOrder.indexOf(a.timeframe ?? "15m");
+			const bti = tfOrder.indexOf(b.timeframe ?? "15m");
+			return (ati === -1 ? 999 : ati) - (bti === -1 ? 999 : bti);
 		});
 	}, [markets]);
 
@@ -254,9 +259,9 @@ export function OverviewTab({
 				<h2 className="text-sm font-semibold text-foreground">Markets</h2>
 				<div className="flex-1 h-px bg-border/50" />
 			</div>
-			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+			<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 				{sortedMarkets.map((m) => (
-					<MarketCardWithSignal key={m.id} market={m} />
+					<MarketCardWithSignal key={`${m.id}:${m.timeframe ?? "15m"}`} market={m} />
 				))}
 			</div>
 

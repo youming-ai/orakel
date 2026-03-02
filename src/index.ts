@@ -1,7 +1,7 @@
 import { applyEvent, enrichPosition, initAccountState, resetAccountState, updateFromSnapshot } from "./accountState.ts";
 import { signalQualityModel } from "./adaptiveState.ts";
 import { startApiServer } from "./api.ts";
-import { CONFIG } from "./config.ts";
+import { CONFIG, getConfigForTimeframe, TIMEFRAME_WINDOW_MINUTES } from "./config.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
 import { startBalancePolling } from "./data/polygonBalance.ts";
@@ -34,7 +34,15 @@ import {
 import { shouldTakeTrade } from "./strategyRefinement.ts";
 import { renderDashboard } from "./terminal.ts";
 import { connectWallet, executeTrade, getClientStatus, getLiveStats, getLiveTodayStats, getWallet } from "./trader.ts";
-import type { MarketSnapshot, OrderTracker, StreamHandles, WsStreamHandle } from "./types.ts";
+import type {
+	AppConfig,
+	MarketSnapshot,
+	OrderTracker,
+	RiskConfig,
+	StreamHandles,
+	TimeframeId,
+	WsStreamHandle,
+} from "./types.ts";
 import { getCandleWindowTiming, sleep } from "./utils.ts";
 import { handleWindowBoundary } from "./windowBoundary.ts";
 
@@ -84,8 +92,88 @@ function createTradeTracker() {
 	};
 }
 
-const paperTracker = createTradeTracker();
-const liveTracker = createTradeTracker();
+type TradeTracker = ReturnType<typeof createTradeTracker>;
+
+interface TickContext {
+	enabledTimeframes: TimeframeId[];
+	timeframeConfigs: Map<TimeframeId, AppConfig>;
+	paperRisk: RiskConfig;
+	liveRisk: RiskConfig;
+	clobBaseUrl: string;
+	pollIntervalMs: number;
+	safeModeThreshold: number;
+}
+
+function createInitialMarketState(): MarketState {
+	return {
+		prevSpotPrice: null,
+		prevCurrentPrice: null,
+		priceToBeatState: { slug: null, value: null, setAtMs: null },
+	};
+}
+
+function createTickContext(enabledTimeframes: TimeframeId[]): TickContext {
+	const timeframeConfigs = new Map<TimeframeId, AppConfig>();
+	for (const tf of enabledTimeframes) {
+		// Snapshot per-timeframe config once per tick to avoid mixed-config behavior.
+		timeframeConfigs.set(tf, structuredClone(getConfigForTimeframe(tf)));
+	}
+	return {
+		enabledTimeframes,
+		timeframeConfigs,
+		paperRisk: { ...CONFIG.paperRisk },
+		liveRisk: { ...CONFIG.liveRisk },
+		clobBaseUrl: CONFIG.clobBaseUrl,
+		pollIntervalMs: CONFIG.pollIntervalMs,
+		safeModeThreshold: Math.max(1, Number(CONFIG.strategy.safeModeThreshold ?? 3)),
+	};
+}
+
+function syncTimeframeRuntimeState(
+	enabledTimeframes: TimeframeId[],
+	marketIds: string[],
+	states: Map<string, MarketState>,
+	paperTrackers: Map<TimeframeId, TradeTracker>,
+	liveTrackers: Map<TimeframeId, TradeTracker>,
+	prevWindowStartMs: Map<TimeframeId, number>,
+): void {
+	const enabledSet = new Set<TimeframeId>(enabledTimeframes);
+
+	for (const tf of enabledTimeframes) {
+		if (!paperTrackers.has(tf)) {
+			paperTrackers.set(tf, createTradeTracker());
+		}
+		if (!liveTrackers.has(tf)) {
+			liveTrackers.set(tf, createTradeTracker());
+		}
+		for (const marketId of marketIds) {
+			const stateKey = `${marketId}:${tf}`;
+			if (!states.has(stateKey)) {
+				states.set(stateKey, createInitialMarketState());
+			}
+		}
+	}
+
+	for (const tf of Array.from(paperTrackers.keys())) {
+		if (!enabledSet.has(tf)) paperTrackers.delete(tf);
+	}
+	for (const tf of Array.from(liveTrackers.keys())) {
+		if (!enabledSet.has(tf)) liveTrackers.delete(tf);
+	}
+	for (const tf of Array.from(prevWindowStartMs.keys())) {
+		if (!enabledSet.has(tf)) prevWindowStartMs.delete(tf);
+	}
+	for (const key of Array.from(states.keys())) {
+		const separatorIndex = key.lastIndexOf(":");
+		if (separatorIndex < 0) continue;
+		const tf = key.slice(separatorIndex + 1) as TimeframeId;
+		if (!enabledSet.has(tf)) states.delete(key);
+	}
+}
+
+// Per-timeframe trade trackers
+const paperTrackers = new Map<TimeframeId, TradeTracker>();
+const liveTrackers = new Map<TimeframeId, TradeTracker>();
 
 let balancePollingHandle: { getLast(): unknown; close(): void } | null = null;
 let eventStreamHandle: { close(): void } | null = null;
@@ -97,7 +185,7 @@ async function main(): Promise<void> {
 	// Auto-connect wallet if PRIVATE_KEY is configured in .env
 	if (env.PRIVATE_KEY) {
 		try {
-			const result = await connectWallet(env.PRIVATE_KEY);
+			const result = await connectWallet(env.PRIVATE_KEY, String(CONFIG.clobBaseUrl));
 			log.info(`Wallet auto-connected from .env: ${result.address}`);
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : String(err);
@@ -135,16 +223,8 @@ async function main(): Promise<void> {
 
 	const clobWs: ClobWsHandle = startClobMarketWs();
 
-	const states = new Map<string, MarketState>(
-		markets.map((m) => [
-			m.id,
-			{
-				prevSpotPrice: null,
-				prevCurrentPrice: null,
-				priceToBeatState: { slug: null, value: null, setAtMs: null },
-			},
-		]),
-	);
+	// Compound-key states: "BTC:15m", "BTC:1h", "BTC:4h", etc.
+	const states = new Map<string, MarketState>();
 
 	const orderTracker: SimpleOrderTracker = {
 		orders: new Map<string, number>(),
@@ -177,7 +257,8 @@ async function main(): Promise<void> {
 	const typedOrderTracker: OrderTracker = orderTracker;
 	void typedOrderTracker;
 
-	let prevWindowStartMs: number = 0;
+	const prevWindowStartMs = new Map<TimeframeId, number>();
+	const marketIds = markets.map((m) => m.id);
 
 	const shutdown = () => {
 		log.info("Shutdown signal received, stopping bot...");
@@ -209,10 +290,20 @@ async function main(): Promise<void> {
 	process.on("SIGINT", shutdown);
 
 	let consecutiveAllFails = 0;
-	const SAFE_MODE_THRESHOLD = CONFIG.strategy.safeModeThreshold ?? 3;
 	let liveInitialized = false;
 
 	while (true) {
+		const enabledTimeframesSnapshot = [...CONFIG.enabledTimeframes];
+		syncTimeframeRuntimeState(
+			enabledTimeframesSnapshot,
+			marketIds,
+			states,
+			paperTrackers,
+			liveTrackers,
+			prevWindowStartMs,
+		);
+		const tickContext = createTickContext(enabledTimeframesSnapshot);
+
 		const hasPendingPaperTrades = getPendingPaperTrades().length > 0;
 		const shouldRunLoop = isPaperRunning() || isLiveRunning() || hasPendingPaperTrades;
 		if (!shouldRunLoop) {
@@ -227,7 +318,7 @@ async function main(): Promise<void> {
 				const wallet = getWallet();
 				if (wallet) {
 					const { ClobClient } = await import("@polymarket/clob-client");
-					const client = new ClobClient(CONFIG.clobBaseUrl, 137, wallet);
+					const client = new ClobClient(tickContext.clobBaseUrl, 137, wallet);
 					orderManager.setClient(client);
 					// Set heartbeat client before starting heartbeat
 					setHeartbeatClient(client);
@@ -343,53 +434,81 @@ async function main(): Promise<void> {
 			liveInitialized = false;
 		}
 
-		// --- Cycle boundary: settlement + tracker reset ---
-		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
-		if (prevWindowStartMs > 0 && timing.startMs !== prevWindowStartMs) {
-			await handleWindowBoundary({
-				prevWindowStartMs,
-				currentStartMs: timing.startMs,
-				markets,
-				states,
-				paperTracker,
-				liveTracker,
-			});
+		// --- Cycle boundary: settlement + tracker reset (per-timeframe) ---
+		for (const tf of tickContext.enabledTimeframes) {
+			const timing = getCandleWindowTiming(TIMEFRAME_WINDOW_MINUTES[tf]);
+			const prevStart = prevWindowStartMs.get(tf) ?? 0;
+			if (prevStart > 0 && timing.startMs !== prevStart) {
+				const paperTracker = paperTrackers.get(tf);
+				const liveTracker = liveTrackers.get(tf);
+				if (paperTracker && liveTracker) {
+					await handleWindowBoundary({
+						prevWindowStartMs: prevStart,
+						currentStartMs: timing.startMs,
+						markets,
+						states,
+						timeframe: tf,
+						windowMinutes: TIMEFRAME_WINDOW_MINUTES[tf],
+						paperDailyLossLimitUsdc: Number(tickContext.paperRisk.dailyMaxLossUsdc || 0),
+						paperTracker,
+						liveTracker,
+					});
+				}
+			}
+			prevWindowStartMs.set(tf, timing.startMs);
 		}
-		prevWindowStartMs = timing.startMs;
 
 		orderTracker.prune();
-		const results: ProcessMarketResult[] = await Promise.all(
-			markets.map(async (market) => {
-				try {
-					const state = states.get(market.id);
-					if (!state) {
-						throw new Error(`missing_state_${market.id}`);
-					}
-					return await processMarket({
-						market,
-						timing,
-						streams,
-						state,
-						signalQualityModel,
-					});
-				} catch (err: unknown) {
-					const message = err instanceof Error ? err.message : String(err);
-					return { ok: false, market, error: message };
-				}
-			}),
-		);
+
+		// --- Process all markets × timeframes in parallel ---
+		const allTasks: Array<Promise<ProcessMarketResult>> = [];
+		const timingByTf = new Map<TimeframeId, ReturnType<typeof getCandleWindowTiming>>();
+		for (const tf of tickContext.enabledTimeframes) {
+			const tfConfig = tickContext.timeframeConfigs.get(tf);
+			if (!tfConfig) {
+				log.warn(`Missing tick config for timeframe ${tf}, skipping processing`);
+				continue;
+			}
+			const timing = getCandleWindowTiming(TIMEFRAME_WINDOW_MINUTES[tf]);
+			timingByTf.set(tf, timing);
+			for (const market of markets) {
+				const stateKey = `${market.id}:${tf}`;
+				const state = states.get(stateKey);
+				allTasks.push(
+					(async () => {
+						try {
+							if (!state) throw new Error(`missing_state_${stateKey}`);
+							return await processMarket({
+								market,
+								timing,
+								streams,
+								state,
+								timeframe: tf,
+								config: tfConfig,
+								signalQualityModel,
+							});
+						} catch (err: unknown) {
+							const message = err instanceof Error ? err.message : String(err);
+							return { ok: false, market, timeframe: tf, error: message } as ProcessMarketResult;
+						}
+					})(),
+				);
+			}
+		}
+		const results: ProcessMarketResult[] = await Promise.all(allTasks);
 
 		const allFailed = results.every((r) => !r.ok);
+		const safeModeThreshold = tickContext.safeModeThreshold;
 		if (allFailed && results.length > 0) {
 			consecutiveAllFails++;
-			log.warn(`All markets failed (${consecutiveAllFails}/${SAFE_MODE_THRESHOLD})`);
-			if (consecutiveAllFails >= SAFE_MODE_THRESHOLD) {
+			log.warn(`All markets failed (${consecutiveAllFails}/${safeModeThreshold})`);
+			if (consecutiveAllFails >= safeModeThreshold) {
 				log.error("Safe mode: all markets failed consecutively, skipping trade execution this tick");
 				await sleep(1000);
 				continue;
 			}
 		} else {
-			if (consecutiveAllFails >= SAFE_MODE_THRESHOLD) {
+			if (consecutiveAllFails >= safeModeThreshold) {
 				log.info("Exiting safe mode: at least one market recovered");
 			}
 			consecutiveAllFails = 0;
@@ -405,131 +524,164 @@ async function main(): Promise<void> {
 			clobWs.subscribe(newTokenIds);
 		}
 
-		const maxGlobalTrades = CONFIG.strategy.maxGlobalTradesPerWindow ?? 1;
-		const candidates = results
-			.filter((r) => r.ok && r.rec?.action === "ENTER" && r.signalPayload)
-			.filter((r) => {
-				const sig = r.signalPayload;
-				if (!sig) return false;
-				if (sig.priceToBeat === null || sig.priceToBeat === undefined || sig.priceToBeat === 0) return false;
-				if (sig.currentPrice === null || sig.currentPrice === undefined) return false;
-				return true;
-			})
-			.filter((r) => {
-				const tl = r.timeLeftMin ?? 0;
-				const windowMin = CONFIG.candleWindowMinutes ?? 15;
-				const elapsed = windowMin - tl;
-				if (elapsed < 3) return false;
-				if (tl < (CONFIG.strategy.minTimeLeftMin ?? 3)) return false;
-				return true;
-			})
-			.filter((r) => {
-				const sig = r.signalPayload;
-				if (!sig) return false;
-				const result = shouldTakeTrade({
-					market: r.market.id,
-					regime: r.rec?.regime ?? null,
-					volatility: r.volatility15m ?? 0,
-				});
-				if (!result.shouldTrade) {
-					log.info(`Skip ${r.market.id}: ${result.reason}`);
-				}
-				return result.shouldTrade;
-			})
-			.sort((a, b) => {
-				const edgeA = Number(a.rec?.edge ?? 0);
-				const edgeB = Number(b.rec?.edge ?? 0);
-				if (edgeB !== edgeA) return edgeB - edgeA;
-				return Number(a.rawSum ?? 1) - Number(b.rawSum ?? 1);
-			});
-
-		let successfulTradesThisTick = 0;
-		for (const candidate of candidates) {
-			const sig = candidate.signalPayload;
-			if (!sig) continue;
-			const mkt = candidate.market;
-			const slug = candidate.marketSlug ?? "";
-			const sideBook = sig.side === "UP" ? (candidate.orderbook?.up ?? null) : (candidate.orderbook?.down ?? null);
-			const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
-
-			if (isPaperRunning()) {
-				const tradeSize = Number(CONFIG.paperRisk.maxTradeSizeUsdc || 0);
-				const affordCheck = canAffordTradeWithStopCheck(tradeSize);
-				const minPaperLiquidity = Number(CONFIG.paperRisk.minLiquidity || 0);
-				const hasPaperLiquidity = sideLiquidity !== null && sideLiquidity >= minPaperLiquidity;
-				if (
-					!paperTracker.has(mkt.id, timing.startMs) &&
-					affordCheck.canTrade &&
-					hasPaperLiquidity &&
-					paperTracker.canTradeGlobally(Math.min(maxGlobalTrades, CONFIG.paperRisk.maxTradesPerWindow)) &&
-					getPendingPaperTrades().length < CONFIG.paperRisk.maxOpenPositions
-				) {
-					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.paperRisk }, "paper");
-					if (result?.success) {
-						paperTracker.record(mkt.id, timing.startMs);
-					} else {
-						log.warn(`Paper trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
-					}
-				} else if (!hasPaperLiquidity) {
-					log.info(
-						`Skip ${mkt.id} paper: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minPaperLiquidity.toFixed(0)}`,
-					);
-				} else if (!affordCheck.canTrade) {
-					log.warn(`Trade rejected for ${mkt.id}: ${affordCheck.reason}`);
-				}
+		// --- Trade execution: per-timeframe limits ---
+		for (const tf of tickContext.enabledTimeframes) {
+			const tfConfig = tickContext.timeframeConfigs.get(tf);
+			if (!tfConfig) {
+				log.warn(`Missing tick config for timeframe ${tf}, skipping execution`);
+				continue;
 			}
+			const timing = timingByTf.get(tf);
+			if (!timing) continue;
+			const paperTracker = paperTrackers.get(tf);
+			const liveTracker = liveTrackers.get(tf);
+			if (!paperTracker || !liveTracker) continue;
 
-			if (isLiveRunning()) {
-				const minLiveLiquidity = Number(CONFIG.liveRisk.minLiquidity || 0);
-				const hasLiveLiquidity = sideLiquidity !== null && sideLiquidity >= minLiveLiquidity;
-				if (!hasLiveLiquidity) {
-					log.info(
-						`Skip ${mkt.id} live: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minLiveLiquidity.toFixed(0)}`,
+			const maxGlobalTrades = tfConfig.strategy.maxGlobalTradesPerWindow ?? 1;
+			const candidates = results
+				.filter((r) => r.timeframe === tf)
+				.filter((r) => r.ok && r.rec?.action === "ENTER" && r.signalPayload)
+				.filter((r) => {
+					const sig = r.signalPayload;
+					if (!sig) return false;
+					if (sig.priceToBeat === null || sig.priceToBeat === undefined || sig.priceToBeat === 0) return false;
+					if (sig.currentPrice === null || sig.currentPrice === undefined) return false;
+					return true;
+				})
+				.filter((r) => {
+					const tl = r.timeLeftMin ?? 0;
+					const windowMin = TIMEFRAME_WINDOW_MINUTES[tf];
+					const elapsed = windowMin - tl;
+					if (elapsed < 3) return false;
+					if (tl < (tfConfig.strategy.minTimeLeftMin ?? 3)) return false;
+					return true;
+				})
+				.filter((r) => {
+					const sig = r.signalPayload;
+					if (!sig) return false;
+					const result = shouldTakeTrade({
+						market: r.market.id,
+						regime: r.rec?.regime ?? null,
+						volatility: r.volatility15m ?? 0,
+					});
+					if (!result.shouldTrade) {
+						log.info(`Skip ${r.market.id}:${tf}: ${result.reason}`);
+					}
+					return result.shouldTrade;
+				})
+				.sort((a, b) => {
+					const edgeA = Number(a.rec?.edge ?? 0);
+					const edgeB = Number(b.rec?.edge ?? 0);
+					if (edgeB !== edgeA) return edgeB - edgeA;
+					return Number(a.rawSum ?? 1) - Number(b.rawSum ?? 1);
+				});
+
+			let successfulTradesThisTick = 0;
+			for (const candidate of candidates) {
+				const sig = candidate.signalPayload;
+				if (!sig) continue;
+				const mkt = candidate.market;
+				const slug = candidate.marketSlug ?? "";
+				const sideBook = sig.side === "UP" ? (candidate.orderbook?.up ?? null) : (candidate.orderbook?.down ?? null);
+				const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
+
+				if (isPaperRunning()) {
+					const tradeSize = Number(tickContext.paperRisk.maxTradeSizeUsdc || 0);
+					const affordCheck = canAffordTradeWithStopCheck(
+						tradeSize,
+						Number(tickContext.paperRisk.dailyMaxLossUsdc || 0),
 					);
-					continue;
+					const minPaperLiquidity = Number(tickContext.paperRisk.minLiquidity || 0);
+					const hasPaperLiquidity = sideLiquidity !== null && sideLiquidity >= minPaperLiquidity;
+					if (
+						!paperTracker.has(mkt.id, timing.startMs) &&
+						affordCheck.canTrade &&
+						hasPaperLiquidity &&
+						paperTracker.canTradeGlobally(Math.min(maxGlobalTrades, tickContext.paperRisk.maxTradesPerWindow)) &&
+						getPendingPaperTrades().length < tickContext.paperRisk.maxOpenPositions
+					) {
+						const result = await executeTrade(
+							sig,
+							{
+								marketConfig: mkt,
+								riskConfig: tickContext.paperRisk,
+								strategyConfig: tfConfig.strategy,
+							},
+							"paper",
+						);
+						if (result?.success) {
+							paperTracker.record(mkt.id, timing.startMs);
+						} else {
+							log.warn(`Paper trade failed for ${mkt.id}:${tf}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
+						}
+					} else if (!hasPaperLiquidity) {
+						log.info(
+							`Skip ${mkt.id}:${tf} paper: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minPaperLiquidity.toFixed(0)}`,
+						);
+					} else if (!affordCheck.canTrade) {
+						log.warn(`Trade rejected for ${mkt.id}:${tf}: ${affordCheck.reason}`);
+					}
 				}
 
-				const liveWindowLimit = Math.min(maxGlobalTrades, CONFIG.liveRisk.maxTradesPerWindow);
-				const canPlace =
-					orderTracker &&
-					!orderTracker.hasOrder(mkt.id, slug) &&
-					!orderTracker.onCooldown() &&
-					orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
-					successfulTradesThisTick < liveWindowLimit &&
-					!liveTracker.has(mkt.id, timing.startMs) &&
-					liveTracker.canTradeGlobally(liveWindowLimit);
-
-				if (!canPlace) continue;
-
-				const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
-				if (result?.success) {
-					orderTracker.record(mkt.id, slug);
-					liveTracker.record(mkt.id, timing.startMs);
-					successfulTradesThisTick += 1;
-
-					// Wire order into OrderManager for status polling & lifecycle management
-					if (result.orderId) {
-						const tradeTokenId = sig.tokens
-							? sig.side === "UP"
-								? sig.tokens.upTokenId
-								: sig.tokens.downTokenId
-							: undefined;
-						orderManager.addOrderWithTracking(
-							{
-								orderId: result.orderId,
-								marketId: mkt.id,
-								windowSlug: slug,
-								side: sig.side ?? "UP",
-								tokenId: tradeTokenId,
-								price: result.tradePrice ?? 0,
-								size: Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0),
-								placedAt: Date.now(),
-							},
-							result.isGtdOrder ?? true,
+				if (isLiveRunning()) {
+					const minLiveLiquidity = Number(tickContext.liveRisk.minLiquidity || 0);
+					const hasLiveLiquidity = sideLiquidity !== null && sideLiquidity >= minLiveLiquidity;
+					if (!hasLiveLiquidity) {
+						log.info(
+							`Skip ${mkt.id}:${tf} live: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minLiveLiquidity.toFixed(0)}`,
 						);
+						continue;
 					}
-				} else {
-					log.warn(`Live trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
+
+					const liveWindowLimit = Math.min(maxGlobalTrades, tickContext.liveRisk.maxTradesPerWindow);
+					const canPlace =
+						orderTracker &&
+						!orderTracker.hasOrder(mkt.id, slug) &&
+						!orderTracker.onCooldown() &&
+						orderTracker.totalActive() < tickContext.liveRisk.maxOpenPositions &&
+						successfulTradesThisTick < liveWindowLimit &&
+						!liveTracker.has(mkt.id, timing.startMs) &&
+						liveTracker.canTradeGlobally(liveWindowLimit);
+
+					if (!canPlace) continue;
+
+					const result = await executeTrade(
+						sig,
+						{
+							marketConfig: mkt,
+							riskConfig: tickContext.liveRisk,
+							strategyConfig: tfConfig.strategy,
+						},
+						"live",
+					);
+					if (result?.success) {
+						orderTracker.record(mkt.id, slug);
+						liveTracker.record(mkt.id, timing.startMs);
+						successfulTradesThisTick += 1;
+
+						if (result.orderId) {
+							const tradeTokenId = sig.tokens
+								? sig.side === "UP"
+									? sig.tokens.upTokenId
+									: sig.tokens.downTokenId
+								: undefined;
+							orderManager.addOrderWithTracking(
+								{
+									orderId: result.orderId,
+									marketId: mkt.id,
+									windowSlug: slug,
+									side: sig.side ?? "UP",
+									tokenId: tradeTokenId,
+									price: result.tradePrice ?? 0,
+									size: Number(tickContext.liveRisk.maxTradeSizeUsdc || 0),
+									placedAt: Date.now(),
+								},
+								result.isGtdOrder ?? true,
+							);
+						}
+					} else {
+						log.warn(`Live trade failed for ${mkt.id}:${tf}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
+					}
 				}
 			}
 		}
@@ -537,6 +689,7 @@ async function main(): Promise<void> {
 		const snapshots = results.map(
 			(r): MarketSnapshot => ({
 				id: r.market.id,
+				timeframe: r.timeframe ?? "15m",
 				label: r.market.label,
 				ok: r.ok,
 				error: r.error,
@@ -578,7 +731,6 @@ async function main(): Promise<void> {
 			}),
 		);
 		updateMarkets(snapshots);
-		// Fetch live stats from chain before emitting snapshot
 		const liveStats = await getLiveStats();
 		emitStateSnapshot({
 			markets: snapshots,
@@ -587,11 +739,11 @@ async function main(): Promise<void> {
 			liveRunning: isLiveRunning(),
 			paperStats: getPaperStats(),
 			liveStats,
-			liveTodayStats: getLiveTodayStats(),
+			liveTodayStats: getLiveTodayStats(Number(tickContext.liveRisk.dailyMaxLossUsdc || 0)),
 		});
 
 		renderDashboard(results);
-		await sleep(CONFIG.pollIntervalMs);
+		await sleep(tickContext.pollIntervalMs);
 	}
 }
 

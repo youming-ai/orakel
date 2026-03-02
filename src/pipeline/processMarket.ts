@@ -1,12 +1,13 @@
-import { CONFIG } from "../config.ts";
 import type { SignalQualityModel } from "../engines/signalQuality.ts";
 import { persistSignal } from "../persistence.ts";
 import type {
+	AppConfig,
 	CandleWindowTiming,
 	MacdResult,
 	MarketConfig,
 	OrderBookSummary,
 	StreamHandles,
+	TimeframeId,
 	TradeDecision,
 	TradeSignal,
 } from "../types.ts";
@@ -18,6 +19,8 @@ interface ProcessMarketParams {
 	timing: CandleWindowTiming;
 	streams: StreamHandles;
 	state: MarketState;
+	timeframe: TimeframeId;
+	config: AppConfig;
 	signalQualityModel?: SignalQualityModel | null;
 }
 
@@ -34,6 +37,7 @@ export interface MarketState {
 export interface ProcessMarketResult {
 	ok: boolean;
 	market: MarketConfig;
+	timeframe?: TimeframeId;
 	error?: string;
 	rec?: TradeDecision;
 	consec?: { color: string | null; count: number };
@@ -67,10 +71,12 @@ export async function processMarket({
 	timing,
 	streams,
 	state,
+	timeframe,
+	config,
 	signalQualityModel,
 }: Omit<ProcessMarketParams, "orderTracker">): Promise<ProcessMarketResult> {
-	const data = await fetchMarketData(market, timing, streams);
-	if (!data.ok) return { ok: false, market, error: data.error };
+	const data = await fetchMarketData(market, timing, streams, config, timeframe);
+	if (!data.ok) return { ok: false, market, timeframe, error: data.error };
 
 	const { marketSlug, marketStartMs, currentPrice, poly } = data;
 	if (marketSlug && state.priceToBeatState.slug !== marketSlug) {
@@ -98,15 +104,15 @@ export async function processMarket({
 	}
 
 	const priceToBeat = state.priceToBeatState.slug === marketSlug ? state.priceToBeatState.value : null;
-	const result = computeMarketDecision(data, priceToBeat, CONFIG, signalQualityModel);
+	const result = computeMarketDecision(data, priceToBeat, config, signalQualityModel);
 	if (result.edge.vigTooHigh) {
 		return {
 			ok: true,
 			market,
+			timeframe,
 			rec: result.rec,
 		};
 	}
-
 	state.prevSpotPrice = data.spotPrice ?? state.prevSpotPrice;
 	state.prevCurrentPrice = currentPrice ?? state.prevCurrentPrice;
 
@@ -132,11 +138,13 @@ export async function processMarket({
 		marketSlug,
 		rec: result.rec,
 		poly,
+		timeframe,
 	});
 
 	return {
 		ok: true,
 		market,
+		timeframe,
 		marketSlug,
 		signalPayload,
 		rec: result.rec,

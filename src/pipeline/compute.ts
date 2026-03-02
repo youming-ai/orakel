@@ -221,6 +221,7 @@ export function computeMarketDecision(
 		orderbookImbalance,
 		orderbookSpreadUp: upBookSummary?.spread ?? null,
 		orderbookSpreadDown: downBookSummary?.spread ?? null,
+		strategy: config.strategy,
 	});
 
 	const rec = edge.vigTooHigh

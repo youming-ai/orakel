@@ -1,4 +1,3 @@
-import { CONFIG } from "../config.ts";
 import type {
 	ConfidenceResult,
 	EdgeResult,
@@ -29,9 +28,21 @@ export function computeConfidence(params: {
 	macdHist: number | null;
 	haColor: string | null;
 	side: Side;
+	strategy?: StrategyConfig;
 }): ConfidenceResult {
-	const { modelUp, modelDown, regime, volatility15m, orderbookImbalance, vwapSlope, rsi, macdHist, haColor, side } =
-		params;
+	const {
+		modelUp,
+		modelDown,
+		regime,
+		volatility15m,
+		orderbookImbalance,
+		vwapSlope,
+		rsi,
+		macdHist,
+		haColor,
+		side,
+		strategy,
+	} = params;
 
 	const isUp = side === "UP";
 	const modelProb = isUp ? modelUp : modelDown;
@@ -102,7 +113,7 @@ export function computeConfidence(params: {
 	else if (regime === "TREND_DOWN" && isUp) regimeScore = 0.3;
 
 	// Weighted average
-	const weights = CONFIG.strategy.confidenceWeights ?? {
+	const weights = strategy?.confidenceWeights ?? {
 		indicatorAlignment: 0.2,
 		volatilityScore: 0.2,
 		orderbookScore: 0.2,
@@ -147,6 +158,7 @@ export function computeEdge(params: {
 	orderbookImbalance?: number | null;
 	orderbookSpreadUp?: number | null;
 	orderbookSpreadDown?: number | null;
+	strategy?: StrategyConfig;
 }): EdgeResult {
 	const {
 		modelUp,
@@ -158,6 +170,7 @@ export function computeEdge(params: {
 		orderbookImbalance,
 		orderbookSpreadUp,
 		orderbookSpreadDown,
+		strategy,
 	} = params;
 
 	if (marketYes === null || marketNo === null) {
@@ -232,11 +245,11 @@ export function computeEdge(params: {
 	const arbitrageOpportunity =
 		binanceImpliedUp === null
 			? null
-			: detectArbitrage(marketId, marketUp, marketDown, binanceImpliedUp, CONFIG.strategy.arbitrageMinSpread ?? 0.02);
+			: detectArbitrage(marketId, marketUp, marketDown, binanceImpliedUp, strategy?.arbitrageMinSpread ?? 0.02);
 	const arbitrageDetected = arbitrageOpportunity !== null;
 
 	if (arbitrageOpportunity !== null) {
-		const arbitrageMaxBoost = CONFIG.strategy.arbitrageMaxBoost ?? 0.05;
+		const arbitrageMaxBoost = strategy?.arbitrageMaxBoost ?? 0.05;
 		const arbitrageBoost = Math.min(arbitrageOpportunity.confidence * arbitrageMaxBoost, arbitrageMaxBoost);
 		if (arbitrageOpportunity.direction === "BUY_UP") {
 			effectiveEdgeUp += arbitrageBoost;
@@ -245,7 +258,7 @@ export function computeEdge(params: {
 		}
 	}
 
-	const maxVig = CONFIG.strategy.maxVig ?? 0.04;
+	const maxVig = strategy?.maxVig ?? 0.04;
 	const vigTooHigh = rawSum > 1 + maxVig;
 
 	return {
@@ -348,7 +361,7 @@ export function decide(params: {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "non_positive_edge" };
 	}
 
-	const hardCapEdge = CONFIG.strategy.hardCapEdge ?? 0.3;
+	const hardCapEdge = strategy.hardCapEdge ?? 0.3;
 	if (Math.abs(bestEdge) > hardCapEdge) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
 	}
@@ -376,13 +389,14 @@ export function decide(params: {
 		macdHist,
 		haColor: haColor ?? null,
 		side: bestSide,
+		strategy,
 	});
 
 	let edgeScore = 1 / (1 + Math.exp(-25 * (bestEdge - 0.04)));
 	const timeScore = 1 / (1 + Math.exp(-0.8 * (remainingMinutes - 7)));
 
 	// Overconfidence dampening: backtest shows very high edges perform worse
-	const softCap = CONFIG.strategy.softCapEdge ?? 0.22;
+	const softCap = strategy.softCapEdge ?? 0.22;
 	if (bestEdge > softCap) {
 		const overconfidencePenalty = (bestEdge - softCap) * 3;
 		edgeScore = Math.max(0.4, edgeScore - overconfidencePenalty);

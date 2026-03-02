@@ -14,11 +14,10 @@ cd web && bun run dev                # Start frontend dev server (port 9998)
 bun run dev                          # Start both (concurrently)
 ```
 
-## Lint / Typecheck / Test
+## Lint / Typecheck
 
 ```bash
-bun run typecheck                    # Typecheck all src/ (includes tests)
-bun run typecheck:check              # Typecheck src/ excluding test files
+bun run typecheck                    # Typecheck all src/
 bun run typecheck:web                # Typecheck web/src/ only
 bun run lint                         # Biome check (lint + format) src/
 bun run lint:fix                     # Biome check --write (auto-fix)
@@ -26,16 +25,12 @@ bun run lint:web                     # Biome check web/src/
 bun run lint:web:fix                 # Biome check --write web/src/
 bun run format                       # Biome format --write everything
 
-bun run test                         # Run all tests (vitest)
-bunx vitest run src/utils.test.ts    # Run a single test file
-bunx vitest run -t "clamp"           # Run tests matching name pattern
-bun run test:watch                   # Vitest in watch mode
 ```
 
 ## Pre-push Checks
 
-Always run before pushing: `bun run lint && bun run typecheck && bun run test`
-Full precommit script: `bun run lint:fix && bun run format && bun run typecheck && bun run test`
+Always run before pushing: `bun run lint && bun run typecheck`
+Full precommit script: `bun run lint:fix && bun run format && bun run typecheck`
 
 ## Project Structure
 
@@ -107,7 +102,6 @@ Backend code must NOT use path aliases — relative imports with `.ts` extension
 | Module constants   | UPPER_SNAKE_CASE | `MARKETS`, `CONFIG`, `REGIME_DISABLED` |
 | Local constants    | camelCase        | `const baseThreshold = ...`            |
 | React components   | PascalCase       | `MarketCard.tsx`, `Dashboard.tsx`      |
-| Test files         | `{name}.test.ts` | `rsi.test.ts` next to `rsi.ts`        |
 
 ### Functions & Error Handling
 
@@ -118,27 +112,6 @@ Backend code must NOT use path aliases — relative imports with `.ts` extension
 - **No custom Error subclasses** — use plain Error
 - **Logging**: always use `createLogger("module-name")`, never raw `console.log`
 
-## Testing Conventions
-
-Tests use **Vitest**, **co-located** next to source files (`foo.test.ts` beside `foo.ts`).
-Test timeout: 10 seconds (vitest.config.ts). Environment: node.
-
-```typescript
-import { describe, expect, it } from "vitest";
-import { clamp } from "./utils.ts";
-
-describe("clamp", () => {
-	it("should return value when within range", () => {
-		expect(clamp(5, 0, 10)).toBe(5);
-	});
-});
-```
-
-- One `describe` per exported function, descriptive `it("should ...")` names
-- Factory helpers for complex data: `function makeStrategy(overrides = {}): StrategyConfig`
-- `it.each([...])` for parameterized tests
-- Pure functions tested without mocks — pass data directly
-- `toBeCloseTo(value, precision)` for floating-point comparisons
 
 ## Architecture Notes
 

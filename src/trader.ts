@@ -4,7 +4,7 @@ import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
 import { enrichPosition, getUsdcBalance } from "./accountState.ts";
 import { storeSignalMetadata } from "./adaptiveState.ts";
-import { CONFIG } from "./config.ts";
+import { getConfigForTimeframe, TIMEFRAME_WINDOW_MINUTES } from "./config.ts";
 import { onchainStatements, pendingLiveStatements, statements } from "./db.ts";
 import { calculateKellyPositionSize } from "./engines/positionSizing.ts";
 import { env } from "./env.ts";
@@ -16,18 +16,25 @@ import {
 	stopHeartbeat,
 } from "./heartbeat.ts";
 import { addPendingLiveTrade } from "./liveSettlement.ts";
-import { clearLiveStatsCache, getLiveStatsLegacy } from "./liveStats.ts";
+import { clearLiveStatsCache, getLiveMarketBreakdown, getLiveStatsFromChain, getLiveStatsLegacy } from "./liveStats.ts";
 import { createLogger } from "./logger.ts";
 import { addPaperTrade, getPaperBalance } from "./paperStats.ts";
 import { emitTradeExecuted } from "./state.ts";
-import type { DailyState, MarketConfig, PositionSizeResult, RiskConfig, TradeResult, TradeSignal } from "./types.ts";
+import type {
+	DailyState,
+	MarketConfig,
+	PositionSizeResult,
+	RiskConfig,
+	StrategyConfig,
+	TradeResult,
+	TradeSignal,
+} from "./types.ts";
 import { getCandleWindowTiming } from "./utils.ts";
 
 const log = createLogger("trader");
 
 const CREDS_PATH = "./data/api-creds.json";
 
-const HOST = CONFIG.clobBaseUrl;
 const CHAIN_ID = 137;
 
 const RPC_URLS: string[] = [
@@ -100,7 +107,12 @@ function normalizedMarketPrice(price: number | null): number {
 	return price;
 }
 
-function computeTradeSize(signal: TradeSignal, riskConfig: RiskConfig, balance: number): PositionSizeResult {
+function computeTradeSize(
+	signal: TradeSignal,
+	riskConfig: RiskConfig,
+	balance: number,
+	strategyConfig?: StrategyConfig,
+): PositionSizeResult {
 	const configuredMaxSize = Number(riskConfig.maxTradeSizeUsdc || 0);
 	if (!Number.isFinite(configuredMaxSize) || configuredMaxSize <= 0) {
 		return {
@@ -117,14 +129,16 @@ function computeTradeSize(signal: TradeSignal, riskConfig: RiskConfig, balance: 
 	const avgWinPayout = 1 - marketPrice;
 	const avgLossPayout = marketPrice;
 
+	const strategy = strategyConfig ?? getConfigForTimeframe(signal.timeframe).strategy;
+
 	const result = calculateKellyPositionSize({
 		winProbability,
 		avgWinPayout,
 		avgLossPayout,
 		bankroll: balance,
 		maxSize: configuredMaxSize,
-		minSize: CONFIG.strategy.minTradeSize ?? 0.5,
-		kellyFraction: CONFIG.strategy.kellyFraction ?? 0.5,
+		minSize: strategy.minTradeSize ?? 0.5,
+		kellyFraction: strategy.kellyFraction ?? 0.5,
 		confidence: asSignalConfidence(signal),
 		regime: asSignalRegime(signal),
 		side: signal.side,
@@ -210,7 +224,7 @@ export async function initTrader(): Promise<void> {
 	log.info("initTrader() is deprecated - use connectWallet() instead");
 }
 
-export async function connectWallet(privateKey: string): Promise<{ address: string }> {
+export async function connectWallet(privateKey: string, clobBaseUrl: string): Promise<{ address: string }> {
 	if (!privateKey || privateKey.length !== 64) {
 		throw new Error("Private key must be 64 hex characters (without 0x prefix)");
 	}
@@ -233,7 +247,7 @@ export async function connectWallet(privateKey: string): Promise<{ address: stri
 		log.warn("Failed to load saved API credentials:", err);
 	}
 
-	await initClient(savedCreds);
+	await initClient(savedCreds, clobBaseUrl);
 	return { address };
 }
 
@@ -245,7 +259,7 @@ export function disconnectWallet(): void {
 	log.info("Wallet disconnected");
 }
 
-async function initClient(savedCreds: unknown): Promise<void> {
+async function initClient(savedCreds: unknown, clobBaseUrl: string): Promise<void> {
 	if (!wallet) return;
 
 	try {
@@ -258,7 +272,7 @@ async function initClient(savedCreds: unknown): Promise<void> {
 		if (!creds) {
 			log.info("Deriving API credentials from EOA...");
 			try {
-				const tempClient = new ClobClient(HOST, CHAIN_ID, wallet);
+				const tempClient = new ClobClient(clobBaseUrl, CHAIN_ID, wallet);
 				creds = await tempClient.deriveApiKey();
 				if (isApiCreds(creds)) {
 					fs.mkdirSync("./data", { recursive: true });
@@ -284,7 +298,7 @@ async function initClient(savedCreds: unknown): Promise<void> {
 			return;
 		}
 
-		client = new ClobClient(HOST, CHAIN_ID, wallet, creds, signatureType);
+		client = new ClobClient(clobBaseUrl, CHAIN_ID, wallet, creds, signatureType);
 		setHeartbeatClient(client);
 		log.info("Client ready (key:", creds.key, ")");
 	} catch (err: unknown) {
@@ -312,11 +326,32 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 			return false;
 		}
 		// Pre-check USDC balance to avoid wasted CLOB API calls
+		// Block when balance is 0 (not yet fetched or actually empty) or too low
 		const usdcBalance = getUsdcBalance();
 		const maxTradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
-		if (usdcBalance > 0 && usdcBalance < maxTradeSize * 0.5) {
+		if (usdcBalance < maxTradeSize * 0.5) {
 			log.warn(`USDC balance too low for live trade: ${usdcBalance.toFixed(2)} < ${(maxTradeSize * 0.5).toFixed(2)}`);
 			return false;
+		}
+
+		// Cumulative drawdown protection: sum recent live daily PnL from DB
+		// Blocks trading if rolling 7-day cumulative loss exceeds 7x daily limit
+		const cumulativeLossLimit = Number(riskConfig.dailyMaxLossUsdc || 0) * 7;
+		if (cumulativeLossLimit > 0) {
+			try {
+				const rows = statements.getRecentDailyStatsByMode().all({ $mode: "live", $limit: 7 }) as Array<{
+					pnl: number;
+				}>;
+				const recentPnl = rows.reduce((sum, r) => sum + Number(r.pnl ?? 0), 0);
+				if (recentPnl <= -cumulativeLossLimit) {
+					log.error(
+						`Live cumulative loss limit reached: ${recentPnl.toFixed(2)} <= -${cumulativeLossLimit.toFixed(2)} (7-day rolling)`,
+					);
+					return false;
+				}
+			} catch {
+				// DB query failure should not block trading
+			}
 		}
 	}
 
@@ -373,15 +408,15 @@ function logTrade(
 
 export async function executeTrade(
 	signal: TradeSignal,
-	options: { marketConfig?: MarketConfig | null; riskConfig: RiskConfig },
+	options: { marketConfig?: MarketConfig | null; riskConfig: RiskConfig; strategyConfig?: StrategyConfig },
 	mode: "paper" | "live" = "paper",
 ): Promise<TradeResult> {
-	const { marketConfig = null, riskConfig } = options;
+	const { marketConfig = null, riskConfig, strategyConfig } = options;
 
 	if (mode === "paper") {
 		const { side, marketUp, marketDown, marketSlug } = signal;
 		const paperBalance = getPaperBalance().current;
-		const paperSizing = computeTradeSize(signal, riskConfig, paperBalance);
+		const paperSizing = computeTradeSize(signal, riskConfig, paperBalance, strategyConfig);
 		const tradeSize = paperSizing.size;
 		if (tradeSize <= 0) {
 			log.warn(`Skipping paper trade for ${signal.marketId}: ${paperSizing.reason}`);
@@ -415,7 +450,8 @@ export async function executeTrade(
 			return { success: false, reason: "price_out_of_range" };
 		}
 
-		const timing = getCandleWindowTiming(15);
+		const windowMinutes = TIMEFRAME_WINDOW_MINUTES[signal.timeframe] ?? 15;
+		const timing = getCandleWindowTiming(windowMinutes);
 		const paperId = addPaperTrade({
 			marketId: signal.marketId,
 			windowStartMs: timing.startMs,
@@ -425,6 +461,7 @@ export async function executeTrade(
 			priceToBeat: signal.priceToBeat ?? 0,
 			currentPriceAtEntry: signal.currentPrice,
 			timestamp: new Date().toISOString(),
+			timeframe: signal.timeframe,
 		});
 
 		storeSignalMetadata(paperId, {
@@ -486,7 +523,8 @@ export async function executeTrade(
 		return { success: false, reason: "trading_disabled" };
 	}
 
-	const liveSizing = computeTradeSize(signal, riskConfig, Number(riskConfig.maxTradeSizeUsdc || 0) * 10);
+	const liveBankroll = getUsdcBalance() || Number(riskConfig.maxTradeSizeUsdc || 0) * 10;
+	const liveSizing = computeTradeSize(signal, riskConfig, liveBankroll, strategyConfig);
 	const tradeSize = liveSizing.size;
 	if (tradeSize <= 0) {
 		log.warn(`Skipping live trade for ${signal.marketId}: ${liveSizing.reason}`);
@@ -560,7 +598,7 @@ export async function executeTrade(
 			// EARLY/MID phase → GTD with post-only for maker rebate.
 			// postOnly guarantees maker status; if order would take, it is rejected.
 			// No taker fallback — conservative: skip rather than pay taker fees.
-			const timing = getCandleWindowTiming(15);
+			const timing = getCandleWindowTiming(TIMEFRAME_WINDOW_MINUTES[signal.timeframe] ?? 15);
 			// Dynamic expiration buffer: minimum 10s, max 50% of remaining time
 			// This ensures orders don't expire too early in LATE phase
 			const bufferMs = Math.max(10_000, Math.min(timing.remainingMs / 2, 60_000));
@@ -633,6 +671,19 @@ export async function executeTrade(
 		// Clear stats cache after new trade
 		clearLiveStatsCache();
 
+		// Store signal metadata for adaptive model feedback during settlement
+		storeSignalMetadata(finalOrderId, {
+			edge: Math.max(Number(signal.edgeUp ?? 0), Number(signal.edgeDown ?? 0)),
+			confidence: asSignalConfidence(signal),
+			phase: signal.phase,
+			regime: asSignalRegime(signal),
+			volatility15m: Number(signal.volatility15m ?? 0),
+			modelUp: Number(signal.modelUp ?? 0.5),
+			orderbookImbalance: signal.orderbookImbalance ?? null,
+			rsi: null,
+			vwapSlope: null,
+		});
+
 		if (tokenId && tokenId.length > 0) {
 			try {
 				onchainStatements.upsertKnownCtfToken().run({
@@ -661,7 +712,8 @@ export async function executeTrade(
 
 		// Track for settlement at window boundary
 		if (signal.priceToBeat && signal.priceToBeat > 0) {
-			const liveTiming = getCandleWindowTiming(15);
+			const liveWindowMinutes = TIMEFRAME_WINDOW_MINUTES[signal.timeframe] ?? 15;
+			const liveTiming = getCandleWindowTiming(liveWindowMinutes);
 			const pendingTrade = {
 				orderId: finalOrderId,
 				marketId: signal.marketId ?? "",
@@ -670,6 +722,7 @@ export async function executeTrade(
 				size: liveTradeSize,
 				priceToBeat: signal.priceToBeat,
 				windowStartMs: liveTiming.startMs,
+				timeframe: signal.timeframe,
 			};
 
 			// Persist to DB first for data consistency
@@ -682,6 +735,7 @@ export async function executeTrade(
 					$size: liveTradeSize,
 					$priceToBeat: signal.priceToBeat,
 					$windowStartMs: liveTiming.startMs,
+					$timeframe: signal.timeframe,
 				});
 				// Only add to memory after successful DB write
 				addPendingLiveTrade(pendingTrade);
@@ -743,18 +797,6 @@ export function getClientStatus(): {
 	};
 }
 
-export function getConfig(): {
-	paperRisk: RiskConfig;
-	liveRisk: RiskConfig;
-	strategy: typeof CONFIG.strategy;
-} {
-	return {
-		paperRisk: CONFIG.paperRisk,
-		liveRisk: CONFIG.liveRisk,
-		strategy: CONFIG.strategy,
-	};
-}
-
 export function getDailyState(): DailyState {
 	return { ...paperDailyState };
 }
@@ -806,10 +848,32 @@ export async function getLiveStats(): Promise<{
 	}
 }
 
-export function getLiveTodayStats(): { pnl: number; trades: number; limit: number } {
+export function getLiveTodayStats(dailyLossLimitUsdc: number): {
+	pnl: number;
+	trades: number;
+	limit: number;
+} {
 	return {
 		pnl: liveDailyState.pnl,
 		trades: liveDailyState.trades,
-		limit: CONFIG.liveRisk.dailyMaxLossUsdc,
+		limit: dailyLossLimitUsdc,
 	};
+}
+
+export async function getLiveByMarket(): Promise<
+	Record<
+		string,
+		{ wins: number; losses: number; pending: number; winRate: number; totalPnl: number; tradeCount: number }
+	>
+> {
+	if (!client) {
+		return {};
+	}
+	try {
+		const stats = await getLiveStatsFromChain(client);
+		return getLiveMarketBreakdown(stats.trades);
+	} catch (err) {
+		log.error("Failed to get live market breakdown:", err);
+		return {};
+	}
 }

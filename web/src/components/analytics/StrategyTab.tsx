@@ -2,7 +2,7 @@ import { Activity, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import type { RiskConfig, StrategyConfig } from "@/lib/api";
+import type { RiskConfig, StrategyConfig, TimeframeId } from "@/lib/api";
 import { asNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,9 @@ interface StrategyTabProps {
 		isPending: boolean;
 		isSuccess: boolean;
 	};
+	selectedTimeframe: TimeframeId;
+	enabledTimeframes: TimeframeId[];
+	onTimeframeChange: (tf: TimeframeId) => void;
 }
 
 function ParamField({ label, children }: { label: string; children: React.ReactNode }) {
@@ -73,13 +76,38 @@ export function StrategyTab({
 	blendValid,
 	saveConfig,
 	configMutation,
+	selectedTimeframe,
+	enabledTimeframes,
+	onTimeframeChange,
 }: StrategyTabProps) {
 	return (
 		<div className="space-y-4">
+			{/* Timeframe Selector */}
+			<div className="flex items-center gap-2">
+				<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Timeframe:</span>
+				<div className="flex gap-1">
+					{enabledTimeframes.map((tf) => (
+						<button
+							key={tf}
+							type="button"
+							className={cn(
+								"px-3 py-1.5 text-xs font-mono font-medium rounded-md border transition-colors",
+								selectedTimeframe === tf
+									? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+									: "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/50",
+							)}
+							onClick={() => onTimeframeChange(tf)}
+						>
+							{tf}
+						</button>
+					))}
+				</div>
+			</div>
+
 			<Card>
 				<CardHeader className="pb-2">
 					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-						Current Strategy Config
+						Current Strategy Config — {selectedTimeframe}
 					</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4">

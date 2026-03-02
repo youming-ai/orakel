@@ -9,6 +9,7 @@ import type {
 	MarketConfig,
 	PolymarketSnapshot,
 	Regime,
+	TimeframeId,
 	TradeDecision,
 	TradeSignal,
 } from "./types.ts";
@@ -37,6 +38,7 @@ interface PersistSignalParams {
 	marketSlug: string;
 	rec: TradeDecision;
 	poly: PolymarketSnapshot;
+	timeframe?: TimeframeId;
 }
 
 function writeLatestSignal(marketId: string, payload: TradeSignal): void {
@@ -74,6 +76,7 @@ export function persistSignal({
 	marketSlug,
 	rec,
 	poly,
+	timeframe,
 }: PersistSignalParams): TradeSignal | null {
 	const signalTimestamp = new Date().toISOString();
 	const signalLabel = edge.arbitrage ? "ARBITRAGE" : rec.action === "ENTER" ? `BUY ${rec.side}` : "NO TRADE";
@@ -114,6 +117,7 @@ export function persistSignal({
 	const signalPayload: TradeSignal = {
 		timestamp: new Date().toISOString(),
 		marketId: market.id,
+		timeframe: timeframe ?? "15m",
 		marketSlug,
 		side: rec.side as "UP" | "DOWN",
 		phase: rec.phase,

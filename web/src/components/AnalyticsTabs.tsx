@@ -10,6 +10,7 @@ import type {
 	RiskConfig,
 	StopLossStatus,
 	StrategyConfig,
+	TimeframeId,
 	TodayStats,
 	TradeRecord,
 } from "@/lib/api";
@@ -30,6 +31,8 @@ interface AnalyticsTabsProps {
 	byMarket?: Record<string, MarketBreakdown>;
 	config: {
 		strategy: StrategyConfig;
+		strategies?: Partial<Record<TimeframeId, StrategyConfig>>;
+		enabledTimeframes?: TimeframeId[];
 		paperRisk: RiskConfig;
 		liveRisk: RiskConfig;
 	};
@@ -131,12 +134,18 @@ export function AnalyticsTabs({
 }: AnalyticsTabsProps) {
 	const configMutation = useConfigMutation(viewMode);
 	const clearStopMutation = usePaperClearStop();
+	const enabledTimeframes: TimeframeId[] = config.enabledTimeframes ?? ["15m"];
+	const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeId>(enabledTimeframes[0] ?? "15m");
+
+	// Resolve strategy for selected timeframe: per-TF override > fallback to default
+	const activeStrategy = config.strategies?.[selectedTimeframe] ?? config.strategy;
 	const riskConfig = viewMode === "paper" ? config.paperRisk : config.liveRisk;
-	const [form, setForm] = useState<StrategyFormValues>(() => toStrategyFormValues(config.strategy, riskConfig));
+	const [form, setForm] = useState<StrategyFormValues>(() => toStrategyFormValues(activeStrategy, riskConfig));
 
 	useEffect(() => {
-		setForm(toStrategyFormValues(config.strategy, viewMode === "paper" ? config.paperRisk : config.liveRisk));
-	}, [config.strategy, config.paperRisk, config.liveRisk, viewMode]);
+		const strat = config.strategies?.[selectedTimeframe] ?? config.strategy;
+		setForm(toStrategyFormValues(strat, viewMode === "paper" ? config.paperRisk : config.liveRisk));
+	}, [config.strategy, config.strategies, config.paperRisk, config.liveRisk, viewMode, selectedTimeframe]);
 
 	const derivedStats = useMemo(() => buildStatsFromTrades(trades), [trades]);
 	const mergedStats = useMemo(() => {
@@ -263,7 +272,10 @@ export function AnalyticsTabs({
 			return;
 		}
 
+		// V2: save per-timeframe strategy
 		const payload: ConfigPayload = {
+			strategies: { [selectedTimeframe]: strategyView },
+			timeframe: selectedTimeframe,
 			strategy: strategyView,
 			...(viewMode === "paper" ? { paperRisk: riskView } : { liveRisk: riskView }),
 		};
@@ -273,7 +285,7 @@ export function AnalyticsTabs({
 				toast({
 					type: "success",
 					title: "Config Saved",
-					description: "Configuration preserved for future cycles",
+					description: `Strategy for ${selectedTimeframe} saved`,
 				});
 			},
 			onError: (error) => {
@@ -341,6 +353,9 @@ export function AnalyticsTabs({
 					blendValid={blendValid}
 					saveConfig={saveConfig}
 					configMutation={configMutation}
+					selectedTimeframe={selectedTimeframe}
+					enabledTimeframes={enabledTimeframes}
+					onTimeframeChange={setSelectedTimeframe}
 				/>
 			</TabsContent>
 		</Tabs>
