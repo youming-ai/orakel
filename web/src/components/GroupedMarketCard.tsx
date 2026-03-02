@@ -2,8 +2,8 @@ import { memo, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import type { MarketSnapshot } from "@/lib/api";
-import { fmtCents, fmtMinSec, fmtPrice } from "@/lib/format";
-import { MiniTrend, macdLabel, SignalLight } from "@/lib/marketCardHelpers";
+import { fmtMinSec, fmtPrice } from "@/lib/format";
+import { SignalLight } from "@/lib/marketCardHelpers";
 import { cn } from "@/lib/utils";
 
 interface GroupedMarketCardProps {
@@ -12,8 +12,8 @@ interface GroupedMarketCardProps {
 
 const TF_ORDER = ["15m", "1h", "4h"];
 
-// Responsive grid template: 6 cols on mobile (no PTB), 7 cols on sm+
-const ROW_GRID = "grid grid-cols-[40px_1fr_60px_1fr_50px_52px] sm:grid-cols-[40px_1fr_1fr_60px_1fr_50px_52px] gap-x-2";
+// 5-column layout: TF | Signal | Edge | Conf | Time
+const ROW_GRID = "grid grid-cols-[40px_1fr_60px_1fr_52px] gap-x-2";
 
 function tfBadgeColor(tf: string): string {
 	if (tf === "1h") return "border-blue-500/40 text-blue-400";
@@ -21,7 +21,7 @@ function tfBadgeColor(tf: string): string {
 	return "border-border/60 text-muted-foreground";
 }
 
-function TimeframeRow({ snapshot: s, coinId }: { snapshot: MarketSnapshot; coinId: string }) {
+function TimeframeRow({ snapshot: s }: { snapshot: MarketSnapshot }) {
 	const tf = s.timeframe ?? "15m";
 
 	// Error snapshot — use flex layout, skip grid complexity
@@ -52,23 +52,6 @@ function TimeframeRow({ snapshot: s, coinId }: { snapshot: MarketSnapshot; coinI
 				{tf}
 			</Badge>
 
-			{/* PTB — hidden on mobile */}
-			<span className="hidden sm:block font-mono text-muted-foreground truncate">
-				{fmtPrice(coinId, s.priceToBeat)}
-			</span>
-
-			{/* UP / DN */}
-			<div className="flex gap-1 font-mono">
-				<span className="text-emerald-400/80">{fmtCents(s.marketUp)}</span>
-				<span className="text-muted-foreground/50">/</span>
-				<span className="text-red-400/80">{fmtCents(s.marketDown)}</span>
-			</div>
-
-			{/* Edge */}
-			<span className={cn("font-mono font-medium", isEntry ? "text-emerald-400" : "text-muted-foreground")}>
-				{s.edge !== null ? `${(s.edge * 100).toFixed(1)}%` : "-"}
-			</span>
-
 			{/* Signal (action + side) */}
 			<div className="flex items-center gap-1.5">
 				<SignalLight action={s.action} edge={s.edge} />
@@ -80,6 +63,11 @@ function TimeframeRow({ snapshot: s, coinId }: { snapshot: MarketSnapshot; coinI
 					<span className="text-muted-foreground text-[10px]">NO TRADE</span>
 				)}
 			</div>
+
+			{/* Edge */}
+			<span className={cn("font-mono font-medium", isEntry ? "text-emerald-400" : "text-muted-foreground")}>
+				{s.edge !== null ? `${(s.edge * 100).toFixed(1)}%` : "-"}
+			</span>
 
 			{/* Confidence — mini bar + score */}
 			<div className="flex items-center gap-1">
@@ -126,14 +114,6 @@ export const GroupedMarketCard = memo(function GroupedMarketCard({ snapshots }: 
 			? enterSnaps.reduce<MarketSnapshot>((best, s) => ((s.edge ?? 0) > (best.edge ?? 0) ? s : best), firstEntry)
 			: primary;
 
-	// Derived shared indicator display values
-	const macdInfo = macdLabel(primary.ok ? primary.macd : null);
-	const rsiVal = primary.ok ? (primary.rsi ?? 50) : 50;
-	const rsiColor = rsiVal > 70 ? "text-red-400" : rsiVal < 30 ? "text-emerald-400" : "text-foreground";
-	const vwapUp = primary.ok ? (primary.vwapSlope ?? 0) > 0 : false;
-	const vwapColor = vwapUp ? "text-emerald-400" : "text-red-400";
-	const vwapText = primary.ok ? (vwapUp ? "↑" : "↓") : "-";
-
 	return (
 		<Card className="overflow-hidden">
 			<CardHeader className="pb-2">
@@ -148,52 +128,6 @@ export const GroupedMarketCard = memo(function GroupedMarketCard({ snapshots }: 
 				</div>
 			</CardHeader>
 
-			{/* Shared technical indicators — sourced from 15m candles */}
-			<div className="px-3 pb-3">
-				<span className="text-[9px] text-muted-foreground/50 font-medium uppercase tracking-wider mb-1.5 block">
-					Indicators (15m)
-				</span>
-				<div className="grid grid-cols-5 gap-x-3 text-[11px]">
-					{/* HA Trend */}
-					<div className="flex items-center gap-1.5">
-						<span className="text-[10px] uppercase text-muted-foreground font-semibold">HA</span>
-						{primary.ok ? (
-							<MiniTrend haColor={primary.haColor} count={primary.haConsecutive} />
-						) : (
-							<span className="text-muted-foreground font-mono">-</span>
-						)}
-					</div>
-
-					{/* RSI */}
-					<div className="flex items-center gap-1.5">
-						<span className="text-[10px] uppercase text-muted-foreground font-semibold">RSI</span>
-						<span className={cn("font-mono font-medium", rsiColor)}>
-							{primary.ok ? (primary.rsi?.toFixed(1) ?? "-") : "-"}
-						</span>
-					</div>
-
-					{/* MACD */}
-					<div className="flex items-center gap-1.5">
-						<span className="text-[10px] uppercase text-muted-foreground font-semibold">MACD</span>
-						<span className={cn("font-mono font-medium", macdInfo.color)}>{macdInfo.text}</span>
-					</div>
-
-					{/* VWAP */}
-					<div className="flex items-center gap-1.5">
-						<span className="text-[10px] uppercase text-muted-foreground font-semibold">VWAP</span>
-						<span className={cn("font-mono font-medium", vwapColor)}>{vwapText}</span>
-					</div>
-
-					{/* Vol */}
-					<div className="flex items-center gap-1.5">
-						<span className="text-[10px] uppercase text-muted-foreground font-semibold">Vol</span>
-						<span className="font-mono font-medium">
-							{primary.ok && primary.volatility15m !== null ? `${(primary.volatility15m * 100).toFixed(2)}%` : "-"}
-						</span>
-					</div>
-				</div>
-			</div>
-
 			{/* Per-timeframe signal table */}
 			<div className="border-t border-border/50">
 				{/* Table header */}
@@ -204,17 +138,15 @@ export const GroupedMarketCard = memo(function GroupedMarketCard({ snapshots }: 
 					)}
 				>
 					<span>TF</span>
-					<span className="hidden sm:block">PTB</span>
-					<span>UP / DN</span>
-					<span>Edge</span>
 					<span>Signal</span>
+					<span>Edge</span>
 					<span>Conf</span>
 					<span className="text-right">Time</span>
 				</div>
 
 				{/* Rows */}
 				{sortedSnapshots.map((s) => (
-					<TimeframeRow key={s.timeframe ?? "15m"} snapshot={s} coinId={primary.id} />
+					<TimeframeRow key={s.timeframe ?? "15m"} snapshot={s} />
 				))}
 			</div>
 		</Card>

@@ -32,7 +32,6 @@ import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
 import { getActiveMarkets } from "./markets.ts";
 import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
 import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
-import { signalQualityModel } from "./strategy/adaptive.ts";
 import { shouldTakeTrade } from "./strategy/refinement.ts";
 import {
 	applyEvent,
@@ -376,7 +375,6 @@ async function main(): Promise<void> {
 								state,
 								timeframe: tf,
 								config: tfConfig,
-								signalQualityModel,
 							});
 						} catch (err: unknown) {
 							const message = err instanceof Error ? err.message : String(err);

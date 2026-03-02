@@ -30,6 +30,7 @@ export function Toaster() {
 					</div>
 
 					<button
+						type="button"
 						onClick={() => dismiss(t.id)}
 						className="p-1 rounded-md opacity-50 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 transition-colors focus:outline-none"
 					>

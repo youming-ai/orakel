@@ -1,4 +1,4 @@
-import { Clock, LayoutDashboard, List, Moon, Settings2, Sun, Wallet, Zap } from "lucide-react";
+import { Clock, LayoutDashboard, List, Moon, Sun, Wallet, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -97,7 +97,7 @@ export function Header({
 						[
 							{ value: "overview", icon: LayoutDashboard, label: "Overview" },
 							{ value: "trades", icon: List, label: "Trades" },
-							{ value: "strategy", icon: Settings2, label: "Strategy" },
+							// { value: "strategy", icon: Settings2, label: "Strategy" },
 						] as const
 					).map(({ value, icon: Icon, label }, i) => (
 						<span key={value} className="flex items-center h-full">

@@ -1,8 +1,5 @@
-import { AdaptiveThresholdManager, MarketPerformanceTracker } from "../engines/adaptiveThresholds.ts";
 import { RegimeTransitionTracker } from "../engines/regime.ts";
-import { SignalQualityModel } from "../engines/signalQuality.ts";
 import type { Phase, Regime } from "../types.ts";
-
 export interface SignalMetadata {
 	edge: number;
 	confidence: number;
@@ -15,9 +12,6 @@ export interface SignalMetadata {
 	vwapSlope?: number | null;
 }
 
-export const performanceTracker = new MarketPerformanceTracker(50);
-export const adaptiveManager = new AdaptiveThresholdManager(performanceTracker);
-export const signalQualityModel = new SignalQualityModel(500, 2000);
 const regimeTrackers = new Map<string, RegimeTransitionTracker>();
 
 /** Get or create a per-market RegimeTransitionTracker. */

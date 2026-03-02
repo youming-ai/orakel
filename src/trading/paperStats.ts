@@ -1,6 +1,6 @@
 import { PAPER_INITIAL_BALANCE } from "../core/config.ts";
 import { createLogger } from "../core/logger.ts";
-import { getAndClearSignalMetadata, performanceTracker, signalQualityModel } from "../strategy/adaptive.ts";
+import { getAndClearSignalMetadata } from "../strategy/adaptive.ts";
 
 const log = createLogger("paperStats");
 
@@ -287,31 +287,7 @@ export function resolvePaperTrades(
 
 		const signalMeta = getAndClearSignalMetadata(trade.id);
 		if (signalMeta) {
-			performanceTracker.recordTrade({
-				marketId: trade.marketId,
-				won: trade.won ?? false,
-				edge: signalMeta.edge,
-				confidence: signalMeta.confidence,
-				phase: signalMeta.phase,
-				regime: signalMeta.regime,
-				timestamp: Date.now(),
-			});
-
-			signalQualityModel.recordOutcome({
-				marketId: trade.marketId,
-				edge: signalMeta.edge,
-				confidence: signalMeta.confidence,
-				volatility15m: signalMeta.volatility15m ?? 0,
-				phase: signalMeta.phase,
-				regime: signalMeta.regime,
-				modelUp: signalMeta.modelUp ?? 0.5,
-				orderbookImbalance: signalMeta.orderbookImbalance ?? null,
-				rsi: signalMeta.rsi ?? null,
-				vwapSlope: signalMeta.vwapSlope ?? null,
-				won: trade.won ?? false,
-				pnl: trade.pnl ?? 0,
-				timestamp: Date.now(),
-			});
+			void signalMeta;
 		}
 
 		resolved++;

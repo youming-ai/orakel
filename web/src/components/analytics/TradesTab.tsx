@@ -1,16 +1,4 @@
-import {
-	Bar,
-	BarChart,
-	CartesianGrid,
-	Cell,
-	Pie,
-	PieChart,
-	ResponsiveContainer,
-	Tooltip,
-	XAxis,
-	YAxis,
-} from "recharts";
-import { Badge } from "@/components/ui/badge";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { TradeRecord } from "@/lib/api";
@@ -46,26 +34,11 @@ interface TradesTabProps {
 		resolved: number;
 		winRate: number;
 	}>;
-	sideTotal: number;
-	sideData: Array<{
-		name: string;
-		value: number;
-		color: string;
-	}>;
 	marketRows: MarketRow[];
 	tfFilter: string;
 }
 
-export function TradesTab({
-	viewMode,
-	liveTrades,
-	tradesLength,
-	timingData,
-	sideTotal,
-	sideData,
-	marketRows,
-	tfFilter,
-}: TradesTabProps) {
+export function TradesTab({ viewMode, liveTrades, tradesLength, timingData, marketRows, tfFilter }: TradesTabProps) {
 	return (
 		<div className="space-y-4">
 			{/* Trade History — most important, at top */}
@@ -130,116 +103,58 @@ export function TradesTab({
 				</CardContent>
 			</Card>
 
-			{/* Section: Patterns */}
-			<div className="flex items-center gap-3 pt-2">
-				<h2 className="text-sm font-semibold text-foreground">Patterns</h2>
-				<div className="flex-1 h-px bg-border/50" />
-			</div>
-			<div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-							Entry Timing Distribution
-						</CardTitle>
-					</CardHeader>
-					<CardContent className={CHART_HEIGHT.responsive}>
-						{tradesLength === 0 ? (
-							<EmptyPlaceholder />
-						) : (
-							<ChartErrorBoundary>
-								<ResponsiveContainer width="100%" height="100%">
-									<BarChart data={timingData}>
-										<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-										<XAxis dataKey="name" tick={{ fontSize: 11, fill: CHART_COLORS.axis }} />
-										<YAxis allowDecimals={false} tick={{ fontSize: 11, fill: CHART_COLORS.axis }} width={40} />
-										<Tooltip
-											contentStyle={TOOLTIP_CONTENT_STYLE}
-											formatter={(value, _, item) => {
-												const v = Math.round(asNumber(value, 0));
-												const p = (item?.payload ?? {}) as {
-													winRate?: number;
-													wins?: number;
-													resolved?: number;
-												};
-												return [
-													`${v} trades, WR ${((p.winRate ?? 0) * 100).toFixed(1)}% (${p.wins ?? 0}/${p.resolved ?? 0})`,
-													"Entries",
-												];
-											}}
-										/>
-										<Bar dataKey="count" radius={[4, 4, 0, 0]}>
-											{timingData.map((item) => (
-												<Cell
-													key={`timing-${item.name}`}
-													fill={
-														item.resolved === 0
-															? CHART_COLORS.pending
-															: item.winRate >= 0.5
-																? CHART_COLORS.positive
-																: CHART_COLORS.negative
-													}
-												/>
-											))}
-										</Bar>
-									</BarChart>
-								</ResponsiveContainer>
-							</ChartErrorBoundary>
-						)}
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="pb-2">
-						<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-							Direction Distribution
-						</CardTitle>
-					</CardHeader>
-					<CardContent className={CHART_HEIGHT.responsive}>
-						{sideTotal === 0 ? (
-							<EmptyPlaceholder />
-						) : (
-							<>
-								<ChartErrorBoundary>
-									<ResponsiveContainer width="100%" height="84%">
-										<PieChart>
-											<Pie
-												data={sideData}
-												dataKey="value"
-												nameKey="name"
-												innerRadius={56}
-												outerRadius={90}
-												paddingAngle={3}
-												label={({ name, percent }) => `${name} ${(Number(percent) * 100).toFixed(0)}%`}
-												labelLine={false}
-												fontSize={11}
-											>
-												{sideData.map((item) => (
-													<Cell key={`side-${item.name}`} fill={item.color} />
-												))}
-											</Pie>
-											<Tooltip
-												contentStyle={TOOLTIP_CONTENT_STYLE}
-												formatter={(value) => {
-													const v = Math.round(asNumber(value, 0));
-													return [`${v} trades`, "Count"];
-												}}
+			{/* Entry Timing BarChart */}
+			<Card>
+				<CardHeader className="pb-2">
+					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
+						Entry Timing Distribution
+					</CardTitle>
+				</CardHeader>
+				<CardContent className={CHART_HEIGHT.responsive}>
+					{tradesLength === 0 ? (
+						<EmptyPlaceholder />
+					) : (
+						<ChartErrorBoundary>
+							<ResponsiveContainer width="100%" height="100%">
+								<BarChart data={timingData}>
+									<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
+									<XAxis dataKey="name" tick={{ fontSize: 11, fill: CHART_COLORS.axis }} />
+									<YAxis allowDecimals={false} tick={{ fontSize: 11, fill: CHART_COLORS.axis }} width={40} />
+									<Tooltip
+										contentStyle={TOOLTIP_CONTENT_STYLE}
+										formatter={(value, _, item) => {
+											const v = Math.round(asNumber(value, 0));
+											const p = (item?.payload ?? {}) as {
+												winRate?: number;
+												wins?: number;
+												resolved?: number;
+											};
+											return [
+												`${v} trades, WR ${((p.winRate ?? 0) * 100).toFixed(1)}% (${p.wins ?? 0}/${p.resolved ?? 0})`,
+												"Entries",
+											];
+										}}
+									/>
+									<Bar dataKey="count" radius={[4, 4, 0, 0]}>
+										{timingData.map((item) => (
+											<Cell
+												key={`timing-${item.name}`}
+												fill={
+													item.resolved === 0
+														? CHART_COLORS.pending
+														: item.winRate >= 0.5
+															? CHART_COLORS.positive
+															: CHART_COLORS.negative
+												}
 											/>
-										</PieChart>
-									</ResponsiveContainer>
-								</ChartErrorBoundary>
-								<div className="mt-2 flex items-center justify-center gap-3 text-xs">
-									<Badge variant="secondary" className="bg-emerald-500/15 text-emerald-400 font-mono">
-										UP {sideData[0].value}
-									</Badge>
-									<Badge variant="secondary" className="bg-red-500/15 text-red-400 font-mono">
-										DOWN {sideData[1].value}
-									</Badge>
-								</div>
-							</>
-						)}
-					</CardContent>
-				</Card>
-			</div>
+										))}
+									</Bar>
+								</BarChart>
+							</ResponsiveContainer>
+						</ChartErrorBoundary>
+					)}
+				</CardContent>
+			</Card>
 
 			{/* Trading Heatmap */}
 			<TradingHeatmap trades={liveTrades} tfFilter={tfFilter} />

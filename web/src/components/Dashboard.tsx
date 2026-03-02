@@ -11,13 +11,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Toaster } from "@/components/ui/toaster";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import { useAlertHandler } from "@/lib/alerts";
 import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
 import { useDashboardStateWithWs, useLiveToggle, usePaperStats, usePaperToggle, useTrades } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import type { ViewMode } from "@/lib/types";
-import { AlertSystem } from "./AlertSystem";
 import { AnalyticsTabs } from "./AnalyticsTabs";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 import { Header } from "./Header";
@@ -67,9 +65,6 @@ function DashboardContent() {
 	const confirmAction = useUIStore((s) => s.confirmAction);
 	const setConfirmAction = useUIStore((s) => s.setConfirmAction);
 	const { data: state, error: stateError } = useDashboardStateWithWs();
-
-	// Handle alerts from WebSocket events
-	useAlertHandler();
 
 	const { data: trades = [] } = useTrades(viewMode);
 	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
@@ -149,6 +144,7 @@ function DashboardContent() {
 						</>
 					) : (
 						<>
+							{/* biome-ignore lint/a11y/useSemanticElements: role=status is correct for ARIA live region loading spinners */}
 							<div
 								className={`inline-block h-6 w-6 rounded-full border-2 border-muted-foreground border-t-transparent${
 									prefersReducedMotion ? "" : " animate-spin"
@@ -215,7 +211,6 @@ function DashboardContent() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-			<AlertSystem />
 		</div>
 	);
 }

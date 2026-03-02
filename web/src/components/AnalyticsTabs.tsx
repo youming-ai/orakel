@@ -12,7 +12,6 @@ import type {
 	TodayStats,
 	TradeRecord,
 } from "@/lib/api";
-import { CHART_COLORS } from "@/lib/charts";
 import { TIMEFRAME_WINDOW_MINUTES, TIMING_BUCKETS_BY_TF } from "@/lib/constants";
 import { asNumber, fmtTime } from "@/lib/format";
 import { useConfigMutation, usePaperClearStop } from "@/lib/queries";
@@ -265,16 +264,6 @@ export function AnalyticsTabs({
 		return buckets;
 	}, [filteredTrades, tfFilter]);
 
-	const sideData = useMemo(() => {
-		const up = filteredTrades.filter((t) => t.side === "UP").length;
-		const down = filteredTrades.filter((t) => t.side === "DOWN").length;
-		return [
-			{ name: "UP", value: up, color: CHART_COLORS.positive },
-			{ name: "DOWN", value: down, color: CHART_COLORS.negative },
-		];
-	}, [filteredTrades]);
-
-	const sideTotal = sideData[0].value + sideData[1].value;
 	const blendSum = form.blendVol + form.blendTa;
 	const blendValid = Math.abs(blendSum - 1) < 0.001;
 
@@ -363,7 +352,7 @@ export function AnalyticsTabs({
 			</div>
 
 			{analyticsTab === "overview" && (
-				<div className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+				<div className="space-y-4 animate-in fade-in duration-150">
 					<OverviewTab
 						stopLoss={stopLoss}
 						viewMode={viewMode}
@@ -379,14 +368,12 @@ export function AnalyticsTabs({
 			)}
 
 			{analyticsTab === "trades" && (
-				<div className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+				<div className="space-y-4 animate-in fade-in duration-150">
 					<TradesTab
 						viewMode={viewMode}
 						liveTrades={filteredLiveTrades}
 						tradesLength={filteredTrades.length}
 						timingData={timingData}
-						sideTotal={sideTotal}
-						sideData={sideData}
 						marketRows={marketRows}
 						tfFilter={tfFilter}
 					/>
@@ -394,7 +381,7 @@ export function AnalyticsTabs({
 			)}
 
 			{analyticsTab === "strategy" && (
-				<div className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+				<div className="space-y-4 animate-in fade-in duration-150">
 					<StrategyTab
 						strategyView={strategyView}
 						riskView={riskView}

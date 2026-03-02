@@ -1,7 +1,7 @@
 import type { ClobClient, Trade } from "@polymarket/clob-client";
 import { pendingLiveStatements, statements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
-import { getAndClearSignalMetadata, performanceTracker, signalQualityModel } from "../strategy/adaptive.ts";
+import { getAndClearSignalMetadata } from "../strategy/adaptive.ts";
 import type { TimeframeId } from "../types.ts";
 
 // ── Live Stats ──────────────────────────────
@@ -424,31 +424,7 @@ export function resolveLiveTrades(
 		// Feed adaptive model with live trade outcomes (mirrors paper settlement logic)
 		const signalMeta = getAndClearSignalMetadata(trade.orderId);
 		if (signalMeta) {
-			performanceTracker.recordTrade({
-				marketId: trade.marketId,
-				won,
-				edge: signalMeta.edge,
-				confidence: signalMeta.confidence,
-				phase: signalMeta.phase,
-				regime: signalMeta.regime,
-				timestamp: Date.now(),
-			});
-
-			signalQualityModel.recordOutcome({
-				marketId: trade.marketId,
-				edge: signalMeta.edge,
-				confidence: signalMeta.confidence,
-				volatility15m: signalMeta.volatility15m ?? 0,
-				phase: signalMeta.phase,
-				regime: signalMeta.regime,
-				modelUp: signalMeta.modelUp ?? 0.5,
-				orderbookImbalance: signalMeta.orderbookImbalance ?? null,
-				rsi: signalMeta.rsi ?? null,
-				vwapSlope: signalMeta.vwapSlope ?? null,
-				won,
-				pnl,
-				timestamp: Date.now(),
-			});
+			void signalMeta;
 		}
 
 		resolved++;

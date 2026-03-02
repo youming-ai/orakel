@@ -1,4 +1,3 @@
-import type { SignalQualityModel } from "../engines/signalQuality.ts";
 import { persistSignal } from "../trading/persistence.ts";
 import type {
 	AppConfig,
@@ -21,7 +20,6 @@ interface ProcessMarketParams {
 	state: MarketState;
 	timeframe: TimeframeId;
 	config: AppConfig;
-	signalQualityModel?: SignalQualityModel | null;
 }
 
 export interface MarketState {
@@ -73,7 +71,6 @@ export async function processMarket({
 	state,
 	timeframe,
 	config,
-	signalQualityModel,
 }: Omit<ProcessMarketParams, "orderTracker">): Promise<ProcessMarketResult> {
 	const data = await fetchMarketData(market, timing, streams, config, timeframe);
 	if (!data.ok) return { ok: false, market, timeframe, error: data.error };
@@ -104,7 +101,7 @@ export async function processMarket({
 	}
 
 	const priceToBeat = state.priceToBeatState.slug === marketSlug ? state.priceToBeatState.value : null;
-	const result = computeMarketDecision(data, priceToBeat, config, signalQualityModel);
+	const result = computeMarketDecision(data, priceToBeat, config);
 	if (result.edge.vigTooHigh) {
 		return {
 			ok: true,

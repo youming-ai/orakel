@@ -267,11 +267,6 @@ export function OverviewTab({
 				</Card>
 			</div>
 
-			{/* Section: Markets */}
-			<div className="flex items-center gap-3 pt-2">
-				<h2 className="text-sm font-semibold text-foreground">Markets</h2>
-				<div className="flex-1 h-px bg-border/50" />
-			</div>
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 				{groupedMarkets.map((group) => (
 					<GroupedMarketCard key={group[0]?.id ?? "unknown"} snapshots={group} />
@@ -280,11 +275,6 @@ export function OverviewTab({
 
 			<PriceChart markets={markets} tfFilter={tfFilter} />
 
-			{/* Section: Performance History */}
-			<div className="flex items-center gap-3 pt-2">
-				<h2 className="text-sm font-semibold text-foreground">Performance</h2>
-				<div className="flex-1 h-px bg-border/50" />
-			</div>
 			<Card>
 				<CardHeader className="pb-2">
 					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">

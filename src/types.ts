@@ -1,6 +1,4 @@
 import type { GammaMarket } from "./data/polymarket.ts";
-import type { EnsembleResult } from "./engines/ensemble.ts";
-import type { SignalQualityResult } from "./engines/signalQuality.ts";
 
 export type { GammaMarket } from "./data/polymarket.ts";
 
@@ -408,8 +406,6 @@ export interface ComputeResult {
 	edge: EdgeResult;
 	scored: ScoreResult;
 	blended: BlendResult;
-	ensembleResult?: EnsembleResult | null;
-	signalQuality?: SignalQualityResult | null;
 	regimeInfo: RegimeResult;
 	enhancedRegime?: EnhancedRegimeResult;
 	finalUp: number;

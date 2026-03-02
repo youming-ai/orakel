@@ -3,7 +3,7 @@ import { CHART_COLORS } from "@/lib/charts";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// Shared helpers used by MarketCard, MarketCardWithSignal, and SignalStrength
+// Shared helpers used by GroupedMarketCard
 // ---------------------------------------------------------------------------
 
 /** MACD histogram label + color class */

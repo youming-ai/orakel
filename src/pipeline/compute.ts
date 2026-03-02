@@ -1,6 +1,4 @@
-import { createLogger } from "../core/logger.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
-import { computeEnsemble } from "../engines/ensemble.ts";
 import {
 	applyAdaptiveTimeDecay,
 	blendProbabilities,
@@ -8,17 +6,14 @@ import {
 	scoreDirection,
 } from "../engines/probability.ts";
 import { detectEnhancedRegime, detectRegime } from "../engines/regime.ts";
-import type { SignalFeatures, SignalQualityModel } from "../engines/signalQuality.ts";
 import { computeHeikenAshi, countConsecutive } from "../indicators/heikenAshi.ts";
 import { IncrementalRSI } from "../indicators/incremental.ts";
 import { computeMacd } from "../indicators/macd.ts";
 import { slopeLast } from "../indicators/rsi.ts";
 import { RollingVolatilityCalculator } from "../indicators/volatilityBuffer.ts";
 import { computeVwapSeries } from "../indicators/vwap.ts";
-import { signalQualityModel as defaultSignalQualityModel, getRegimeTransitionTracker } from "../strategy/adaptive.ts";
+import { getRegimeTransitionTracker } from "../strategy/adaptive.ts";
 import type { AppConfig, ComputeResult, MacdResult, RawMarketData, TradeDecision } from "../types.ts";
-
-const log = createLogger("compute");
 
 export function countVwapCrosses(closes: number[], vwapSeries: number[], lookback: number): number | null {
 	if (closes.length < lookback || vwapSeries.length < lookback) return null;
@@ -41,7 +36,6 @@ export function computeMarketDecision(
 	data: RawMarketData,
 	priceToBeat: number | null,
 	config: AppConfig,
-	signalQualityModel?: SignalQualityModel | null,
 ): ComputeResult {
 	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin } = data;
 	const effectiveTimeLeftMin = timeLeftMin ?? config.candleWindowMinutes;
@@ -165,47 +159,7 @@ export function computeMarketDecision(
 
 	const phase = effectiveTimeLeftMin > 10 ? "EARLY" : effectiveTimeLeftMin > 5 ? "MID" : "LATE";
 
-	const qualityModel = signalQualityModel === undefined ? defaultSignalQualityModel : signalQualityModel;
-	let signalQuality: ComputeResult["signalQuality"] = null;
-	let ensembleResult: ComputeResult["ensembleResult"] = null;
-	let finalUp = baseFinalUp;
-
-	if (qualityModel) {
-		const features: SignalFeatures = {
-			marketId: market.id,
-			edge: Math.abs(baseFinalUp - 0.5) * 2,
-			confidence: Math.abs(scored.rawUp - 0.5) * 2,
-			volatility15m: volatility15m ?? 0,
-			phase,
-			regime: regimeInfo.regime,
-			modelUp: baseFinalUp,
-			orderbookImbalance,
-			rsi: rsiNow,
-			vwapSlope,
-		};
-
-		signalQuality = qualityModel.predictWinRate(features);
-		ensembleResult = computeEnsemble({
-			volImpliedUp: volImplied,
-			taRawUp: scored.rawUp,
-			blendedUp: blended.blendedUp,
-			blendSource: blended.source,
-			signalQualityWinRate: signalQuality.confidence === "INSUFFICIENT" ? null : signalQuality.predictedWinRate,
-			signalQualityConfidence: signalQuality.confidence,
-			regime: regimeInfo.regime,
-			volatility15m,
-			orderbookImbalance,
-		});
-		finalUp = ensembleResult.finalUp;
-	}
-	const pipelineMode = ensembleResult !== null ? "V8-full" : "V8-degraded";
-	if (ensembleResult !== null) {
-		log.debug(
-			`[${data.market.id}] pipeline=${pipelineMode} ensemble.agreement=${ensembleResult.agreement.toFixed(2)} dominant=${ensembleResult.dominantModel}`,
-		);
-	} else {
-		log.debug(`[${data.market.id}] pipeline=${pipelineMode} using blend-only (finalUp=${finalUp.toFixed(3)})`);
-	}
+	const finalUp = baseFinalUp;
 
 	const finalDown = 1 - finalUp;
 
@@ -275,8 +229,6 @@ export function computeMarketDecision(
 		edge,
 		scored,
 		blended,
-		ensembleResult,
-		signalQuality,
 		regimeInfo,
 		enhancedRegime: enhancedRegimeInfo,
 		finalUp,
