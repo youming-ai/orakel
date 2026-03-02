@@ -1,4 +1,4 @@
-import { env } from "./env.ts";
+import { env } from "./core/env.ts";
 import type { MarketConfig } from "./types.ts";
 
 export const MARKETS: MarketConfig[] = [

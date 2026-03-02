@@ -19,3 +19,18 @@ export const MARKETS = ["BTC", "ETH", "SOL", "XRP"] as const;
 
 // Analytics buckets
 export const TIMING_BUCKETS = ["0-3 min", "3-6 min", "6-9 min", "9-12 min", "12-15 min"] as const;
+
+// Per-timeframe window durations (minutes)
+export const TIMEFRAME_WINDOW_MINUTES: Record<string, number> = {
+	"15m": 15,
+	"1h": 60,
+	"4h": 240,
+};
+
+// Per-timeframe timing bucket labels
+export const TIMING_BUCKETS_BY_TF: Record<string, readonly string[]> = {
+	"15m": ["0-3 min", "3-6 min", "6-9 min", "9-12 min", "12-15 min"],
+	"1h": ["0-12 min", "12-24 min", "24-36 min", "36-48 min", "48-60 min"],
+	"4h": ["0-48 min", "48-96 min", "96-144 min", "144-192 min", "192-240 min"],
+	all: ["Early", "Mid-Early", "Mid", "Mid-Late", "Late"],
+};

@@ -1,12 +1,12 @@
+import { createLogger } from "../core/logger.ts";
+import { isLiveRunning } from "../core/state.ts";
+import type { MarketState } from "../pipeline/processMarket.ts";
+import { cleanupStaleLiveTrades, resolveLiveTrades } from "../trading/live.ts";
+import { cleanupStalePaperTrades, getPaperStats, resolvePaperTrades } from "../trading/paperStats.ts";
+import { redeemAll } from "../trading/redeemer.ts";
+import { getLiveStats, getWallet, updatePnl } from "../trading/trader.ts";
+import type { MarketConfig, TimeframeId } from "../types.ts";
 import { cancelAllOpenOrders } from "./heartbeat.ts";
-import { cleanupStaleLiveTrades, resolveLiveTrades } from "./liveSettlement.ts";
-import { createLogger } from "./logger.ts";
-import { cleanupStalePaperTrades, getPaperStats, resolvePaperTrades } from "./paperStats.ts";
-import type { MarketState } from "./pipeline/processMarket.ts";
-import { redeemAll } from "./redeemer.ts";
-import { isLiveRunning } from "./state.ts";
-import { getLiveStats, getWallet, updatePnl } from "./trader.ts";
-import type { MarketConfig, TimeframeId } from "./types.ts";
 
 const log = createLogger("window-boundary");
 

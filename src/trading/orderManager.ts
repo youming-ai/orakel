@@ -1,5 +1,5 @@
 import type { ClobClient } from "@polymarket/clob-client";
-import { createLogger } from "./logger.ts";
+import { createLogger } from "../core/logger.ts";
 
 const log = createLogger("orders");
 

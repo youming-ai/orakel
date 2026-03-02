@@ -1,6 +1,5 @@
-import { Clock, Moon, Sun, Wallet, Zap } from "lucide-react";
+import { Clock, LayoutDashboard, List, Moon, Settings2, Sun, Wallet, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
-import { ConnectWallet } from "@/components/ConnectWallet";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +71,8 @@ export function Header({
 	const timeLeft = useCycleCountdown();
 	const theme = useUIStore((s) => s.theme);
 	const toggleTheme = useUIStore((s) => s.toggleTheme);
+	const analyticsTab = useUIStore((s) => s.analyticsTab);
+	const setAnalyticsTab = useUIStore((s) => s.setAnalyticsTab);
 
 	const handleToggle = viewMode === "paper" ? onPaperToggle : onLiveToggle;
 	const canToggle = viewMode === "paper" || liveRunning || liveWalletReady;
@@ -81,7 +82,7 @@ export function Header({
 
 	return (
 		<div className="sticky top-3 z-50 flex justify-center px-3 pointer-events-none">
-			<header className="pointer-events-auto flex items-center justify-between px-3 sm:px-4 py-2 rounded-2xl backdrop-blur-xl bg-background/70 border border-border/50 shadow-lg w-full max-w-2xl overflow-hidden">
+			<header className="pointer-events-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-2xl backdrop-blur-xl bg-background/70 border border-border/50 shadow-lg w-full max-w-3xl overflow-hidden">
 				{/* Logo */}
 				<div className="flex items-center gap-1.5 cursor-default select-none shrink-0">
 					<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20">
@@ -89,6 +90,34 @@ export function Header({
 					</div>
 					<span className="text-sm font-bold tracking-tight text-foreground hidden sm:block">Orakel</span>
 				</div>
+
+				{/* Center: Analytics Tabs */}
+				<nav className="flex items-center rounded-lg border border-border overflow-hidden h-7 bg-muted/20 shrink-0">
+					{(
+						[
+							{ value: "overview", icon: LayoutDashboard, label: "Overview" },
+							{ value: "trades", icon: List, label: "Trades" },
+							{ value: "strategy", icon: Settings2, label: "Strategy" },
+						] as const
+					).map(({ value, icon: Icon, label }, i) => (
+						<span key={value} className="flex items-center h-full">
+							{i > 0 && <div className="w-px h-full bg-border" />}
+							<button
+								type="button"
+								onClick={() => setAnalyticsTab(value)}
+								className={cn(
+									"flex items-center gap-1 px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
+									analyticsTab === value
+										? "bg-foreground/10 text-foreground"
+										: "bg-transparent text-muted-foreground hover:text-foreground",
+								)}
+							>
+								<Icon className="size-3" />
+								<span className="hidden sm:inline">{label}</span>
+							</button>
+						</span>
+					))}
+				</nav>
 
 				{/* Right: Countdown + Status + Mode + Theme */}
 				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -153,8 +182,6 @@ export function Header({
 							Live
 						</button>
 					</div>
-
-					{/* <ConnectWallet /> */}
 
 					<button
 						type="button"

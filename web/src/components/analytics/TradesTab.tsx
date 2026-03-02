@@ -53,6 +53,7 @@ interface TradesTabProps {
 		color: string;
 	}>;
 	marketRows: MarketRow[];
+	tfFilter: string;
 }
 
 export function TradesTab({
@@ -63,6 +64,7 @@ export function TradesTab({
 	sideTotal,
 	sideData,
 	marketRows,
+	tfFilter,
 }: TradesTabProps) {
 	return (
 		<div className="space-y-4">
@@ -70,6 +72,7 @@ export function TradesTab({
 			<div>
 				<h2 className="text-sm font-semibold text-foreground mb-3">
 					{viewMode === "paper" ? "Paper Trades" : "Live Trades"}
+					{tfFilter !== "all" ? ` (${tfFilter})` : ""}
 				</h2>
 				<TradeTable trades={liveTrades} paperMode={viewMode === "paper"} />
 			</div>
@@ -77,7 +80,9 @@ export function TradesTab({
 			{/* Market Comparison Table */}
 			<Card>
 				<CardHeader className="pb-2">
-					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Market Comparison</CardTitle>
+					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
+						Market Comparison{tfFilter !== "all" ? ` — ${tfFilter}` : ""}
+					</CardTitle>
 				</CardHeader>
 				<CardContent>
 					{marketRows.length === 0 ? (
@@ -237,7 +242,7 @@ export function TradesTab({
 			</div>
 
 			{/* Trading Heatmap */}
-			<TradingHeatmap trades={liveTrades} />
+			<TradingHeatmap trades={liveTrades} tfFilter={tfFilter} />
 		</div>
 	);
 }

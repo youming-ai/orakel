@@ -10,7 +10,7 @@
  * - XRP/SOL: 54%+ WR (best performers)
  */
 
-import { CONFIG } from "./config.ts";
+import { CONFIG } from "../core/config.ts";
 
 // Additional filtering rules learned from backtest
 export const BACKTEST_INSIGHTS = {

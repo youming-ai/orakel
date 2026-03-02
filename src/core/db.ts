@@ -386,6 +386,17 @@ function runMigrations(db: Database): void {
 			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (6, strftime('%s', 'now'))");
 		})();
 	}
+
+	if (currentVersion < 7) {
+		db.transaction(() => {
+			const tradesColumns = db.query("PRAGMA table_info(trades)").all() as Array<{ name?: string }>;
+			if (!tradesColumns.some((col) => col.name === "slug")) {
+				db.run("ALTER TABLE trades ADD COLUMN slug TEXT DEFAULT ''");
+			}
+
+			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (7, strftime('%s', 'now'))");
+		})();
+	}
 }
 
 // P2-3: Cache prepared statements — prepare once per SQL string, clear on DB reinit
@@ -413,8 +424,8 @@ function cachedQuery(sql: string): ReturnType<Database["query"]> {
 export const statements = {
 	insertTrade: () =>
 		cachedPrepare(`
-      INSERT INTO trades (timestamp, market, side, amount, price, order_id, status, mode, pnl, won, timeframe)
-      VALUES ($timestamp, $market, $side, $amount, $price, $orderId, $status, $mode, $pnl, $won, $timeframe)
+      INSERT INTO trades (timestamp, market, side, amount, price, order_id, status, mode, pnl, won, timeframe, slug)
+      VALUES ($timestamp, $market, $side, $amount, $price, $orderId, $status, $mode, $pnl, $won, $timeframe, $slug)
     `),
 
 	insertSignal: () =>

@@ -9,7 +9,7 @@ import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
 import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ChartErrorBoundary } from "../ChartErrorBoundary";
-import { MarketCardWithSignal } from "../MarketCardWithSignal";
+import { GroupedMarketCard } from "../GroupedMarketCard";
 import { PriceChart } from "../PriceChart";
 import { StatCard } from "../StatCard";
 
@@ -27,11 +27,13 @@ interface OverviewTabProps {
 		time: string;
 		market: string;
 		side: string | null;
+		timeframe: string;
 		pnl: number;
 		cumulative: number;
 	}>;
 	timelinePositive: boolean;
 	markets: MarketSnapshot[];
+	tfFilter: string;
 }
 
 export function EmptyPlaceholder() {
@@ -52,6 +54,7 @@ export function OverviewTab({
 	pnlTimeline,
 	timelinePositive,
 	markets,
+	tfFilter,
 }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {
 		const assetOrder = ["BTC", "ETH", "SOL", "XRP"];
@@ -66,6 +69,16 @@ export function OverviewTab({
 			return (ati === -1 ? 999 : ati) - (bti === -1 ? 999 : bti);
 		});
 	}, [markets]);
+
+	const groupedMarkets = useMemo(() => {
+		const groups = new Map<string, MarketSnapshot[]>();
+		for (const m of sortedMarkets) {
+			const existing = groups.get(m.id) ?? [];
+			existing.push(m);
+			groups.set(m.id, existing);
+		}
+		return Array.from(groups.values());
+	}, [sortedMarkets]);
 
 	// Calculate trading frequency trend based on recent activity
 	const tradesTrend = useMemo((): "up" | "down" | "neutral" => {
@@ -204,7 +217,7 @@ export function OverviewTab({
 				>
 					<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
 						<DollarSign className="size-4 opacity-70" />
-						Total P&L
+						Total P&L{tfFilter !== "all" ? ` (${tfFilter})` : ""}
 					</span>
 					<span
 						className={cn(
@@ -259,9 +272,9 @@ export function OverviewTab({
 				<h2 className="text-sm font-semibold text-foreground">Markets</h2>
 				<div className="flex-1 h-px bg-border/50" />
 			</div>
-			<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-				{sortedMarkets.map((m) => (
-					<MarketCardWithSignal key={`${m.id}:${m.timeframe ?? "15m"}`} market={m} />
+			<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+				{groupedMarkets.map((group) => (
+					<GroupedMarketCard key={group[0]?.id ?? "unknown"} snapshots={group} />
 				))}
 			</div>
 
@@ -274,7 +287,9 @@ export function OverviewTab({
 			</div>
 			<Card>
 				<CardHeader className="pb-2">
-					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Cumulative P&L</CardTitle>
+					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
+						Cumulative P&L{tfFilter !== "all" ? ` (${tfFilter})` : ""}
+					</CardTitle>
 				</CardHeader>
 				<CardContent className={CHART_HEIGHT.responsive}>
 					{pnlTimeline.length === 0 ? (
@@ -310,10 +325,10 @@ export function OverviewTab({
 										contentStyle={TOOLTIP_CONTENT_STYLE}
 										labelFormatter={(_, payload) => {
 											const row = payload?.[0]?.payload as
-												| { ts: string; market: string; side: string; pnl: number }
+												| { ts: string; market: string; side: string; timeframe: string; pnl: number }
 												| undefined;
 											if (!row) return "-";
-											return `${fmtDateTime(row.ts)}  ${row.market} ${row.side}`;
+											return `${fmtDateTime(row.ts)}  ${row.market} ${row.side} [${row.timeframe}]`;
 										}}
 										formatter={(value, key, item) => {
 											const v = asNumber(value, 0);

@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import { statements } from "./db.ts";
-import { createLogger } from "./logger.ts";
-import { emitSignalNew } from "./state.ts";
+import { statements } from "../core/db.ts";
+import { createLogger } from "../core/logger.ts";
+import { emitSignalNew } from "../core/state.ts";
 import type {
 	BlendResult,
 	CandleWindowTiming,
@@ -12,7 +12,7 @@ import type {
 	TimeframeId,
 	TradeDecision,
 	TradeSignal,
-} from "./types.ts";
+} from "../types.ts";
 
 const log = createLogger("bot");
 

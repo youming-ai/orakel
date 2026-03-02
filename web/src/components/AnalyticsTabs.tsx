@@ -1,6 +1,4 @@
-import { LayoutDashboard, List, Settings2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
 	ConfigPayload,
 	MarketBreakdown,
@@ -15,15 +13,19 @@ import type {
 	TradeRecord,
 } from "@/lib/api";
 import { CHART_COLORS } from "@/lib/charts";
-import { TIMING_BUCKETS } from "@/lib/constants";
+import { TIMEFRAME_WINDOW_MINUTES, TIMING_BUCKETS_BY_TF } from "@/lib/constants";
 import { asNumber, fmtTime } from "@/lib/format";
 import { useConfigMutation, usePaperClearStop } from "@/lib/queries";
+import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import type { ViewMode } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 import { OverviewTab } from "./analytics/OverviewTab";
 import { type StrategyFormValues, StrategyTab } from "./analytics/StrategyTab";
 import { TradesTab } from "./analytics/TradesTab";
+
+type TfFilter = "all" | TimeframeId;
 
 interface AnalyticsTabsProps {
 	stats: PaperStats | null;
@@ -121,6 +123,15 @@ function buildMarketFromTrades(trades: PaperTradeEntry[]): Record<string, Market
 	return result;
 }
 
+// Timeframe filter button styles
+function tfFilterColor(tf: string, selected: boolean): string {
+	if (!selected) return "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/50";
+	if (tf === "1h") return "bg-blue-500/20 border-blue-500/40 text-blue-400";
+	if (tf === "4h") return "bg-purple-500/20 border-purple-500/40 text-purple-400";
+	if (tf === "all") return "bg-emerald-500/20 border-emerald-500/40 text-emerald-400";
+	return "bg-zinc-500/20 border-zinc-500/40 text-zinc-300";
+}
+
 export function AnalyticsTabs({
 	stats,
 	trades,
@@ -137,6 +148,10 @@ export function AnalyticsTabs({
 	const enabledTimeframes: TimeframeId[] = config.enabledTimeframes ?? ["15m"];
 	const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeId>(enabledTimeframes[0] ?? "15m");
 
+	const analyticsTab = useUIStore((s) => s.analyticsTab);
+	// TF filter for trades/stats (separate from strategy TF selector)
+	const [tfFilter, setTfFilter] = useState<TfFilter>("all");
+
 	// Resolve strategy for selected timeframe: per-TF override > fallback to default
 	const activeStrategy = config.strategies?.[selectedTimeframe] ?? config.strategy;
 	const riskConfig = viewMode === "paper" ? config.paperRisk : config.liveRisk;
@@ -147,20 +162,34 @@ export function AnalyticsTabs({
 		setForm(toStrategyFormValues(strat, viewMode === "paper" ? config.paperRisk : config.liveRisk));
 	}, [config.strategy, config.strategies, config.paperRisk, config.liveRisk, viewMode, selectedTimeframe]);
 
-	const derivedStats = useMemo(() => buildStatsFromTrades(trades), [trades]);
+	// === TF-filtered data ===
+	const filteredTrades = useMemo(() => {
+		if (tfFilter === "all") return trades;
+		return trades.filter((t) => (t.timeframe ?? "15m") === tfFilter);
+	}, [trades, tfFilter]);
+
+	const filteredLiveTrades = useMemo(() => {
+		if (tfFilter === "all") return liveTrades;
+		return liveTrades.filter((t) => (t.timeframe ?? "15m") === tfFilter);
+	}, [liveTrades, tfFilter]);
+
+	const derivedStats = useMemo(() => buildStatsFromTrades(filteredTrades), [filteredTrades]);
 	const mergedStats = useMemo(() => {
+		// When filtering by TF, always use derived stats (server stats are aggregated)
+		if (tfFilter !== "all") return derivedStats;
 		if (!stats) return derivedStats;
 		return { ...stats, totalTrades: derivedStats.totalTrades };
-	}, [stats, derivedStats]);
+	}, [stats, derivedStats, tfFilter]);
 
 	const marketStats = useMemo(() => {
-		const client = buildMarketFromTrades(trades);
+		const client = buildMarketFromTrades(filteredTrades);
 		if (Object.keys(client).length > 0) return client;
+		if (tfFilter !== "all") return {};
 		return byMarket ?? {};
-	}, [byMarket, trades]);
+	}, [byMarket, filteredTrades, tfFilter]);
 
 	const pnlTimeline = useMemo(() => {
-		const resolved = trades
+		const resolved = filteredTrades
 			.filter((t) => t.resolved && t.pnl !== null)
 			.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
@@ -172,11 +201,12 @@ export function AnalyticsTabs({
 				time: fmtTime(trade.timestamp),
 				market: trade.marketId,
 				side: trade.side,
+				timeframe: trade.timeframe ?? "15m",
 				pnl: trade.pnl ?? 0,
 				cumulative: Number(running.toFixed(2)),
 			};
 		});
-	}, [trades]);
+	}, [filteredTrades]);
 
 	const timelinePositive = (pnlTimeline[pnlTimeline.length - 1]?.cumulative ?? 0) >= 0;
 
@@ -196,8 +226,14 @@ export function AnalyticsTabs({
 			.sort((a, b) => b.pnl - a.pnl);
 	}, [marketStats]);
 
+	// TF-aware timing buckets
 	const timingData = useMemo(() => {
-		const buckets = TIMING_BUCKETS.map((name) => ({
+		const tfKey = tfFilter === "all" ? "all" : tfFilter;
+		const bucketLabels = TIMING_BUCKETS_BY_TF[tfKey] ?? TIMING_BUCKETS_BY_TF.all;
+		const windowMinutes = tfFilter === "all" ? 15 : (TIMEFRAME_WINDOW_MINUTES[tfFilter] ?? 15);
+		const bucketSize = windowMinutes / 5;
+
+		const buckets = bucketLabels.map((name) => ({
 			name,
 			count: 0,
 			wins: 0,
@@ -205,12 +241,13 @@ export function AnalyticsTabs({
 			winRate: 0,
 		}));
 
-		for (const trade of trades) {
+		for (const trade of filteredTrades) {
 			const ts = new Date(trade.timestamp).getTime();
 			if (!Number.isFinite(ts) || !Number.isFinite(trade.windowStartMs)) continue;
 			const minuteInWindow = (ts - trade.windowStartMs) / 60000;
-			const index = Math.max(0, Math.min(4, Math.floor(minuteInWindow / 3)));
+			const index = Math.max(0, Math.min(4, Math.floor(minuteInWindow / bucketSize)));
 			const bucket = buckets[index];
+			if (!bucket) continue;
 			bucket.count += 1;
 			if (trade.resolved) {
 				bucket.resolved += 1;
@@ -222,16 +259,16 @@ export function AnalyticsTabs({
 			bucket.winRate = bucket.resolved > 0 ? bucket.wins / bucket.resolved : 0;
 		}
 		return buckets;
-	}, [trades]);
+	}, [filteredTrades, tfFilter]);
 
 	const sideData = useMemo(() => {
-		const up = trades.filter((t) => t.side === "UP").length;
-		const down = trades.filter((t) => t.side === "DOWN").length;
+		const up = filteredTrades.filter((t) => t.side === "UP").length;
+		const down = filteredTrades.filter((t) => t.side === "DOWN").length;
 		return [
 			{ name: "UP", value: up, color: CHART_COLORS.positive },
 			{ name: "DOWN", value: down, color: CHART_COLORS.negative },
 		];
-	}, [trades]);
+	}, [filteredTrades]);
 
 	const sideTotal = sideData[0].value + sideData[1].value;
 	const blendSum = form.blendVol + form.blendTa;
@@ -298,66 +335,77 @@ export function AnalyticsTabs({
 		});
 	}
 
+	// TF filter options: "all" + enabled timeframes
+	const tfFilterOptions: TfFilter[] = useMemo(() => ["all", ...enabledTimeframes] as TfFilter[], [enabledTimeframes]);
+
 	return (
-		<Tabs defaultValue="overview" className="space-y-4">
-			<div className="relative overflow-hidden -mx-3 px-3 sm:mx-0 sm:px-0">
-				<div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none z-10 sm:hidden" />
-				<div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 sm:hidden" />
-				<div className="overflow-x-auto scrollbar-hide py-1">
-					<TabsList className="w-max min-w-full sm:w-auto h-11 border-b-0">
-						<TabsTrigger value="overview">
-							<LayoutDashboard className="size-3.5 mr-1.5" /> Overview
-						</TabsTrigger>
-						<TabsTrigger value="trades">
-							<List className="size-3.5 mr-1.5" /> Trades
-						</TabsTrigger>
-						<TabsTrigger value="strategy">
-							<Settings2 className="size-3.5 mr-1.5" /> Strategy
-						</TabsTrigger>
-					</TabsList>
-				</div>
+		<div className="space-y-4">
+			{/* TF filter */}
+			<div className="flex items-center gap-1">
+				<span className="text-[9px] text-muted-foreground/60 font-semibold uppercase tracking-wider mr-1">TF</span>
+				{tfFilterOptions.map((tf) => (
+					<button
+						key={tf}
+						type="button"
+						onClick={() => setTfFilter(tf)}
+						className={cn(
+							"px-2 py-1 text-[10px] font-mono font-semibold rounded border transition-colors",
+							tfFilterColor(tf, tfFilter === tf),
+						)}
+					>
+						{tf === "all" ? "All" : tf}
+					</button>
+				))}
 			</div>
 
-			<TabsContent value="overview" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
-				<OverviewTab
-					stopLoss={stopLoss}
-					viewMode={viewMode}
-					todayStats={todayStats}
-					clearStopMutation={clearStopMutation}
-					mergedStats={mergedStats}
-					pnlTimeline={pnlTimeline}
-					timelinePositive={timelinePositive}
-					markets={markets}
-				/>
-			</TabsContent>
+			{analyticsTab === "overview" && (
+				<div className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+					<OverviewTab
+						stopLoss={stopLoss}
+						viewMode={viewMode}
+						todayStats={todayStats}
+						clearStopMutation={clearStopMutation}
+						mergedStats={mergedStats}
+						pnlTimeline={pnlTimeline}
+						timelinePositive={timelinePositive}
+						markets={markets}
+						tfFilter={tfFilter}
+					/>
+				</div>
+			)}
 
-			<TabsContent value="trades" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
-				<TradesTab
-					viewMode={viewMode}
-					liveTrades={liveTrades}
-					tradesLength={trades.length}
-					timingData={timingData}
-					sideTotal={sideTotal}
-					sideData={sideData}
-					marketRows={marketRows}
-				/>
-			</TabsContent>
+			{analyticsTab === "trades" && (
+				<div className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+					<TradesTab
+						viewMode={viewMode}
+						liveTrades={filteredLiveTrades}
+						tradesLength={filteredTrades.length}
+						timingData={timingData}
+						sideTotal={sideTotal}
+						sideData={sideData}
+						marketRows={marketRows}
+						tfFilter={tfFilter}
+					/>
+				</div>
+			)}
 
-			<TabsContent value="strategy" className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
-				<StrategyTab
-					strategyView={strategyView}
-					riskView={riskView}
-					form={form}
-					setForm={setForm}
-					blendSum={blendSum}
-					blendValid={blendValid}
-					saveConfig={saveConfig}
-					configMutation={configMutation}
-					selectedTimeframe={selectedTimeframe}
-					enabledTimeframes={enabledTimeframes}
-					onTimeframeChange={setSelectedTimeframe}
-				/>
-			</TabsContent>
-		</Tabs>
+			{analyticsTab === "strategy" && (
+				<div className="space-y-4 animate-in fade-in zoom-in-[0.99] duration-300">
+					<StrategyTab
+						strategyView={strategyView}
+						riskView={riskView}
+						form={form}
+						setForm={setForm}
+						blendSum={blendSum}
+						blendValid={blendValid}
+						saveConfig={saveConfig}
+						configMutation={configMutation}
+						selectedTimeframe={selectedTimeframe}
+						enabledTimeframes={enabledTimeframes}
+						onTimeframeChange={setSelectedTimeframe}
+					/>
+				</div>
+			)}
+		</div>
 	);
 }

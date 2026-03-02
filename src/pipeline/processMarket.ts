@@ -1,5 +1,5 @@
 import type { SignalQualityModel } from "../engines/signalQuality.ts";
-import { persistSignal } from "../persistence.ts";
+import { persistSignal } from "../trading/persistence.ts";
 import type {
 	AppConfig,
 	CandleWindowTiming,

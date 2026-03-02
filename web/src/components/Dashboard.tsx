@@ -97,6 +97,7 @@ function DashboardContent() {
 			won: t.won === null ? null : Boolean(t.won),
 			pnl: t.pnl,
 			settlePrice: null,
+			timeframe: (t.timeframe as "15m" | "1h" | "4h") ?? "15m",
 		}));
 	}, [trades]);
 

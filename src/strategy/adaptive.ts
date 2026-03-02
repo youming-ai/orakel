@@ -1,7 +1,7 @@
-import { AdaptiveThresholdManager, MarketPerformanceTracker } from "./engines/adaptiveThresholds.ts";
-import { RegimeTransitionTracker } from "./engines/regime.ts";
-import { SignalQualityModel } from "./engines/signalQuality.ts";
-import type { Phase, Regime } from "./types.ts";
+import { AdaptiveThresholdManager, MarketPerformanceTracker } from "../engines/adaptiveThresholds.ts";
+import { RegimeTransitionTracker } from "../engines/regime.ts";
+import { SignalQualityModel } from "../engines/signalQuality.ts";
+import type { Phase, Regime } from "../types.ts";
 
 export interface SignalMetadata {
 	edge: number;

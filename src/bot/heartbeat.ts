@@ -1,6 +1,6 @@
 import type { ClobClient } from "@polymarket/clob-client";
-import { createLogger } from "./logger.ts";
-import { isLiveRunning, setLiveRunning } from "./state.ts";
+import { createLogger } from "../core/logger.ts";
+import { isLiveRunning, setLiveRunning } from "../core/state.ts";
 
 const log = createLogger("trader");
 

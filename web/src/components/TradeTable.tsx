@@ -23,37 +23,14 @@ function sideLabel(side: string): { text: string; isUp: boolean } {
 	return { text: up ? "BUY UP" : "BUY DOWN", isUp: up };
 }
 
-const TIMEFRAME_WINDOW_SEC: Record<string, number> = {
-	"15m": 15 * 60,
-	"1h": 60 * 60,
-	"4h": 4 * 60 * 60,
-};
-
-/**
- * Slug prefixes per market × timeframe — mirrors src/markets.ts polymarket.series[tf].slugPrefix.
- * Used to construct Polymarket event URLs for each trade.
- */
-const SLUG_PREFIXES: Record<string, Record<string, string>> = {
-	BTC: { "15m": "btc-updown-15m-", "1h": "bitcoin-up-or-down-", "4h": "btc-updown-4h-" },
-	ETH: { "15m": "eth-updown-15m-", "1h": "ethereum-up-or-down-", "4h": "eth-updown-4h-" },
-	SOL: { "15m": "sol-updown-15m-", "1h": "solana-up-or-down-", "4h": "sol-updown-4h-" },
-	XRP: { "15m": "xrp-updown-15m-", "1h": "xrp-up-or-down-", "4h": "xrp-updown-4h-" },
-};
-
-function getMarketCycleSlug(market: string, timestamp: string, timeframe?: string): string | null {
-	if (!market || !timestamp) return null;
-	const tf = timeframe ?? "15m";
-	const windowSec = TIMEFRAME_WINDOW_SEC[tf] ?? 15 * 60;
-	const tsSec = Math.floor(new Date(timestamp).getTime() / 1000);
-	if (Number.isNaN(tsSec)) return null;
-	const windowStart = Math.floor(tsSec / windowSec) * windowSec;
-	const prefix = SLUG_PREFIXES[market.toUpperCase()]?.[tf];
-	if (!prefix) return `${market.toLowerCase()}-updown-${tf}-${windowStart}`;
-	return `${prefix}${windowStart}`;
+function getPolymarketUrl(slug?: string): string {
+	if (slug) return `https://polymarket.com/event/${slug}`;
+	return "https://polymarket.com/crypto/15M";
 }
 
-function getPolymarketUrl(slug: string): string {
-	return `https://polymarket.com/event/${slug}`;
+function getMarketLabel(slug?: string, market?: string): string {
+	if (slug) return slug;
+	return market ?? "-";
 }
 
 function timeframeBadgeColor(tf: string): string {
@@ -89,7 +66,7 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 			<div className="grid grid-cols-1 gap-3 sm:hidden">
 				{pageTrades.map((t, i) => {
 					const { text, isUp } = sideLabel(t.side);
-					const slug = getMarketCycleSlug(t.market, t.timestamp, t.timeframe);
+					const marketLabel = getMarketLabel(t.slug, t.market);
 					return (
 						<div
 							key={`${t.orderId}-${i}`}
@@ -101,19 +78,15 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 										{fmtDate(t.timestamp)} {fmtTimestamp(t.timestamp)}
 									</span>
 									<span className="font-mono text-sm font-medium mt-0.5 max-w-[200px] truncate">
-										{slug ? (
-											<a
-												href={getPolymarketUrl(slug)}
-												target="_blank"
-												rel="noopener noreferrer"
-												className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors hover:underline"
-											>
-												{slug}
-												<ExternalLink className="size-3 shrink-0" />
-											</a>
-										) : (
-											t.market
-										)}
+										<a
+											href={getPolymarketUrl(t.slug)}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors hover:underline"
+										>
+											{marketLabel}
+											<ExternalLink className="size-3 shrink-0" />
+										</a>
 									</span>
 								</div>
 								<Badge
@@ -125,17 +98,15 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 								>
 									{text}
 								</Badge>
-								{t.timeframe && t.timeframe !== "15m" && (
-									<Badge
-										variant="secondary"
-										className={cn(
-											"text-[10px] px-1.5 shrink-0 uppercase tracking-widest",
-											timeframeBadgeColor(t.timeframe),
-										)}
-									>
-										{t.timeframe}
-									</Badge>
-								)}
+								<Badge
+									variant="secondary"
+									className={cn(
+										"text-[10px] px-1.5 shrink-0 uppercase tracking-widest",
+										timeframeBadgeColor(t.timeframe ?? "15m"),
+									)}
+								>
+									{t.timeframe ?? "15m"}
+								</Badge>
 							</div>
 
 							<div className="grid grid-cols-2 gap-2 mt-1 text-xs">
@@ -199,16 +170,15 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 									<TableCell className="font-mono text-xs">{fmtTimestamp(t.timestamp)}</TableCell>
 									<TableCell className="font-mono text-xs font-medium max-w-[220px] truncate">
 										{(() => {
-											const slug = getMarketCycleSlug(t.market, t.timestamp, t.timeframe);
-											if (!slug) return t.market;
+											const marketLabel = getMarketLabel(t.slug, t.market);
 											return (
 												<a
-													href={getPolymarketUrl(slug)}
+													href={getPolymarketUrl(t.slug)}
 													target="_blank"
 													rel="noopener noreferrer"
 													className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors hover:underline"
 												>
-													{slug}
+													{marketLabel}
 													<ExternalLink className="size-3 shrink-0" />
 												</a>
 											);

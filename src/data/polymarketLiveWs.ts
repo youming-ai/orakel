@@ -1,6 +1,9 @@
 import WebSocket from "ws";
-import { CONFIG } from "../config.ts";
+import { CONFIG } from "../core/config.ts";
+import { createLogger } from "../core/logger.ts";
 import type { PriceTick, WsStreamHandle } from "../types.ts";
+
+const log = createLogger("polymarket-live-ws");
 
 type JsonRecord = Record<string, unknown>;
 
@@ -75,7 +78,9 @@ export function startPolymarketChainlinkPriceStream({
 			if (closed) return;
 			try {
 				ws?.terminate();
-			} catch {}
+			} catch (err) {
+				log.debug("ws cleanup failed", err);
+			}
 			ws = null;
 			const wait = reconnectMs;
 			reconnectMs = Math.min(10_000, Math.floor(reconnectMs * 1.5));
@@ -147,7 +152,9 @@ export function startPolymarketChainlinkPriceStream({
 			closed = true;
 			try {
 				ws?.close();
-			} catch {}
+			} catch (err) {
+				log.debug("ws cleanup failed", err);
+			}
 			ws = null;
 		},
 	};
@@ -185,7 +192,9 @@ export function startMultiPolymarketPriceStream(
 			if (closed) return;
 			try {
 				ws?.terminate();
-			} catch {}
+			} catch (err) {
+				log.debug("ws cleanup failed", err);
+			}
 			ws = null;
 			const wait = reconnectMs;
 			reconnectMs = Math.min(10_000, Math.floor(reconnectMs * 1.5));
@@ -261,7 +270,9 @@ export function startMultiPolymarketPriceStream(
 			closed = true;
 			try {
 				ws?.close();
-			} catch {}
+			} catch (err) {
+				log.debug("ws cleanup failed", err);
+			}
 			ws = null;
 		},
 	};

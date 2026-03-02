@@ -1,25 +1,16 @@
-import { applyEvent, enrichPosition, initAccountState, resetAccountState, updateFromSnapshot } from "./accountState.ts";
-import { signalQualityModel } from "./adaptiveState.ts";
-import { startApiServer } from "./api.ts";
-import { CONFIG, getConfigForTimeframe, TIMEFRAME_WINDOW_MINUTES } from "./config.ts";
-import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
-import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
-import { startBalancePolling } from "./data/polygonBalance.ts";
-import { startOnChainEventStream } from "./data/polygonEvents.ts";
-import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
-import { startClobMarketWs } from "./data/polymarketClobWs.ts";
-import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
-import { onchainStatements } from "./db.ts";
-import { env } from "./env.ts";
-import { setHeartbeatClient, startHeartbeat, stopHeartbeat, unregisterOpenGtdOrder } from "./heartbeat.ts";
-import { restorePendingLiveTrades } from "./liveSettlement.ts";
-import { createLogger } from "./logger.ts";
-import { getActiveMarkets } from "./markets.ts";
-import { OrderManager, type TrackedOrder } from "./orderManager.ts";
-import { canAffordTradeWithStopCheck, getPaperStats, getPendingPaperTrades } from "./paperStats.ts";
-import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
-import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
-import { startReconciler } from "./reconciler.ts";
+import { startApiServer } from "./api/server.ts";
+import { setHeartbeatClient, startHeartbeat, stopHeartbeat, unregisterOpenGtdOrder } from "./bot/heartbeat.ts";
+import {
+	createTickContext,
+	type SimpleOrderTracker,
+	syncTimeframeRuntimeState,
+	type TradeTracker,
+} from "./bot/helpers.ts";
+import { handleWindowBoundary } from "./bot/windowBoundary.ts";
+import { CONFIG, TIMEFRAME_WINDOW_MINUTES } from "./core/config.ts";
+import { onchainStatements } from "./core/db.ts";
+import { env } from "./core/env.ts";
+import { createLogger } from "./core/logger.ts";
 import {
 	emitBalanceSnapshot,
 	emitStateSnapshot,
@@ -30,146 +21,46 @@ import {
 	setOnchainBalance,
 	setPaperRunning,
 	updateMarkets,
-} from "./state.ts";
-import { shouldTakeTrade } from "./strategyRefinement.ts";
-import { renderDashboard } from "./terminal.ts";
-import { connectWallet, executeTrade, getClientStatus, getLiveStats, getLiveTodayStats, getWallet } from "./trader.ts";
-import type {
-	AppConfig,
-	MarketSnapshot,
-	OrderTracker,
-	RiskConfig,
-	StreamHandles,
-	TimeframeId,
-	WsStreamHandle,
-} from "./types.ts";
+} from "./core/state.ts";
+import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
+import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
+import { startBalancePolling } from "./data/polygonBalance.ts";
+import { startOnChainEventStream } from "./data/polygonEvents.ts";
+import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
+import { startClobMarketWs } from "./data/polymarketClobWs.ts";
+import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
+import { getActiveMarkets } from "./markets.ts";
+import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
+import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
+import { signalQualityModel } from "./strategy/adaptive.ts";
+import { shouldTakeTrade } from "./strategy/refinement.ts";
+import {
+	applyEvent,
+	enrichPosition,
+	initAccountState,
+	resetAccountState,
+	updateFromSnapshot,
+} from "./trading/accountState.ts";
+import { restorePendingLiveTrades } from "./trading/live.ts";
+import { OrderManager, type TrackedOrder } from "./trading/orderManager.ts";
+import { canAffordTradeWithStopCheck, getPaperStats, getPendingPaperTrades } from "./trading/paperStats.ts";
+import { startReconciler } from "./trading/reconciler.ts";
+import {
+	connectWallet,
+	executeTrade,
+	getClientStatus,
+	getLiveStats,
+	getLiveTodayStats,
+	getWallet,
+} from "./trading/trader.ts";
+import type { MarketSnapshot, OrderTracker, StreamHandles, TimeframeId, WsStreamHandle } from "./types.ts";
+import { renderDashboard } from "./ui/terminal.ts";
 import { getCandleWindowTiming, sleep } from "./utils.ts";
-import { handleWindowBoundary } from "./windowBoundary.ts";
 
 export type { ProcessMarketResult } from "./pipeline/processMarket.ts";
 
 const log = createLogger("bot");
 const processMarket = processMarketPipeline;
-
-interface SimpleOrderTracker {
-	orders: Map<string, number>;
-	lastTradeMs: number;
-	cooldownMs: number;
-	keyFor(marketId: string, windowSlug: string): string;
-	hasOrder(marketId: string, windowSlug: string): boolean;
-	totalActive(): number;
-	record(marketId: string, windowSlug: string): void;
-	prune(): void;
-	onCooldown(): boolean;
-}
-
-function createTradeTracker() {
-	return {
-		markets: new Set<string>(),
-		windowStartMs: 0,
-		globalCount: 0,
-		clear() {
-			this.markets.clear();
-			this.globalCount = 0;
-			this.windowStartMs = 0;
-		},
-		setWindow(startMs: number) {
-			if (this.windowStartMs !== startMs) {
-				this.clear();
-				this.windowStartMs = startMs;
-			}
-		},
-		has(marketId: string, startMs: number): boolean {
-			return this.markets.has(`${marketId}:${startMs}`);
-		},
-		record(marketId: string, startMs: number) {
-			this.markets.add(`${marketId}:${startMs}`);
-			this.globalCount++;
-		},
-		canTradeGlobally(maxGlobal: number): boolean {
-			return this.globalCount < maxGlobal;
-		},
-	};
-}
-
-type TradeTracker = ReturnType<typeof createTradeTracker>;
-
-interface TickContext {
-	enabledTimeframes: TimeframeId[];
-	timeframeConfigs: Map<TimeframeId, AppConfig>;
-	paperRisk: RiskConfig;
-	liveRisk: RiskConfig;
-	clobBaseUrl: string;
-	pollIntervalMs: number;
-	safeModeThreshold: number;
-}
-
-function createInitialMarketState(): MarketState {
-	return {
-		prevSpotPrice: null,
-		prevCurrentPrice: null,
-		priceToBeatState: { slug: null, value: null, setAtMs: null },
-	};
-}
-
-function createTickContext(enabledTimeframes: TimeframeId[]): TickContext {
-	const timeframeConfigs = new Map<TimeframeId, AppConfig>();
-	for (const tf of enabledTimeframes) {
-		// Snapshot per-timeframe config once per tick to avoid mixed-config behavior.
-		timeframeConfigs.set(tf, structuredClone(getConfigForTimeframe(tf)));
-	}
-	return {
-		enabledTimeframes,
-		timeframeConfigs,
-		paperRisk: { ...CONFIG.paperRisk },
-		liveRisk: { ...CONFIG.liveRisk },
-		clobBaseUrl: CONFIG.clobBaseUrl,
-		pollIntervalMs: CONFIG.pollIntervalMs,
-		safeModeThreshold: Math.max(1, Number(CONFIG.strategy.safeModeThreshold ?? 3)),
-	};
-}
-
-function syncTimeframeRuntimeState(
-	enabledTimeframes: TimeframeId[],
-	marketIds: string[],
-	states: Map<string, MarketState>,
-	paperTrackers: Map<TimeframeId, TradeTracker>,
-	liveTrackers: Map<TimeframeId, TradeTracker>,
-	prevWindowStartMs: Map<TimeframeId, number>,
-): void {
-	const enabledSet = new Set<TimeframeId>(enabledTimeframes);
-
-	for (const tf of enabledTimeframes) {
-		if (!paperTrackers.has(tf)) {
-			paperTrackers.set(tf, createTradeTracker());
-		}
-		if (!liveTrackers.has(tf)) {
-			liveTrackers.set(tf, createTradeTracker());
-		}
-		for (const marketId of marketIds) {
-			const stateKey = `${marketId}:${tf}`;
-			if (!states.has(stateKey)) {
-				states.set(stateKey, createInitialMarketState());
-			}
-		}
-	}
-
-	for (const tf of Array.from(paperTrackers.keys())) {
-		if (!enabledSet.has(tf)) paperTrackers.delete(tf);
-	}
-	for (const tf of Array.from(liveTrackers.keys())) {
-		if (!enabledSet.has(tf)) liveTrackers.delete(tf);
-	}
-	for (const tf of Array.from(prevWindowStartMs.keys())) {
-		if (!enabledSet.has(tf)) prevWindowStartMs.delete(tf);
-	}
-	for (const key of Array.from(states.keys())) {
-		const separatorIndex = key.lastIndexOf(":");
-		if (separatorIndex < 0) continue;
-		const tf = key.slice(separatorIndex + 1) as TimeframeId;
-		if (!enabledSet.has(tf)) states.delete(key);
-	}
-}
 
 // Per-timeframe trade trackers
 const paperTrackers = new Map<TimeframeId, TradeTracker>();

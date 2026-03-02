@@ -123,9 +123,10 @@ function HeatmapCell({ cell, hour, market, isHeader = false }: HeatmapCellProps)
 
 interface TradingHeatmapProps {
 	trades: TradeRecord[];
+	tfFilter?: string;
 }
 
-export const TradingHeatmap = memo(function TradingHeatmap({ trades }: TradingHeatmapProps) {
+export const TradingHeatmap = memo(function TradingHeatmap({ trades, tfFilter }: TradingHeatmapProps) {
 	const grid = useMemo(() => buildHeatmap(trades), [trades]);
 	const totals = useMemo(() => hourlyTotals(grid), [grid]);
 
@@ -135,7 +136,7 @@ export const TradingHeatmap = memo(function TradingHeatmap({ trades }: TradingHe
 		<Card>
 			<CardHeader className="pb-2">
 				<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
-					Win Rate Heatmap — Market × Hour (UTC)
+					Win Rate Heatmap — Market × Hour (UTC){tfFilter && tfFilter !== "all" ? ` — ${tfFilter}` : ""}
 				</CardTitle>
 				<p className="text-[10px] text-muted-foreground/60 mt-0.5">
 					Color: <span className="text-emerald-400">green ≥50%</span> ·{" "}

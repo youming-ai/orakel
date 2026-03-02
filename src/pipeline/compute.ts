@@ -1,4 +1,4 @@
-import { signalQualityModel as defaultSignalQualityModel, getRegimeTransitionTracker } from "../adaptiveState.ts";
+import { createLogger } from "../core/logger.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
 import { computeEnsemble } from "../engines/ensemble.ts";
 import {
@@ -15,7 +15,7 @@ import { computeMacd } from "../indicators/macd.ts";
 import { slopeLast } from "../indicators/rsi.ts";
 import { RollingVolatilityCalculator } from "../indicators/volatilityBuffer.ts";
 import { computeVwapSeries } from "../indicators/vwap.ts";
-import { createLogger } from "../logger.ts";
+import { signalQualityModel as defaultSignalQualityModel, getRegimeTransitionTracker } from "../strategy/adaptive.ts";
 import type { AppConfig, ComputeResult, MacdResult, RawMarketData, TradeDecision } from "../types.ts";
 
 const log = createLogger("compute");
@@ -224,14 +224,14 @@ export function computeMarketDecision(
 		strategy: config.strategy,
 	});
 
-	const rec = edge.vigTooHigh
-		? ({
+	const rec: TradeDecision = edge.vigTooHigh
+		? {
 				action: "NO_TRADE",
 				side: null,
-				phase: null,
+				phase,
 				regime: regimeInfo.regime,
 				reason: `vig_too_high_${edge.rawSum?.toFixed(3)}`,
-			} as unknown as TradeDecision)
+			}
 		: decide({
 				remainingMinutes: effectiveTimeLeftMin,
 				edgeUp: edge.edgeUp,

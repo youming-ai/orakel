@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ViewMode } from "./types";
 
+export type AnalyticsTab = "overview" | "trades" | "strategy";
+
 /* ── UI state ─────────────────────────────────────────── */
 
 interface UIState {
@@ -16,6 +18,10 @@ interface UIState {
 	/** UI color theme */
 	theme: "light" | "dark";
 	toggleTheme: () => void;
+
+	/** Active analytics tab */
+	analyticsTab: AnalyticsTab;
+	setAnalyticsTab: (tab: AnalyticsTab) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -27,6 +33,9 @@ export const useUIStore = create<UIState>()(
 			confirmAction: null,
 			setConfirmAction: (action) => set({ confirmAction: action }),
 
+			analyticsTab: "overview",
+			setAnalyticsTab: (tab) => set({ analyticsTab: tab }),
+
 			theme: "dark",
 			toggleTheme: () =>
 				set((state) => {
@@ -37,7 +46,7 @@ export const useUIStore = create<UIState>()(
 		}),
 		{
 			name: "orakel-ui",
-			partialize: (state) => ({ viewMode: state.viewMode, theme: state.theme }),
+			partialize: (state) => ({ viewMode: state.viewMode, theme: state.theme, analyticsTab: state.analyticsTab }),
 		},
 	),
 );

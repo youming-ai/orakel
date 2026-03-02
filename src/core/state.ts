@@ -1,6 +1,4 @@
 import { EventEmitter } from "node:events";
-import { CONFIG } from "./config.ts";
-import { createLogger } from "./logger.ts";
 import type {
 	BalanceSnapshotPayload,
 	MarketSnapshot,
@@ -8,7 +6,9 @@ import type {
 	StateSnapshotPayload,
 	TradeExecutedPayload,
 	WsMessage,
-} from "./types.ts";
+} from "../types.ts";
+import { CONFIG } from "./config.ts";
+import { createLogger } from "./logger.ts";
 
 const log = createLogger("state");
 

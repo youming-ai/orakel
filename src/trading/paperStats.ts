@@ -1,11 +1,11 @@
-import { getAndClearSignalMetadata, performanceTracker, signalQualityModel } from "./adaptiveState.ts";
-import { PAPER_INITIAL_BALANCE } from "./config.ts";
-import { createLogger } from "./logger.ts";
+import { PAPER_INITIAL_BALANCE } from "../core/config.ts";
+import { createLogger } from "../core/logger.ts";
+import { getAndClearSignalMetadata, performanceTracker, signalQualityModel } from "../strategy/adaptive.ts";
 
 const log = createLogger("paperStats");
 
-import { statements } from "./db.ts";
-import type { PaperStats, PaperTradeEntry, TimeframeId } from "./types.ts";
+import { statements } from "../core/db.ts";
+import type { PaperStats, PaperTradeEntry, TimeframeId } from "../types.ts";
 
 interface DailyPnl {
 	date: string;

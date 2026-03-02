@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { createLogger } from "../logger.ts";
+import { createLogger } from "../core/logger.ts";
 
 const log = createLogger("clob-ws");
 
@@ -152,7 +152,9 @@ export function startClobMarketWs(params?: { wsUrl?: string; initialTokenIds?: s
 			if (closed) return;
 			try {
 				ws?.terminate();
-			} catch {}
+			} catch (err) {
+				log.debug("ws cleanup failed", err);
+			}
 			ws = null;
 			const wait = reconnectMs;
 			reconnectMs = Math.min(10_000, Math.floor(reconnectMs * 1.5));
@@ -225,7 +227,9 @@ export function startClobMarketWs(params?: { wsUrl?: string; initialTokenIds?: s
 			closed = true;
 			try {
 				ws?.close();
-			} catch {}
+			} catch (err) {
+				log.debug("ws cleanup failed", err);
+			}
 			ws = null;
 			bestBidAsks.clear();
 			tickSizes.clear();

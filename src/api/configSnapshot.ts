@@ -1,4 +1,4 @@
-import { CONFIG } from "./config.ts";
+import { CONFIG } from "../core/config.ts";
 
 export interface ApiConfigSnapshot {
 	strategy: typeof CONFIG.strategy;

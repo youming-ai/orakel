@@ -1,11 +1,10 @@
 import fs from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { z } from "zod";
+import { MARKETS } from "../markets.ts";
+import type { AppConfig, RiskConfig, StrategyConfig, TimeframeId } from "../types.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
-import { MARKETS } from "./markets.ts";
-
-import type { AppConfig, RiskConfig, StrategyConfig, TimeframeId } from "./types.ts";
 
 const log = createLogger("config");
 

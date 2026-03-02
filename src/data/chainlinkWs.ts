@@ -1,7 +1,10 @@
 import { ethers } from "ethers";
 import WebSocket from "ws";
-import { CONFIG } from "../config.ts";
+import { CONFIG } from "../core/config.ts";
+import { createLogger } from "../core/logger.ts";
 import type { PriceTick, WsStreamHandle } from "../types.ts";
+
+const log = createLogger("chainlink-ws");
 
 const ANSWER_UPDATED_TOPIC0 = "0x0559884fd3a460f71df1384d438bdf1a5ceef8bd81c4d9c4f0a40c5d4b1f0f0a";
 
@@ -175,7 +178,9 @@ export function startChainlinkPriceStream({
 				if (ws && subId) {
 					ws.send(JSON.stringify({ jsonrpc: "2.0", id: nextId++, method: "eth_unsubscribe", params: [subId] }));
 				}
-			} catch {}
+			} catch (err) {
+				log.debug("ws cleanup failed", err);
+			}
 			try {
 				ws?.close();
 			} catch {

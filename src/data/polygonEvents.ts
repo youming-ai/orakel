@@ -1,6 +1,5 @@
 import { ethers } from "ethers";
 import WebSocket from "ws";
-import { CONFIG } from "../config.ts";
 import {
 	CTF_ADDRESS,
 	ctfIface,
@@ -11,7 +10,8 @@ import {
 	USDC_E_DECIMALS,
 	usdcIface,
 } from "../contracts.ts";
-import { createLogger } from "../logger.ts";
+import { CONFIG } from "../core/config.ts";
+import { createLogger } from "../core/logger.ts";
 import type { OnChainEvent } from "../types.ts";
 
 const log = createLogger("polygon-events");
@@ -291,7 +291,9 @@ export function startOnChainEventStream(opts: { wallet: string; onEvent: (event:
 						ws.send(JSON.stringify({ jsonrpc: "2.0", id: nextId++, method: "eth_unsubscribe", params: [subId] }));
 					}
 				}
-			} catch {}
+			} catch (err) {
+				log.debug("event parse failed", err);
+			}
 			try {
 				ws?.close();
 			} catch {

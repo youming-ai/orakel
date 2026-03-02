@@ -238,6 +238,7 @@ export interface PaperTradeEntry {
 	won: boolean | null;
 	pnl: number | null;
 	settlePrice: number | null;
+	timeframe?: TimeframeId;
 }
 
 export interface MarketBreakdown {
@@ -270,4 +271,5 @@ export type TradeRecord = {
 	pnl: number | null;
 	won: number | null;
 	timeframe?: string;
+	slug?: string;
 };

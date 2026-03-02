@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { createTtlCache } from "../cache.ts";
-import { CONFIG } from "../config.ts";
-import { createLogger } from "../logger.ts";
+import { createTtlCache } from "../core/cache.ts";
+import { CONFIG } from "../core/config.ts";
+import { createLogger } from "../core/logger.ts";
 import type { OrderBookSummary } from "../types.ts";
 
 type JsonRecord = Record<string, unknown>;
