@@ -15,7 +15,7 @@ import type { MarketSnapshot, TimeframeId } from "@/lib/api";
 import { CHART_COLORS, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
 import { MARKETS } from "@/lib/constants";
 import { asNumber, fmtCents, fmtPrice, fmtTime, fmtTimeShort } from "@/lib/format";
-import { cn } from "@/lib/utils";
+
 import { ChartErrorBoundary } from "./ChartErrorBoundary";
 
 const MAX_POINTS = 60;
@@ -34,6 +34,7 @@ interface PricePoint {
 
 interface PriceChartProps {
 	markets: MarketSnapshot[];
+	tfFilter: string;
 }
 
 interface CustomDotProps {
@@ -57,18 +58,13 @@ function TradeDot({ cx = 0, cy = 0, payload }: CustomDotProps) {
 	);
 }
 
-function tfButtonColor(tf: string, selected: boolean): string {
-	if (!selected) return "bg-muted/40 text-muted-foreground hover:bg-muted/60";
-	if (tf === "1h") return "bg-blue-500/20 border-blue-500/40 text-blue-400";
-	if (tf === "4h") return "bg-purple-500/20 border-purple-500/40 text-purple-400";
-	return "bg-primary text-primary-foreground";
-}
-
-export const PriceChart = memo(function PriceChart({ markets }: PriceChartProps) {
+export const PriceChart = memo(function PriceChart({ markets, tfFilter }: PriceChartProps) {
 	const [selectedMarket, setSelectedMarket] = useState<string>("BTC");
-	const [selectedTf, setSelectedTf] = useState<TimeframeId>("15m");
 	const priceHistoryRef = useRef<Record<string, PricePoint[]>>({});
 	const [, forceUpdate] = useState(0);
+
+	// Derive effective TF from parent filter: "all" defaults to "15m"
+	const effectiveTf: TimeframeId = tfFilter === "all" ? "15m" : (tfFilter as TimeframeId);
 
 	// Compute which timeframes are available for current market
 	const availableTimeframes = useMemo(() => {
@@ -78,17 +74,14 @@ export const PriceChart = memo(function PriceChart({ markets }: PriceChartProps)
 				tfs.add(m.timeframe);
 			}
 		}
-		// Ensure at least "15m" is available
 		if (tfs.size === 0) tfs.add("15m");
 		return TF_OPTIONS.filter((tf) => tfs.has(tf));
 	}, [markets, selectedMarket]);
 
-	// Auto-correct selectedTf if not available for this market
-	useEffect(() => {
-		if (!availableTimeframes.includes(selectedTf)) {
-			setSelectedTf(availableTimeframes[0] ?? "15m");
-		}
-	}, [availableTimeframes, selectedTf]);
+	// Fallback: if effectiveTf not available for this market, use first available
+	const selectedTf: TimeframeId = availableTimeframes.includes(effectiveTf)
+		? effectiveTf
+		: (availableTimeframes[0] ?? "15m");
 
 	// Composite key for price history: "BTC-15m"
 	const historyKey = `${selectedMarket}-${selectedTf}`;
@@ -140,41 +133,24 @@ export const PriceChart = memo(function PriceChart({ markets }: PriceChartProps)
 		<Card>
 			<CardHeader className="pb-2">
 				<div className="flex items-center justify-between flex-wrap gap-2">
-					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Price vs Target</CardTitle>
-					<div className="flex items-center gap-3">
-						{/* Timeframe selector */}
-						<div className="flex gap-0.5">
-							{availableTimeframes.map((tf) => (
-								<button
-									key={tf}
-									type="button"
-									onClick={() => setSelectedTf(tf)}
-									className={cn(
-										"px-2 py-1 text-[10px] rounded font-mono font-semibold transition-colors border",
-										tfButtonColor(tf, selectedTf === tf),
-									)}
-								>
-									{tf}
-								</button>
-							))}
-						</div>
-						{/* Market selector */}
-						<div className="flex gap-1">
-							{MARKETS.map((m) => (
-								<button
-									key={m}
-									type="button"
-									onClick={() => setSelectedMarket(m)}
-									className={`px-2.5 py-1 text-xs rounded font-mono font-semibold transition-colors ${
-										selectedMarket === m
-											? "bg-primary text-primary-foreground"
-											: "bg-muted/40 text-muted-foreground hover:bg-muted/60"
-									}`}
-								>
-									{m}
-								</button>
-							))}
-						</div>
+					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">
+						Price vs Target{tfFilter !== "all" ? ` (${selectedTf})` : ""}
+					</CardTitle>
+					<div className="flex items-center gap-1">
+						{MARKETS.map((m) => (
+							<button
+								key={m}
+								type="button"
+								onClick={() => setSelectedMarket(m)}
+								className={`px-2.5 py-1 text-xs rounded font-mono font-semibold transition-colors ${
+									selectedMarket === m
+										? "bg-primary text-primary-foreground"
+										: "bg-muted/40 text-muted-foreground hover:bg-muted/60"
+								}`}
+							>
+								{m}
+							</button>
+						))}
 					</div>
 				</div>
 			</CardHeader>

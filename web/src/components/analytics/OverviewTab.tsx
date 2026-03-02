@@ -278,7 +278,7 @@ export function OverviewTab({
 				))}
 			</div>
 
-			<PriceChart markets={markets} />
+			<PriceChart markets={markets} tfFilter={tfFilter} />
 
 			{/* Section: Performance History */}
 			<div className="flex items-center gap-3 pt-2">

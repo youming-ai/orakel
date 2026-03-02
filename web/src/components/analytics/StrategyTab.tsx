@@ -37,8 +37,6 @@ interface StrategyTabProps {
 		isSuccess: boolean;
 	};
 	selectedTimeframe: TimeframeId;
-	enabledTimeframes: TimeframeId[];
-	onTimeframeChange: (tf: TimeframeId) => void;
 }
 
 function ParamField({ label, children }: { label: string; children: React.ReactNode }) {
@@ -77,33 +75,9 @@ export function StrategyTab({
 	saveConfig,
 	configMutation,
 	selectedTimeframe,
-	enabledTimeframes,
-	onTimeframeChange,
 }: StrategyTabProps) {
 	return (
 		<div className="space-y-4">
-			{/* Timeframe Selector */}
-			<div className="flex items-center gap-2">
-				<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Timeframe:</span>
-				<div className="flex gap-1">
-					{enabledTimeframes.map((tf) => (
-						<button
-							key={tf}
-							type="button"
-							className={cn(
-								"px-3 py-1.5 text-xs font-mono font-medium rounded-md border transition-colors",
-								selectedTimeframe === tf
-									? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-									: "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/50",
-							)}
-							onClick={() => onTimeframeChange(tf)}
-						>
-							{tf}
-						</button>
-					))}
-				</div>
-			</div>
-
 			<Card>
 				<CardHeader className="pb-2">
 					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">

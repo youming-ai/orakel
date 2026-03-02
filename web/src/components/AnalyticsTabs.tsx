@@ -146,11 +146,15 @@ export function AnalyticsTabs({
 	const configMutation = useConfigMutation(viewMode);
 	const clearStopMutation = usePaperClearStop();
 	const enabledTimeframes: TimeframeId[] = config.enabledTimeframes ?? ["15m"];
-	const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeId>(enabledTimeframes[0] ?? "15m");
 
 	const analyticsTab = useUIStore((s) => s.analyticsTab);
-	// TF filter for trades/stats (separate from strategy TF selector)
 	const [tfFilter, setTfFilter] = useState<TfFilter>("all");
+
+	// Derive strategy timeframe from tfFilter: specific TF when selected, otherwise first enabled
+	const selectedTimeframe: TimeframeId =
+		tfFilter !== "all" && enabledTimeframes.includes(tfFilter as TimeframeId)
+			? (tfFilter as TimeframeId)
+			: (enabledTimeframes[0] ?? "15m");
 
 	// Resolve strategy for selected timeframe: per-TF override > fallback to default
 	const activeStrategy = config.strategies?.[selectedTimeframe] ?? config.strategy;
@@ -401,8 +405,6 @@ export function AnalyticsTabs({
 						saveConfig={saveConfig}
 						configMutation={configMutation}
 						selectedTimeframe={selectedTimeframe}
-						enabledTimeframes={enabledTimeframes}
-						onTimeframeChange={setSelectedTimeframe}
 					/>
 				</div>
 			)}
