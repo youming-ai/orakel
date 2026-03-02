@@ -10,22 +10,33 @@ bun install                          # Install backend dependencies
 cd web && bun install                # Install frontend dependencies
 
 # Running
-bun run start                        # Start bot (src/index.ts, port 9999)
-cd web && bun run dev                # Start frontend dev server (port 9998)
+bun run dev                          # Start both bot (9999) + web dev server (9998) concurrently
+bun run start                        # Start bot only (src/index.ts, port 9999)
+cd web && bun run dev                # Start web dev server only (port 9998)
 
-# Code quality
-bun run typecheck                    # Typecheck all src/ (includes tests)
-bun run lint                         # Biome check (lint + format) src/
-bun run lint:fix                     # Biome check --write (auto-fix)
-bun run format                       # Biome format --write src/
+# Code quality - backend
+bun run typecheck                    # Typecheck backend (src/)
+bun run typecheck:web                # Typecheck frontend (web/src/)
+bun run lint                         # Biome check backend
+bun run lint:fix                     # Biome check --write backend (auto-fix)
+bun run lint:web                     # Biome check frontend
+bun run lint:web:fix                 # Biome check --write frontend
+bun run format                       # Biome format --write everything
+bun run format:check                 # Check formatting without fixing
 
-# Testing
-bun run test                         # Run all tests (vitest)
-bunx vitest run src/path.test.ts     # Run a single test file
-bun run test:watch                   # Vitest in watch mode
+# Database
+bun run db:reset                     # Reset SQLite database (WARNING: deletes all data)
+bun run db:seed                      # Seed database with sample data
+bun run db:migrate                   # Run database migrations
+
+# Docker
+bun run docker:up                    # docker compose up --build
+bun run docker:down                  # docker compose down
+bun run docker:logs                  # docker compose logs -f
 ```
 
-**Pre-push checklist**: `bun run lint && bun run typecheck && bun run test`
+**Pre-commit**: `bun run lint:fix && bun run format && bun run typecheck`
+**Pre-push**: `bun run typecheck`
 
 ## Architecture Overview
 
@@ -50,10 +61,19 @@ The main loop runs every second:
 
 ### State Management
 
-- **Module singletons** for shared state (src/state.ts)
+- **Module singletons** for shared state (src/core/state.ts)
 - **Zod** for runtime validation of config (config.json) and environment variables (.env)
-- **SQLite** for persistence (src/db.ts) with prepared statements
+- **SQLite** for persistence (src/core/db.ts) with prepared statements
 - **EventEmitter** (botEvents) for WebSocket state broadcasting
+
+### API and WebSocket Events
+
+The bot exposes a Hono API server ([src/api/server.ts](src/api/server.ts)) with:
+- **REST endpoints**: `/api/health`, `/api/state`, `/api/trades`, `/api/signals`, `/api/paper-stats`
+- **Mutation endpoints** (require `API_TOKEN`): `/api/config`, `/api/paper/*`, `/api/live/*`
+- **WebSocket** (`/api/ws`): Emits `state:snapshot`, `signal:new`, `trade:executed` events
+
+Frontend uses TanStack Query for REST and WebSocket for real-time updates. The `state:snapshot` event is the single source of truth for market state.
 
 ### Configuration
 
@@ -74,18 +94,28 @@ The main loop runs every second:
 - **Named exports only** — no default exports
 - **Logging**: Use `createLogger("module-name")` factory, never raw `console.log`
 
+### Frontend Path Aliases (web/ only)
+
+The web frontend uses path aliases defined in [web/tsconfig.json](web/tsconfig.json):
+- `@/*` → `web/src/*` (e.g., `@/components/Dashboard`)
+- `@server/*` → `src/*` (e.g., `@server/types`)
+
+**Important**: Backend code must NOT use path aliases — use relative imports with `.ts` extension only.
+
 ## Key Types and Patterns
 
 - **Result objects**: `{ ok: true, data }` | `{ ok: false, error: string }`
 - **Market state**: `MarketState` interface tracks per-market state across iterations (priceToBeat latching)
-- **Trade signals**: Persisted to SQLite via [src/persistence.ts](src/persistence.ts)
-- **Order lifecycle**: Live trades tracked by [src/orderManager.ts](src/orderManager.ts) with status polling
+- **Trade signals**: Persisted to SQLite via [src/trading/persistence.ts](src/trading/persistence.ts)
+- **Order lifecycle**: Live trades tracked by [src/trading/orderManager.ts](src/trading/orderManager.ts) with status polling
+- **Pure functions**: All trading logic in [src/engines/](src/engines/) and [src/indicators/](src/indicators/) is pure (no side effects)
+- **Module pattern**: ESM-only codebase with module-level singletons for shared state (no DI framework)
 
 ## Important Notes
 
 - Market-specific edge multipliers are hardcoded in [src/engines/edge.ts](src/engines/edge.ts) based on backtest performance (BTC: 1.5x, ETH: 1.2x, SOL/XRP: 1.0x)
 - Safe mode triggers after 3 consecutive all-market failures (configurable via `strategy.safeModeThreshold`)
-- 15-minute window boundary handling in [src/windowBoundary.ts](src/windowBoundary.ts) handles settlement and tracker reset
+- 15-minute window boundary handling in [src/bot/windowBoundary.ts](src/bot/windowBoundary.ts) handles settlement and tracker reset
 - Live trading requires API_TOKEN to be set for endpoint authentication
 
 ## See Also
