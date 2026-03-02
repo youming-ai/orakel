@@ -269,4 +269,5 @@ export type TradeRecord = {
 	mode?: string;
 	pnl: number | null;
 	won: number | null;
+	timeframe?: string;
 };

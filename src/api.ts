@@ -59,6 +59,7 @@ interface TradeRowSqlite {
 	mode: string;
 	pnl: number | null;
 	won: number | null;
+	timeframe?: string | null;
 }
 
 interface SignalRowSqlite {
@@ -221,6 +222,7 @@ const apiRoutes = new Hono()
 				mode: row.mode ?? "",
 				pnl: row.pnl ?? null,
 				won: row.won ?? null,
+				timeframe: row.timeframe ?? "15m",
 			})),
 		);
 	})

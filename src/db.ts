@@ -373,6 +373,19 @@ function runMigrations(db: Database): void {
 			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (5, strftime('%s', 'now'))");
 		})();
 	}
+
+	if (currentVersion < 6) {
+		db.transaction(() => {
+			const tradesColumns = db.query("PRAGMA table_info(trades)").all() as Array<{ name?: string }>;
+			if (!tradesColumns.some((col) => col.name === "timeframe")) {
+				db.run("ALTER TABLE trades ADD COLUMN timeframe TEXT DEFAULT '15m'");
+			}
+
+			db.run("CREATE INDEX IF NOT EXISTS idx_trades_timeframe ON trades(timeframe, timestamp DESC)");
+
+			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (6, strftime('%s', 'now'))");
+		})();
+	}
 }
 
 // P2-3: Cache prepared statements — prepare once per SQL string, clear on DB reinit
@@ -400,8 +413,8 @@ function cachedQuery(sql: string): ReturnType<Database["query"]> {
 export const statements = {
 	insertTrade: () =>
 		cachedPrepare(`
-      INSERT INTO trades (timestamp, market, side, amount, price, order_id, status, mode, pnl, won)
-      VALUES ($timestamp, $market, $side, $amount, $price, $orderId, $status, $mode, $pnl, $won)
+      INSERT INTO trades (timestamp, market, side, amount, price, order_id, status, mode, pnl, won, timeframe)
+      VALUES ($timestamp, $market, $side, $amount, $price, $orderId, $status, $mode, $pnl, $won, $timeframe)
     `),
 
 	insertSignal: () =>

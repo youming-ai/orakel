@@ -23,18 +23,43 @@ function sideLabel(side: string): { text: string; isUp: boolean } {
 	return { text: up ? "BUY UP" : "BUY DOWN", isUp: up };
 }
 
-const WINDOW_SEC = 15 * 60;
+const TIMEFRAME_WINDOW_SEC: Record<string, number> = {
+	"15m": 15 * 60,
+	"1h": 60 * 60,
+	"4h": 4 * 60 * 60,
+};
 
-function getMarketCycleSlug(market: string, timestamp: string): string | null {
+/**
+ * Slug prefixes per market × timeframe — mirrors src/markets.ts polymarket.series[tf].slugPrefix.
+ * Used to construct Polymarket event URLs for each trade.
+ */
+const SLUG_PREFIXES: Record<string, Record<string, string>> = {
+	BTC: { "15m": "btc-updown-15m-", "1h": "bitcoin-up-or-down-", "4h": "btc-updown-4h-" },
+	ETH: { "15m": "eth-updown-15m-", "1h": "ethereum-up-or-down-", "4h": "eth-updown-4h-" },
+	SOL: { "15m": "sol-updown-15m-", "1h": "solana-up-or-down-", "4h": "sol-updown-4h-" },
+	XRP: { "15m": "xrp-updown-15m-", "1h": "xrp-up-or-down-", "4h": "xrp-updown-4h-" },
+};
+
+function getMarketCycleSlug(market: string, timestamp: string, timeframe?: string): string | null {
 	if (!market || !timestamp) return null;
+	const tf = timeframe ?? "15m";
+	const windowSec = TIMEFRAME_WINDOW_SEC[tf] ?? 15 * 60;
 	const tsSec = Math.floor(new Date(timestamp).getTime() / 1000);
 	if (Number.isNaN(tsSec)) return null;
-	const windowStart = Math.floor(tsSec / WINDOW_SEC) * WINDOW_SEC;
-	return `${market.toLowerCase()}-updown-15m-${windowStart}`;
+	const windowStart = Math.floor(tsSec / windowSec) * windowSec;
+	const prefix = SLUG_PREFIXES[market.toUpperCase()]?.[tf];
+	if (!prefix) return `${market.toLowerCase()}-updown-${tf}-${windowStart}`;
+	return `${prefix}${windowStart}`;
 }
 
 function getPolymarketUrl(slug: string): string {
 	return `https://polymarket.com/event/${slug}`;
+}
+
+function timeframeBadgeColor(tf: string): string {
+	if (tf === "1h") return "bg-blue-500/15 text-blue-400";
+	if (tf === "4h") return "bg-purple-500/15 text-purple-400";
+	return "bg-zinc-500/15 text-zinc-400";
 }
 
 export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeTableProps) {
@@ -64,7 +89,7 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 			<div className="grid grid-cols-1 gap-3 sm:hidden">
 				{pageTrades.map((t, i) => {
 					const { text, isUp } = sideLabel(t.side);
-					const slug = getMarketCycleSlug(t.market, t.timestamp);
+					const slug = getMarketCycleSlug(t.market, t.timestamp, t.timeframe);
 					return (
 						<div
 							key={`${t.orderId}-${i}`}
@@ -100,6 +125,17 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 								>
 									{text}
 								</Badge>
+								{t.timeframe && t.timeframe !== "15m" && (
+									<Badge
+										variant="secondary"
+										className={cn(
+											"text-[10px] px-1.5 shrink-0 uppercase tracking-widest",
+											timeframeBadgeColor(t.timeframe),
+										)}
+									>
+										{t.timeframe}
+									</Badge>
+								)}
 							</div>
 
 							<div className="grid grid-cols-2 gap-2 mt-1 text-xs">
@@ -145,6 +181,7 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 							<TableHead className="w-20">Time</TableHead>
 							<TableHead className="max-w-[220px]">Market</TableHead>
 							<TableHead className="w-24">Side</TableHead>
+							<TableHead className="w-12">TF</TableHead>
 							<TableHead className="w-16 text-right hidden sm:table-cell">Amount</TableHead>
 							<TableHead className="w-16 text-right hidden sm:table-cell">Price</TableHead>
 							<TableHead className="w-24 hidden sm:table-cell">Status</TableHead>
@@ -162,7 +199,7 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 									<TableCell className="font-mono text-xs">{fmtTimestamp(t.timestamp)}</TableCell>
 									<TableCell className="font-mono text-xs font-medium max-w-[220px] truncate">
 										{(() => {
-											const slug = getMarketCycleSlug(t.market, t.timestamp);
+											const slug = getMarketCycleSlug(t.market, t.timestamp, t.timeframe);
 											if (!slug) return t.market;
 											return (
 												<a
@@ -187,6 +224,18 @@ export const TradeTable = memo(function TradeTable({ trades, paperMode }: TradeT
 										>
 											{text}
 										</Badge>
+									</TableCell>
+									<TableCell>
+										{t.timeframe && t.timeframe !== "15m" ? (
+											<Badge
+												variant="secondary"
+												className={cn("text-[11px] px-1.5", timeframeBadgeColor(t.timeframe ?? "15m"))}
+											>
+												{t.timeframe}
+											</Badge>
+										) : (
+											<span className="text-xs text-muted-foreground">{t.timeframe ?? "15m"}</span>
+										)}
 									</TableCell>
 									<TableCell className="font-mono text-xs text-right hidden sm:table-cell">{t.amount}</TableCell>
 									<TableCell className="font-mono text-xs text-right hidden sm:table-cell">{t.price}</TableCell>

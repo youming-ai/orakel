@@ -389,6 +389,7 @@ function logTrade(
 	},
 	marketId: string | null | undefined,
 	mode: "paper" | "live",
+	timeframe?: string,
 ): void {
 	const timestamp = trade.timestamp ?? new Date().toISOString();
 
@@ -403,6 +404,7 @@ function logTrade(
 		$mode: mode,
 		$pnl: null,
 		$won: null,
+		$timeframe: timeframe ?? "15m",
 	});
 }
 
@@ -497,6 +499,7 @@ export async function executeTrade(
 			},
 			signal.marketId || marketConfig?.id,
 			mode,
+			signal.timeframe,
 		);
 
 		emitTradeExecuted({
@@ -647,6 +650,7 @@ export async function executeTrade(
 			},
 			signal.marketId || marketConfig?.id,
 			mode,
+			signal.timeframe,
 		);
 
 		if (!(resultOrderId || resultId)) {
@@ -768,6 +772,7 @@ export async function executeTrade(
 			},
 			signal.marketId || marketConfig?.id,
 			mode,
+			signal.timeframe,
 		);
 
 		return {
