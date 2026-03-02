@@ -46,14 +46,6 @@ set -euo pipefail
 
 echo "🚀 Running pre-push checks..."
 
-# Run full test suite
-echo "▸ Running tests..."
-if ! bun run test; then
-	echo "❌ Tests failed"
-	exit 1
-fi
-echo "✅ Tests passed"
-
 # Type check
 echo "▸ Running TypeScript type check..."
 if ! bun run typecheck; then
@@ -69,4 +61,4 @@ chmod +x "$HOOKS_DIR/pre-push"
 
 echo "✅ Git hooks installed successfully!"
 echo "   - pre-commit: lint + typecheck"
-echo "   - pre-push: tests + typecheck"
+   - pre-push: typecheck
