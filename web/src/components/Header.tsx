@@ -135,7 +135,7 @@ export function Header({
 							isTradesActive && "text-foreground",
 						)}
 					>
-						Trades
+						logs
 					</Link>
 				</div>
 
