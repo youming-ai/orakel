@@ -375,6 +375,14 @@ function runMigrations(db: Database): void {
 		})();
 	}
 
+	if (currentVersion < 5) {
+		db.transaction(() => {
+			// Add current_price_at_entry column to trades table
+			db.run("ALTER TABLE trades ADD COLUMN current_price_at_entry REAL DEFAULT NULL");
+			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (5, strftime('%s', 'now'))");
+		})();
+	}
+
 	// Repair: live_trades / live_state may be missing if migration 4 recorded but tables were dropped.
 	// Re-create with IF NOT EXISTS — idempotent, safe to run unconditionally.
 	const liveTblCount =
@@ -448,8 +456,8 @@ function cachedQuery(sql: string): ReturnType<Database["query"]> {
 export const statements = {
 	insertTrade: () =>
 		cachedPrepare(`
-      INSERT INTO trades (timestamp, market, side, amount, price, order_id, status, mode, pnl, won)
-      VALUES ($timestamp, $market, $side, $amount, $price, $orderId, $status, $mode, $pnl, $won)
+      INSERT INTO trades (timestamp, market, side, amount, price, order_id, status, mode, pnl, won, current_price_at_entry)
+      VALUES ($timestamp, $market, $side, $amount, $price, $orderId, $status, $mode, $pnl, $won, $currentPriceAtEntry)
     `),
 
 	insertSignal: () =>

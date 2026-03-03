@@ -314,6 +314,7 @@ function logTrade(
 		price: number;
 		orderId?: string;
 		status: string;
+		currentPriceAtEntry?: number | null;
 	},
 	marketId: string | null | undefined,
 	mode: "paper" | "live",
@@ -357,6 +358,7 @@ function logTrade(
 			$mode: mode,
 			$pnl: null,
 			$won: null,
+			$currentPriceAtEntry: trade.currentPriceAtEntry ?? null,
 		});
 	}
 }
@@ -420,6 +422,7 @@ export async function executeTrade(
 				price,
 				orderId: tradeId,
 				status: "paper_filled",
+				currentPriceAtEntry: signal.currentPrice,
 			},
 			signal.marketId || marketConfig?.id,
 			mode,
@@ -560,6 +563,7 @@ export async function executeTrade(
 				price,
 				orderId: resultOrderId || resultId || "unknown",
 				status: resultStatus || "placed",
+				currentPriceAtEntry: signal.currentPrice,
 			},
 			signal.marketId || marketConfig?.id,
 			mode,
@@ -645,6 +649,7 @@ export async function executeTrade(
 				price,
 				orderId: "error",
 				status: `error: ${msg}`,
+				currentPriceAtEntry: signal.currentPrice,
 			},
 			signal.marketId || marketConfig?.id,
 			mode,

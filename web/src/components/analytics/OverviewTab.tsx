@@ -70,10 +70,14 @@ export function OverviewTab({
 	markets,
 }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {
+		const marketOrder = ["BTC", "ETH", "SOL", "XRP"];
 		return [...markets].sort((a, b) => {
-			if (a.action === "ENTER" && b.action !== "ENTER") return -1;
-			if (b.action === "ENTER" && a.action !== "ENTER") return 1;
-			return 0;
+			const aIndex = marketOrder.indexOf(a.id);
+			const bIndex = marketOrder.indexOf(b.id);
+			if (aIndex === -1 && bIndex === -1) return 0;
+			if (aIndex === -1) return 1;
+			if (bIndex === -1) return -1;
+			return aIndex - bIndex;
 		});
 	}, [markets]);
 
@@ -192,11 +196,10 @@ export function OverviewTab({
 				<LiquidGlassPanel className="flex-1 overflow-hidden">
 					<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 h-full">
 						<StatCard
-							label="Trades"
-							value={String(mergedStats.totalTrades)}
-							icon={<Hash className="size-3.5" />}
-							trend="neutral"
-						/>
+						label="Trades"
+						value={String(mergedStats.totalTrades)}
+						icon={<Hash className="size-3.5" />}
+					/>
 						<StatCard
 							label="Win Rate"
 							value={mergedStats.wins + mergedStats.losses > 0 ? `${(mergedStats.winRate * 100).toFixed(1)}%` : "-"}

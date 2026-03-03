@@ -146,6 +146,7 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 							<TableHead className="w-24">Side</TableHead>
 							<TableHead className="w-16 text-right hidden sm:table-cell">Amount</TableHead>
 							<TableHead className="w-16 text-right hidden sm:table-cell">Price</TableHead>
+							<TableHead className="w-24 text-right hidden sm:table-cell">Asset Price</TableHead>
 							<TableHead className="w-24 hidden sm:table-cell">Status</TableHead>
 							<TableHead className="w-16 hidden sm:table-cell">Mode</TableHead>
 						</TableRow>
@@ -189,6 +190,9 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 									</TableCell>
 									<TableCell className="font-mono text-xs text-right hidden sm:table-cell">{t.amount}</TableCell>
 									<TableCell className="font-mono text-xs text-right hidden sm:table-cell">{t.price}</TableCell>
+									<TableCell className="font-mono text-xs text-right hidden sm:table-cell">
+										{t.currentPriceAtEntry ? `$${t.currentPriceAtEntry.toFixed(2)}` : "-"}
+									</TableCell>
 									<TableCell className="hidden sm:table-cell">
 										<Badge variant="secondary" className="text-[11px] px-1.5">
 											{t.status || "placed"}

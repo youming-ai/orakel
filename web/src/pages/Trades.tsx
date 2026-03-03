@@ -77,7 +77,15 @@ export function TradesPage({ viewMode, liveTrades, paperTrades }: TradesPageProp
 				resolvedCount: resolved,
 			});
 		}
-		return result.sort((a, b) => b.pnl - a.pnl);
+		const marketOrder = ["BTC", "ETH", "SOL", "XRP"];
+		return result.sort((a, b) => {
+			const aIndex = marketOrder.indexOf(a.market);
+			const bIndex = marketOrder.indexOf(b.market);
+			if (aIndex === -1 && bIndex === -1) return 0;
+			if (aIndex === -1) return 1;
+			if (bIndex === -1) return -1;
+			return aIndex - bIndex;
+		});
 	}, [currentTrades]);
 
 	return (
