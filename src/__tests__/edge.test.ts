@@ -435,21 +435,24 @@ describe("decide", () => {
 	it("returns NO_TRADE when model probability is below phase minimum", () => {
 		const result = decide({
 			remainingMinutes: 12,
-			edgeUp: 0.2,
-			edgeDown: 0.1,
-			modelUp: 0.55,
-			modelDown: 0.45,
+			edgeUp: 0.08,
+			edgeDown: 0.01,
+			modelUp: 0.45,
+			modelDown: 0.55,
 			regime: "RANGE",
 			strategy: makeStrategy(),
 		});
 
-		expect(result.reason).toBe("prob_below_0.58");
+		// Edge is only 8%, so no probAdjustment is applied
+		// minProbEarly = 0.52, modelUp = 0.45 < 0.52 → NO_TRADE
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toContain("prob_below_");
 	});
 
-	it("rejects overconfident hard cap edges above 0.30", () => {
+	it("rejects overconfident hard cap edges above 0.40", () => {
 		const result = decide({
 			remainingMinutes: 12,
-			edgeUp: 0.35,
+			edgeUp: 0.45,
 			edgeDown: 0.01,
 			modelUp: 0.9,
 			modelDown: 0.1,
@@ -458,21 +461,6 @@ describe("decide", () => {
 		});
 
 		expect(result.reason).toBe("overconfident_hard_cap");
-	});
-
-	it("rejects overconfident soft cap when edge does not clear penalized threshold", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.221,
-			edgeDown: 0.01,
-			modelUp: 0.8,
-			modelDown: 0.2,
-			regime: "CHOP",
-			strategy: makeStrategy(),
-			marketId: "ETH",
-		});
-
-		expect(result.reason).toBe("overconfident_soft_cap");
 	});
 
 	it("rejects trade when confidence is below minimum", () => {

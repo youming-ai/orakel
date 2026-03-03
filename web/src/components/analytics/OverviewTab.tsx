@@ -191,10 +191,10 @@ export function OverviewTab({
 				<LiquidGlassPanel className="flex-1 overflow-hidden">
 					<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 h-full">
 						<StatCard
-						label="Trades"
-						value={String(mergedStats.totalTrades)}
-						icon={<Hash className="size-3.5" />}
-					/>
+							label="Trades"
+							value={String(mergedStats.totalTrades)}
+							icon={<Hash className="size-3.5" />}
+						/>
 						<StatCard
 							label="Win Rate"
 							value={mergedStats.wins + mergedStats.losses > 0 ? `${(mergedStats.winRate * 100).toFixed(1)}%` : "-"}
@@ -218,6 +218,12 @@ export function OverviewTab({
 						/>
 					</div>
 				</LiquidGlassPanel>
+			</div>
+
+			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+				{sortedMarkets.map((m) => (
+					<MarketCard key={m.id} market={m} />
+				))}
 			</div>
 
 			<LiquidGlassPanel>
@@ -289,12 +295,6 @@ export function OverviewTab({
 					)}
 				</div>
 			</LiquidGlassPanel>
-
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-				{sortedMarkets.map((m) => (
-					<MarketCard key={m.id} market={m} />
-				))}
-			</div>
 		</div>
 	);
 }

@@ -390,8 +390,20 @@ export function decide(params: {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `edge_below_${threshold.toFixed(3)}` };
 	}
 
-	if (bestModel !== null && bestModel < minProb) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${minProb}` };
+	// Edge-based probability floor: relax minProb when edge is large
+	// This allows "value bets" in one-sided markets where the model identifies
+	// significant mispricing even with low probability.
+	const probAdjustment = bestEdge > 0.15 ? 0.1 : bestEdge > 0.1 ? 0.05 : 0;
+	const adjustedMinProb = Math.max(0.4, minProb - probAdjustment);
+
+	if (bestModel !== null && bestModel < adjustedMinProb) {
+		return {
+			action: "NO_TRADE",
+			side: null,
+			phase,
+			regime,
+			reason: `prob_below_${adjustedMinProb.toFixed(2)}_edge_${(bestEdge * 100).toFixed(0)}%`,
+		};
 	}
 
 	// Overconfidence checks
