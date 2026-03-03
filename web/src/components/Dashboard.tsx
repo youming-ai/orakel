@@ -1,55 +1,20 @@
-import { useCallback, useMemo } from "react";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Toaster } from "@/components/ui/toaster";
-import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useMemo } from "react";
 import type { PaperTradeEntry, TradeRecord } from "@/lib/api";
-import {
-	useDashboardStateWithWs,
-	useLiveCancel,
-	useLiveToggle,
-	usePaperCancel,
-	usePaperStats,
-	usePaperToggle,
-	useTrades,
-} from "@/lib/queries";
+import { useDashboardStateWithWs, useLiveReset, usePaperClearStop, usePaperReset, usePaperStats, useTrades } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
-import { toast } from "@/lib/toast";
-import type { ViewMode } from "@/lib/types";
-import { AnalyticsTabs } from "./AnalyticsTabs";
+import { OverviewTab } from "./analytics/OverviewTab";
 import { AppErrorBoundary } from "./AppErrorBoundary";
-import { Header } from "./Header";
-
 
 function DashboardContent() {
-	const prefersReducedMotion = useReducedMotion();
 	const viewMode = useUIStore((s) => s.viewMode);
-	const setViewMode = useUIStore((s) => s.setViewMode);
-	const confirmAction = useUIStore((s) => s.confirmAction);
-	const setConfirmAction = useUIStore((s) => s.setConfirmAction);
-	const { data: state, error: stateError } = useDashboardStateWithWs();
-
+	const { data: state } = useDashboardStateWithWs();
 	const { data: trades = [] } = useTrades(viewMode);
 	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
-	const paperToggle = usePaperToggle();
-	const liveToggle = useLiveToggle();
-	const paperCancel = usePaperCancel();
-	const liveCancel = useLiveCancel();
 
 	const paperTrades = paperStatsData?.trades ?? [];
-	const paperByMarket = paperStatsData?.byMarket ?? {};
 
-	// Convert TradeRecord (live trades) to PaperTradeEntry format for AnalyticsTabs
+	// Convert TradeRecord (live trades) to PaperTradeEntry format for OverviewTab
 	const liveTradesAsPaper = useMemo<PaperTradeEntry[]>(() => {
-		// Ensure trades is an array before mapping
 		if (!Array.isArray(trades)) return [];
 		return trades.map((t: TradeRecord) => ({
 			id: t.orderId,
@@ -61,7 +26,6 @@ function DashboardContent() {
 			priceToBeat: 0,
 			currentPriceAtEntry: null,
 			timestamp: t.timestamp,
-			// Consider trade resolved if status indicates settlement OR if won/pnl are set
 			resolved: t.status === "settled" || t.status === "won" || t.status === "lost" || t.won !== null,
 			won: t.won === null ? null : Boolean(t.won),
 			pnl: t.pnl,
@@ -69,141 +33,83 @@ function DashboardContent() {
 		}));
 	}, [trades]);
 
-	const handleViewModeChange = useCallback(
-		(mode: ViewMode) => {
-			setViewMode(mode);
-		},
-		[setViewMode],
-	);
-
-	const handlePaperToggle = useCallback(() => {
-		if (!state) return;
-		if (state.paperPendingStart || state.paperPendingStop) {
-			paperCancel.mutate();
-			toast({ type: "info", description: "Paper bot start/stop cancelled" });
-			return;
+	// Calculate merged stats for OverviewTab
+	const mergedStats = useMemo(() => {
+		const currentTrades = viewMode === "paper" ? paperTrades : liveTradesAsPaper;
+		let wins = 0;
+		let losses = 0;
+		let pending = 0;
+		let totalPnl = 0;
+		for (const trade of currentTrades) {
+			if (!trade.resolved) {
+				pending += 1;
+				continue;
+			}
+			if (trade.won) wins += 1;
+			else losses += 1;
+			totalPnl += trade.pnl ?? 0;
 		}
-		setConfirmAction(state.paperRunning ? "stop" : "start");
-	}, [state, paperCancel, setConfirmAction]);
+		const resolved = wins + losses;
+		return {
+			totalTrades: currentTrades.length,
+			wins,
+			losses,
+			pending,
+			winRate: resolved > 0 ? wins / resolved : 0,
+			totalPnl: Number(totalPnl.toFixed(2)),
+		};
+	}, [paperTrades, liveTradesAsPaper, viewMode]);
 
-	const handleLiveToggle = useCallback(() => {
-		if (!state) return;
-		if (state.livePendingStart || state.livePendingStop) {
-			liveCancel.mutate();
-			toast({ type: "info", description: "Live bot start/stop cancelled" });
-			return;
-		}
-		setConfirmAction(state.liveRunning ? "stop" : "start");
-	}, [state, liveCancel, setConfirmAction]);
+	// Calculate PnL timeline for OverviewTab
+	const pnlTimeline = useMemo(() => {
+		const currentTrades = viewMode === "paper" ? paperTrades : liveTradesAsPaper;
+		const resolved = currentTrades
+			.filter((t) => t.resolved && t.pnl !== null)
+			.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-	const handleConfirm = useCallback(() => {
-		if (!state || !confirmAction) return;
-		const actionStr = confirmAction === "start" ? "Starting" : "Stopping";
-		if (viewMode === "paper") {
-			paperToggle.mutate(confirmAction === "stop");
-			toast({ title: "Paper Bot", description: `${actionStr} paper trading...`, type: "info" });
-		} else {
-			liveToggle.mutate(confirmAction === "stop");
-			toast({ title: "Live Bot", description: `${actionStr} live trading...`, type: "info" });
-		}
-		setConfirmAction(null);
-	}, [state, confirmAction, viewMode, paperToggle, liveToggle, setConfirmAction]);
+		let running = 0;
+		return resolved.map((trade) => {
+			running += trade.pnl ?? 0;
+			return {
+				ts: trade.timestamp,
+				time: new Date(trade.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
+				market: trade.marketId,
+				side: trade.side,
+				pnl: trade.pnl ?? 0,
+				cumulative: Number(running.toFixed(2)),
+			};
+		});
+	}, [paperTrades, liveTradesAsPaper, viewMode]);
+
+	const timelinePositive = (pnlTimeline[pnlTimeline.length - 1]?.cumulative ?? 0) >= 0;
+	const clearStopMutation = usePaperClearStop();
+	const paperResetMutation = usePaperReset();
+	const liveResetMutation = useLiveReset();
+	const resetMutation = viewMode === "paper" ? paperResetMutation : liveResetMutation;
 
 	if (!state) {
-		return (
-			<div className="flex items-center justify-center h-screen">
-				<div className="text-center space-y-3">
-					{stateError ? (
-						<>
-							<p className="text-sm text-red-400">Failed to connect: {stateError.message}</p>
-							<button
-								type="button"
-								onClick={() => window.location.reload()}
-								className="mt-2 px-4 py-1.5 text-xs font-medium rounded-md bg-muted hover:bg-accent transition-colors"
-							>
-								Retry
-							</button>
-						</>
-					) : (
-						<>
-						{/* biome-ignore lint/a11y/useSemanticElements: role=status is correct for ARIA live region loading spinners */}
-						<div
-							className={`inline-block h-6 w-6 rounded-full border-2 border-muted-foreground border-t-transparent${
-								prefersReducedMotion ? "" : " animate-spin"
-							}`}
-							role="status"
-							aria-label="Loading dashboard"
-						/>
-							<p className="text-sm text-muted-foreground">Connecting to bot...</p>
-						</>
-					)}
-				</div>
-			</div>
-		);
+		return null; // Loading state handled by App.tsx
 	}
 
 	return (
-		<div className="min-h-screen bg-background">
-			<Header
-				viewMode={viewMode}
-				paperRunning={state.paperRunning}
-				liveRunning={state.liveRunning}
-				paperPendingStart={state.paperPendingStart ?? false}
-				paperPendingStop={state.paperPendingStop ?? false}
-				livePendingStart={state.livePendingStart ?? false}
-				livePendingStop={state.livePendingStop ?? false}
-			onViewModeChange={handleViewModeChange}
-			onPaperToggle={handlePaperToggle}
-			onLiveToggle={handleLiveToggle}
-			paperMutationPending={paperToggle.isPending || paperCancel.isPending}
-			liveMutationPending={liveToggle.isPending || liveCancel.isPending}
-			/>
-			<AppErrorBoundary>
-				<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
-					<AnalyticsTabs
-						trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
-						byMarket={viewMode === "paper" ? paperByMarket : undefined}
-						markets={state.markets ?? []}
-						liveTrades={trades}
-						viewMode={viewMode}
-						stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
-						todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
-					/>
-				</main>
-			</AppErrorBoundary>
-
-			<AlertDialog
-				open={confirmAction !== null}
-				onOpenChange={(open) => {
-					if (!open) setConfirmAction(null);
-				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>{confirmAction === "start" ? "Start Bot" : "Stop Bot"}</AlertDialogTitle>
-						<AlertDialogDescription>
-							{confirmAction === "start"
-								? `Start ${viewMode} trading? The bot will begin at the next 15-minute cycle boundary.`
-								: `Stop ${viewMode} trading? The bot will finish the current cycle and settle before stopping.`}
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction onClick={handleConfirm} variant={confirmAction === "stop" ? "destructive" : "default"}>
-							{confirmAction === "start" ? "Start" : "Stop"}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</div>
+		<AppErrorBoundary>
+			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
+				<OverviewTab
+					stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
+					viewMode={viewMode}
+					todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
+					clearStopMutation={clearStopMutation}
+					resetMutation={resetMutation}
+					mergedStats={mergedStats}
+					pnlTimeline={pnlTimeline}
+					timelinePositive={timelinePositive}
+					markets={state.markets ?? []}
+				/>
+			</main>
+		</AppErrorBoundary>
 	);
 }
 
 export function Dashboard() {
-	return (
-		<>
-			<DashboardContent />
-			<Toaster />
-		</>
-	);
+	return <DashboardContent />;
 }
