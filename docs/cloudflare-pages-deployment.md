@@ -146,7 +146,7 @@ CORS_ORIGIN=https://orakel.pages.dev
 
 如需支持多个域名：
 ```bash
-CORS_ORIGIN=https://orakel.pages.dev,https://orakel-bot.um1ng.me
+CORS_ORIGIN=https://orakel.um1ng.me,https://orakel-bot.um1ng.me
 ```
 
 ### 4.2 Workers 代理（可选）
