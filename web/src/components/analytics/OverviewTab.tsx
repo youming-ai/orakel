@@ -1,4 +1,4 @@
-import { AlertTriangle, DollarSign, Hash, RotateCcw, Target, TrendingDown, TrendingUp, Zap } from "lucide-react";
+import { AlertTriangle, DollarSign, Hash, Target, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -41,10 +41,6 @@ interface OverviewTabProps {
 		mutate: () => void;
 		isPending: boolean;
 	};
-	resetMutation: {
-		mutate: () => void;
-		isPending: boolean;
-	};
 	mergedStats: PaperStats;
 	pnlTimeline: Array<{
 		ts: string;
@@ -63,7 +59,6 @@ export function OverviewTab({
 	viewMode,
 	todayStats,
 	clearStopMutation,
-	resetMutation,
 	mergedStats,
 	pnlTimeline,
 	timelinePositive,
@@ -299,19 +294,6 @@ export function OverviewTab({
 				{sortedMarkets.map((m) => (
 					<MarketCard key={m.id} market={m} />
 				))}
-			</div>
-			{/* Reset Data */}
-			<div className="flex justify-end">
-				<Button
-					size="sm"
-					variant="outline"
-					className="h-7 text-xs text-muted-foreground hover:text-red-400 hover:border-red-400/50 hover:bg-red-400/10 gap-1.5"
-					onClick={() => resetMutation.mutate()}
-					disabled={resetMutation.isPending}
-				>
-					<RotateCcw className={cn("size-3", resetMutation.isPending && "animate-spin")} />
-					{resetMutation.isPending ? "Resetting..." : `Reset ${viewMode === "paper" ? "Paper" : "Live"} Data`}
-				</Button>
 			</div>
 		</div>
 	);

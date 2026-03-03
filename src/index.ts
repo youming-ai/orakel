@@ -1,6 +1,7 @@
 import { startApiServer } from "./api.ts";
 import { fetchRedeemablePositions, redeemAll } from "./blockchain/redeemer.ts";
 import { CONFIG } from "./core/config.ts";
+import { getDb } from "./core/db.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
@@ -163,6 +164,19 @@ async function main(): Promise<void> {
 			log.error("Failed to auto-connect wallet:", err instanceof Error ? err.message : String(err));
 		}
 	}
+
+	// Periodic WAL checkpoint to prevent database corruption
+	const WAL_CHECKPOINT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+	log.info(`WAL checkpoint enabled: running every ${WAL_CHECKPOINT_INTERVAL_MS / 60_000} minutes`);
+	setInterval(() => {
+		try {
+			const db = getDb();
+			db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+			log.debug("WAL checkpoint completed");
+		} catch (err) {
+			log.error("WAL checkpoint failed:", err instanceof Error ? err.message : String(err));
+		}
+	}, WAL_CHECKPOINT_INTERVAL_MS);
 
 	const orderManager = new OrderManager();
 

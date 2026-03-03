@@ -11,8 +11,8 @@ import type {
 	TradeDecision,
 } from "../types.ts";
 
-const SOFT_CAP_EDGE = 0.22;
-const HARD_CAP_EDGE = 0.3;
+const SOFT_CAP_EDGE = 0.25; // Increased from 0.22 - allow more confident trades
+const HARD_CAP_EDGE = 0.4; // Increased from 0.30 - hard cap was too strict for strong trends
 
 // Market-specific performance from backtest (can be overridden in config.json)
 // edgeMultiplier > 1.0 = RAISE threshold (harder to trade) for poor performers

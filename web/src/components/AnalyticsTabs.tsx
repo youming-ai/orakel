@@ -11,7 +11,7 @@ import type {
 	TradeRecord,
 } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
-import { useLiveReset, usePaperClearStop, usePaperReset } from "@/lib/queries";
+import { usePaperClearStop } from "@/lib/queries";
 import type { MarketRow, ViewMode } from "@/lib/types";
 
 import { OverviewTab } from "./analytics/OverviewTab";
@@ -93,9 +93,6 @@ export function AnalyticsTabs({
 	todayStats,
 }: AnalyticsTabsProps) {
 	const clearStopMutation = usePaperClearStop();
-	const paperResetMutation = usePaperReset();
-	const liveResetMutation = useLiveReset();
-	const resetMutation = viewMode === "paper" ? paperResetMutation : liveResetMutation;
 
 	const mergedStats = useMemo(() => buildStatsFromTrades(trades), [trades]);
 
@@ -165,7 +162,6 @@ export function AnalyticsTabs({
 					viewMode={viewMode}
 					todayStats={todayStats}
 					clearStopMutation={clearStopMutation}
-					resetMutation={resetMutation}
 					mergedStats={mergedStats}
 					pnlTimeline={pnlTimeline}
 					timelinePositive={timelinePositive}

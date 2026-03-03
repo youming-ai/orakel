@@ -28,7 +28,7 @@ export const MARKET_ADJUSTMENTS: Record<
 // Additional filtering rules learned from backtest
 export const BACKTEST_INSIGHTS = {
 	// Volatility insights
-	maxVolatility15m: 0.004, // Skip if vol > 0.4% (losing trades showed high vol)
+	maxVolatility15m: 0.02, // Skip if vol > 2% (increased from 0.4% - too restrictive for crypto)
 	minVolatility15m: 0.0005, // Skip if vol < 0.05% (not enough movement)
 	// Regime insights
 	skipChop: false, // Disabled globally — per-market skipChop in MARKET_ADJUSTMENTS takes precedence
