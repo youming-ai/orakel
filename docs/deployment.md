@@ -17,10 +17,24 @@ cp .env.example .env
 docker compose up --build
 ```
 
-- Bot API: http://localhost:9999
-- Web 前端: `cd web && bun run dev`（Vite 默认端口）
+访问 http://localhost:9999 查看集成的 Web 仪表板。
 
-### 1.3 本地开发
+### 1.3 远程访问（使用 Tunnel）
+
+推荐使用 Cloudflare Tunnel、frp 或 ngrok 暴露本地端口：
+
+```bash
+# Cloudflare Tunnel (推荐)
+cloudflare tunnel --url http://localhost:9999
+
+# frp
+frp tcp --local-port 9999 --remote-port 6000
+
+# ngrok
+ngrok http 9999
+```
+
+### 1.4 本地开发（可选）
 
 ```bash
 bun install

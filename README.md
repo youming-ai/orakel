@@ -27,7 +27,7 @@
 
 ## 快速开始
 
-### Docker（推荐）
+### 1. 启动 Bot
 
 ```bash
 git clone https://github.com/youming-ai/orakel.git
@@ -36,18 +36,28 @@ cp .env.example .env
 docker compose up --build
 ```
 
-### 本地开发
+### 2. 访问 Web 仪表板
+
+Bot 启动后，前端页面会自动集成在 `:9999` 端口：
 
 ```bash
-bun install && cd web && bun install && cd ..
-cp .env.example .env
+# 本地访问
+open http://localhost:9999
 
-# 终端 1: Bot
-bun run start
-
-# 终端 2: Web
-cd web && bun run dev
+# 或通过 Cloudflare Tunnel / frp / ngrok 等远程访问
+# 例如: https://your-subdomain.pages.dev
 ```
+
+### 3. 配置说明
+
+编辑 `.env` 文件：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `PAPER_MODE` | 模拟交易模式 | `true` |
+| `ACTIVE_MARKETS` | 激活的市场 | `BTC,ETH,SOL,XRP` |
+| `API_TOKEN` | API 认证令牌（可选） | 空 |
+| `LOG_LEVEL` | 日志级别 | `info` |
 
 - Bot API：http://localhost:9999
 - Web 前端：`cd web && bun run dev`（Vite 默认端口）
