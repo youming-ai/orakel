@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { LiquidGlassPanel } from "@/components/ui/liquid-glass";
 import type { TradeRecord } from "@/lib/api";
 import { TRADE_TABLE_PAGE_SIZE } from "@/lib/constants";
 import { fmtDate, fmtTime } from "@/lib/format";
@@ -67,7 +68,7 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 					const { text, isUp } = sideLabel(t.side);
 					const slug = getMarketCycleSlug(t.market, t.timestamp);
 					return (
-						<div key={`${t.orderId}-${i}`} className="p-3 border border-border/60 rounded-lg bg-card/50 flex flex-col gap-2 relative">
+						<LiquidGlassPanel key={`${t.orderId}-${i}`} className="p-3">
 							<div className="flex items-start justify-between">
 								<div className="flex flex-col">
 									<span className="text-xs text-muted-foreground">
@@ -100,20 +101,20 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 								</Badge>
 							</div>
 
-							<div className="grid grid-cols-2 gap-2 mt-1 text-xs">
-								<div className="flex flex-col bg-muted/20 border border-border/30 p-2 rounded-md">
+							<div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+								<div className="flex flex-col bg-white/5 dark:bg-black/20 border border-white/10 dark:border-white/5 p-2 rounded-md backdrop-blur-sm">
 									<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Amount</span>
 									<span className="font-mono">
 										{t.amount} {isUp ? "YES" : "NO"}
 									</span>
 								</div>
-								<div className="flex flex-col bg-muted/20 border border-border/30 p-2 rounded-md">
+								<div className="flex flex-col bg-white/5 dark:bg-black/20 border border-white/10 dark:border-white/5 p-2 rounded-md backdrop-blur-sm">
 									<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Price</span>
 									<span className="font-mono">{t.price}</span>
 								</div>
 							</div>
 
-							<div className="flex items-center gap-2 mt-1">
+							<div className="flex items-center gap-2 mt-3">
 								<Badge variant="outline" className="text-[10px] px-1.5 font-normal bg-background/50 text-muted-foreground">
 									status: {t.status || "placed"}
 								</Badge>
@@ -129,13 +130,13 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 									{getDisplayMode(t)}
 								</Badge>
 							</div>
-						</div>
+						</LiquidGlassPanel>
 					);
 				})}
 			</div>
 
 			{/* Desktop View: Table */}
-			<div className="rounded-md border hidden sm:block">
+			<LiquidGlassPanel className="hidden sm:block p-0 overflow-hidden">
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -211,7 +212,7 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 						})}
 					</TableBody>
 				</Table>
-			</div>
+			</LiquidGlassPanel>
 
 			{totalPages > 1 && (
 				<div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
