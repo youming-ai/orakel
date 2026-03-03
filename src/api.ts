@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
 import { createBunWebSocket, serveStatic } from "hono/bun";
-import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { getAccountSummary, getAllPositions } from "./blockchain/accountState.ts";
 import { getReconStatus } from "./blockchain/reconciler.ts";
