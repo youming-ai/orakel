@@ -186,22 +186,26 @@ export function usePaperClearStop() {
 	});
 }
 
-export function useLiveConnect() {
+
+export function usePaperReset() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: (privateKey: string) => api.liveConnect(privateKey),
+		mutationFn: () => api.paperReset(),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queries.state().queryKey });
+			qc.invalidateQueries({ queryKey: queries.trades("paper").queryKey });
+			qc.invalidateQueries({ queryKey: queries.paperStats().queryKey });
 		},
 	});
 }
 
-export function useLiveDisconnect() {
+export function useLiveReset() {
 	const qc = useQueryClient();
 	return useMutation({
-		mutationFn: () => api.liveDisconnect(),
+		mutationFn: () => api.liveReset(),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queries.state().queryKey });
+			qc.invalidateQueries({ queryKey: queries.trades("live").queryKey });
 		},
 	});
 }

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { AlertTriangle, DollarSign, Hash, Target, TrendingDown, TrendingUp, Zap, Activity } from "lucide-react";
+import { AlertTriangle, DollarSign, Hash, RotateCcw, Target, TrendingDown, TrendingUp, Zap, Activity } from "lucide-react";
 import {
     Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis
 } from "recharts";
@@ -23,6 +23,10 @@ interface OverviewTabProps {
         mutate: () => void;
         isPending: boolean;
     };
+	resetMutation: {
+		mutate: () => void;
+		isPending: boolean;
+	};
     mergedStats: PaperStats;
     pnlTimeline: Array<{
         ts: string;
@@ -46,14 +50,15 @@ export function EmptyPlaceholder() {
 }
 
 export function OverviewTab({
-    stopLoss,
-    viewMode,
-    todayStats,
-    clearStopMutation,
-    mergedStats,
-    pnlTimeline,
-    timelinePositive,
-    markets,
+	stopLoss,
+	viewMode,
+	todayStats,
+	clearStopMutation,
+	resetMutation,
+	mergedStats,
+	pnlTimeline,
+	timelinePositive,
+	markets,
 }: OverviewTabProps) {
     const sortedMarkets = useMemo(() => {
         return [...markets].sort((a, b) => {
@@ -269,6 +274,19 @@ export function OverviewTab({
                     <MarketCard key={m.id} market={m} />
                 ))}
             </div>
+			{/* Reset Data */}
+			<div className="flex justify-end">
+				<Button
+					size="sm"
+					variant="outline"
+					className="h-7 text-xs text-muted-foreground hover:text-red-400 hover:border-red-400/50 hover:bg-red-400/10 gap-1.5"
+					onClick={() => resetMutation.mutate()}
+					disabled={resetMutation.isPending}
+				>
+					<RotateCcw className={cn("size-3", resetMutation.isPending && "animate-spin")} />
+					{resetMutation.isPending ? "Resetting..." : `Reset ${viewMode === "paper" ? "Paper" : "Live"} Data`}
+				</Button>
+			</div>
         </div>
     );
 }

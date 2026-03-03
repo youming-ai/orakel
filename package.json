@@ -16,15 +16,15 @@
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",
-    "@polymarket/clob-client": "^5.2.4",
+    "@polymarket/clob-client": "^5.5.0",
     "ethers": "^5.8.0",
-    "hono": "^4.12.2",
+    "hono": "^4.12.3",
     "undici": "^6.23.0",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.4",
+    "@biomejs/biome": "^2.4.5",
     "@types/bun": "latest",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.2.1",

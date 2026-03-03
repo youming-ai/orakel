@@ -69,6 +69,10 @@ export interface StrategyConfig {
 	skipMarkets?: string[];
 	minConfidence?: number;
 	marketPerformance?: Record<string, MarketPerformance>;
+	// P1: Safety gates (optional with defaults in decide())
+	minTimeLeftMin?: number;
+	maxVolatility15m?: number;
+	minVolatility15m?: number;
 }
 
 export interface AppConfig {
@@ -260,6 +264,13 @@ export interface TradeSignal {
 	rawSum: number | null;
 	arbitrage: boolean;
 	tokens: { upTokenId: string; downTokenId: string } | null;
+}
+
+export interface PositionSizeResult {
+	size: number;
+	rawKelly: number;
+	adjustedKelly: number;
+	reason: string;
 }
 
 export interface TradeResult {

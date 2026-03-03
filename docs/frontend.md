@@ -6,7 +6,6 @@
 - shadcn/ui（Button、Card、Tabs、Table、Badge、Alert Dialog、Separator、Toaster）
 - Recharts（图表与数据可视化）
 - Tailwind CSS v4 + @tailwindcss/vite
-- wagmi + viem（Web3 钱包连接）
 - TanStack Query v5（数据获取与缓存）
 - Zustand（UI 状态管理）
 - lucide-react（图标库）
@@ -15,14 +14,11 @@
 
 ```
 Dashboard（编排器）
-├── Web3Provider（wagmi + TanStack Query）
+├── AppErrorBoundary（错误边界）
 │   ├── Header
 │   │   ├── 倒计时（15 分钟周期）
 │   │   ├── Bot 状态徽章（Stopped/Starting/Running/Stopping）
-│   │   ├── ConnectWallet（实盘模式）
-│   │   ├── Paper/Live 模式切换
-│   │   └── 主题切换（dark/light）
-│   ├── LiveConnect（实盘模式下显示）
+│   │   └── Paper/Live 模式切换
 │   ├── AnalyticsTabs
 │   │   ├── OverviewTab（概览）
 │   │   │   ├── 止损警告横幅
@@ -97,19 +93,6 @@ Props：`{ trades: TradeRecord[], paperMode: boolean }`
 - 状态徽章：Placed、Settled、Won、Lost
 - 方向徽章：BUY UP（绿色）/ BUY DOWN（红色）
 
-### 3.6 ConnectWallet（ConnectWallet.tsx，176 行）
-
-- 基于 wagmi 的钱包连接，目标链为 Polygon（chainId 137）
-- 显示 USDC.e 余额（ERC-20）与原生 POL 余额
-- 下拉菜单包含地址、余额、断开连接选项
-- 按 Escape 键自动关闭
-
-### 3.7 LiveConnect（LiveConnect.tsx，117 行）
-
-- 私钥输入框（密码字段），用于后端交易客户端
-- 非 localhost 环境下显示明文传输警告横幅
-- 组件卸载时从内存中清除私钥
-- 连接成功后显示钱包地址与断开连接按钮
 
 ## 4. 状态管理
 
@@ -121,11 +104,9 @@ UIState:
   setViewMode(mode)
   confirmAction: "start" | "stop" | null  // 确认对话框状态
   setConfirmAction(action)
-  theme: "light" | "dark"             // 主题
-  toggleTheme()
 ```
 
-持久化：使用 localStorage，键名为 `"orakel-ui"`，持久化字段为 `viewMode` 与 `theme`。
+持久化：使用 localStorage，键名为 `"orakel-ui"`，持久化字段为 `viewMode`。
 
 ### 4.2 TanStack Query（lib/queries.ts）
 
@@ -148,7 +129,7 @@ Mutation 列表：
 - `usePaperCancel()`、`useLiveCancel()` — 取消待处理操作
 - `useConfigMutation(viewMode)` — 保存配置
 - `usePaperClearStop()` — 重置止损状态
-- `useLiveConnect()`、`useLiveDisconnect()` — 钱包连接管理
+- `usePaperReset()`、`useLiveReset()` — 重置数据
 
 ### 4.3 WebSocket 缓存集成
 

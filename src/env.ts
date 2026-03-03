@@ -23,6 +23,16 @@ const envSchema = z.object({
 
 	// Auth (optional — if empty, mutation endpoints are unprotected)
 	API_TOKEN: z.string().default(""),
+	// Live trading (optional — 64-char hex private key, with or without 0x prefix)
+	PRIVATE_KEY: z
+		.string()
+		.default("")
+		.transform((v) => {
+			const cleaned = v.trim().replace(/^0x/i, "");
+			return cleaned.length === 64 ? cleaned : undefined;
+		}),
+	// CORS (optional — restrict to frontend domain in production, default: *)
+	CORS_ORIGIN: z.string().default("*"),
 
 	// Storage backends
 	PERSIST_BACKEND: z

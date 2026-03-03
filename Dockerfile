@@ -8,19 +8,6 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile --production
-
-# Use Node for web build — more memory-efficient than Bun for Vite/Rollup on low-RAM VPS
-FROM node:22-alpine AS web-build
-WORKDIR /app/web
-COPY web/package.json web/bun.lock* web/bun.lockb* ./
-# Install bun just for dependency resolution (respects bun.lock)
-RUN npm i -g bun && \
-    bun install --frozen-lockfile
-COPY web/ .
-# Limit Node heap to leave room for OS; swap fallback for peak usage
-ENV NODE_OPTIONS="--max-old-space-size=512"
-RUN node node_modules/vite/bin/vite.js build
-
 FROM oven/bun:1-alpine AS release
 ARG BUILD_UID
 ARG BUILD_GID
@@ -46,7 +33,6 @@ RUN if id bun >/dev/null 2>&1; then \
 COPY --from=bot-deps /app/node_modules node_modules
 COPY package.json bun.lock tsconfig.json ./
 COPY src src
-COPY --from=web-build /app/web/dist web/dist
 
 # Create data directory with correct ownership
 RUN mkdir -p /app/data && chown -R bun:bun /app/data

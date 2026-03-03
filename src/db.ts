@@ -642,3 +642,30 @@ export const onchainStatements = {
 			ORDER BY timestamp DESC LIMIT $limit
 		`),
 };
+
+// === Data Reset Functions ===
+
+export function resetPaperDbData(): void {
+	const db = getDb();
+	db.transaction(() => {
+		db.run("DELETE FROM paper_trades");
+		db.run("DELETE FROM paper_state");
+		db.run("DELETE FROM trades WHERE mode = 'paper'");
+		db.run("DELETE FROM daily_stats WHERE mode = 'paper'");
+	})();
+	stmtCache.clear();
+	queryCache.clear();
+}
+
+export function resetLiveDbData(): void {
+	const db = getDb();
+	db.transaction(() => {
+		db.run("DELETE FROM trades WHERE mode = 'live'");
+		db.run("DELETE FROM daily_stats WHERE mode = 'live'");
+		db.run("DELETE FROM onchain_events");
+		db.run("DELETE FROM balance_snapshots");
+		db.run("DELETE FROM known_ctf_tokens");
+	})();
+	stmtCache.clear();
+	queryCache.clear();
+}

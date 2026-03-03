@@ -6,7 +6,7 @@ import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { getAccountSummary, getAllPositions } from "./accountState.ts";
 import { atomicWriteConfig, CONFIG, reloadConfig } from "./config.ts";
-import { getDbDiagnostics, READ_BACKEND, statements } from "./db.ts";
+import { getDbDiagnostics, READ_BACKEND, resetLiveDbData, statements } from "./db.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
 import {
@@ -18,6 +18,7 @@ import {
 	getStopReason,
 	getTodayStats,
 	isStopped,
+	resetPaperData,
 } from "./paperStats.ts";
 import { getReconStatus } from "./reconciler.ts";
 import {
@@ -522,6 +523,24 @@ const apiRoutes = new Hono()
 		});
 	})
 
+	.post("/paper/reset", (c) => {
+		if (isPaperRunning()) {
+			return c.json({ ok: false as const, error: "Cannot reset while paper trading is running. Stop it first." }, 400);
+		}
+		log.info("POST /paper/reset — resetting all paper trading data");
+		resetPaperData();
+		return c.json({ ok: true as const, message: "Paper trading data reset" });
+	})
+
+	.post("/live/reset", (c) => {
+		if (isLiveRunning()) {
+			return c.json({ ok: false as const, error: "Cannot reset while live trading is running. Stop it first." }, 400);
+		}
+		log.info("POST /live/reset — resetting all live trading data");
+		resetLiveDbData();
+		return c.json({ ok: true as const, message: "Live trading data reset" });
+	})
+
 	.post("/live/connect", async (c) => {
 		if (!env.API_TOKEN) {
 			log.warn(
@@ -670,7 +689,7 @@ setInterval(() => {
 const app = new Hono();
 
 app.use("/api/*", rateLimit);
-app.use("/api/*", cors());
+app.use("/api/*", cors({ origin: env.CORS_ORIGIN }));
 app.use("/api/paper/*", requireAuth);
 app.use("/api/live/*", requireAuth);
 app.use("/api/config", requireAuth);

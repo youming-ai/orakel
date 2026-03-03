@@ -16,7 +16,7 @@ import type {
 import { TIMING_BUCKETS } from "@/lib/constants";
 import { CHART_COLORS } from "@/lib/charts";
 import { fmtTime, asNumber } from "@/lib/format";
-import { useConfigMutation, usePaperClearStop } from "@/lib/queries";
+import { useConfigMutation, useLiveReset, usePaperClearStop, usePaperReset } from "@/lib/queries";
 import { toast } from "@/lib/toast";
 import type { ViewMode } from "@/lib/types";
 
@@ -137,6 +137,9 @@ export function AnalyticsTabs({
 }: AnalyticsTabsProps) {
 	const configMutation = useConfigMutation(viewMode);
 	const clearStopMutation = usePaperClearStop();
+	const paperResetMutation = usePaperReset();
+	const liveResetMutation = useLiveReset();
+	const resetMutation = viewMode === "paper" ? paperResetMutation : liveResetMutation;
 	const riskConfig = viewMode === "paper" ? config.paperRisk : config.liveRisk;
 	const [form, setForm] = useState<StrategyFormValues>(() =>
 		toStrategyFormValues(config.strategy, riskConfig),
@@ -335,6 +338,7 @@ export function AnalyticsTabs({
 					viewMode={viewMode}
 					todayStats={todayStats}
 					clearStopMutation={clearStopMutation}
+					resetMutation={resetMutation}
 					mergedStats={mergedStats}
 					pnlTimeline={pnlTimeline}
 					timelinePositive={timelinePositive}

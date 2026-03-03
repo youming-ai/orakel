@@ -1,12 +1,17 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles/global.css";
-import Dashboard from "./components/Dashboard";
-import { useUIStore } from "./lib/store";
+import { Dashboard } from "./components/Dashboard";
 
-// Apply stored theme before render (backup for inline script)
-const storedTheme = useUIStore.getState().theme;
-document.documentElement.classList.toggle("dark", storedTheme === "dark");
+const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			refetchOnWindowFocus: false,
+			retry: 1,
+		},
+	},
+});
 
 const rootElement = document.getElementById("root");
 
@@ -16,6 +21,8 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
 	<StrictMode>
-		<Dashboard />
+		<QueryClientProvider client={queryClient}>
+			<Dashboard />
+		</QueryClientProvider>
 	</StrictMode>,
 );

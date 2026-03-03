@@ -1,7 +1,5 @@
-import { ConnectWallet } from "./ConnectWallet";
-import { Activity, Clock, Loader2, Moon, Play, Sun, Wallet, Zap } from "lucide-react";
+import { Activity, Clock, Loader2, Play, Wallet, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -107,8 +105,6 @@ export function Header({
 	const isPending = status === "starting" || status === "stopping";
 	const mutationPending = viewMode === "paper" ? paperMutationPending : liveMutationPending;
 	const timeLeft = useCycleCountdown();
-	const theme = useUIStore((s) => s.theme);
-	const toggleTheme = useUIStore((s) => s.toggleTheme);
 
 	const handleToggle = viewMode === "paper" ? onPaperToggle : onLiveToggle;
 	const canToggle = viewMode === "paper" || liveRunning || liveWalletReady || isPending;
@@ -117,8 +113,8 @@ export function Header({
 
 	return (
 		<div className="sticky top-3 z-50 flex justify-center px-3 pointer-events-none">
-			<header className="pointer-events-auto flex items-center justify-between px-3 sm:px-4 py-2 rounded-2xl backdrop-blur-xl bg-background/70 border border-border/50 shadow-lg w-full max-w-2xl overflow-hidden">
-				{/* Left: Logo */}
+			<header className="pointer-events-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-2xl backdrop-blur-xl bg-background/70 border border-border/50 shadow-lg w-full max-w-3xl overflow-hidden">
+				{/* Logo */}
 				<div className="flex items-center gap-1.5 cursor-default select-none shrink-0">
 					<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20">
 						<Zap className="size-3.5" />
@@ -140,7 +136,7 @@ export function Header({
 						onClick={canToggle ? handleToggle : undefined}
 						disabled={!canToggle || mutationPending}
 						className={cn(
-						"flex items-center gap-1.5 h-7 px-2 sm:px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-lg transition-all shrink-0 border outline-none",
+							"flex items-center gap-1.5 h-7 px-2 sm:px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-lg transition-all shrink-0 border outline-none",
 							!canToggle
 								? "bg-muted text-muted-foreground border-transparent cursor-not-allowed opacity-50"
 								: cfg.className,
@@ -151,7 +147,6 @@ export function Header({
 						{!canToggle ? <Wallet className="size-3" /> : <StatusIcon status={status} />}
 						<span>{!canToggle ? "No Wallet" : cfg.label}</span>
 					</button>
-					{viewMode === "live" && <ConnectWallet />}
 
 					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
 
@@ -160,7 +155,7 @@ export function Header({
 							type="button"
 							onClick={() => onViewModeChange("paper")}
 							className={cn(
-							"px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
+								"px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
 								viewMode === "paper"
 									? "bg-amber-500/20 text-amber-500"
 									: "bg-transparent text-muted-foreground hover:text-foreground",
@@ -173,7 +168,7 @@ export function Header({
 							type="button"
 							onClick={() => onViewModeChange("live")}
 							className={cn(
-							"px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
+								"px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
 								viewMode === "live"
 									? "bg-emerald-500/20 text-emerald-500"
 									: "bg-transparent text-muted-foreground hover:text-foreground",
@@ -182,15 +177,6 @@ export function Header({
 							Live
 						</button>
 					</div>
-					<button
-						type="button"
-						onClick={toggleTheme}
-						aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-						className="flex items-center justify-center size-7 rounded-lg border border-border bg-muted/20 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors outline-none shrink-0"
-						title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-					>
-						{theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
-					</button>
 				</div>
 			</header>
 		</div>

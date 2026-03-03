@@ -46,6 +46,8 @@
 | POST | /api/live/start | 是 | 启动实盘交易 |
 | POST | /api/live/stop | 是 | 停止实盘交易 |
 | POST | /api/live/cancel | 是 | 取消挂起操作 |
+| POST | /api/paper/reset | 是 | 重置模拟交易数据 |
+| POST | /api/live/reset | 是 | 重置实盘交易数据 |
 
 ### 2.4 WebSocket
 
@@ -274,28 +276,15 @@
 
 ## 5. 环境变量 (src/env.ts)
 
-所有变量通过 Zod 验证，从 `.env` 文件加载。
+所有变量通过 Zod 验证，从 `.env` 文件加载。完整变量表见 [部署指南 §3](./deployment.md#3-环境变量)。
 
-| 变量 | 类型 | 默认值 | 必需 | 说明 |
-|------|------|--------|------|------|
-| PAPER_MODE | boolean | false | 否 | 启用模拟交易模式 |
-| API_PORT | number | 9999 | 否 | API 服务端口 |
-| ACTIVE_MARKETS | string[] | [] | 否 | 启用的市场列表（逗号分隔） |
-| API_TOKEN | string | "" | 否 | API 认证令牌 |
-| PERSIST_BACKEND | enum | sqlite | 否 | 写入后端（sqlite/csv） |
-| READ_BACKEND | enum | sqlite | 否 | 读取后端（sqlite/csv） |
-| LOG_LEVEL | enum | info | 否 | 日志级别（debug/info/warn/error/silent） |
-| POLYMARKET_API_KEY | string | — | 否 | Polymarket API 密钥 |
-| POLYMARKET_API_SECRET | string | — | 否 | Polymarket API 密钥 |
-| POLYMARKET_API_PASSPHRASE | string | — | 否 | Polymarket API 密码 |
-| POLYMARKET_PRIVATE_KEY | string | — | 否 | 钱包私钥 |
-| POLYMARKET_PROXY_ADDRESS | string | — | 否 | 代理合约地址 |
-| BINANCE_API_KEY | string | — | 否 | Binance API 密钥 |
-| BINANCE_API_SECRET | string | — | 否 | Binance API 密钥 |
-| RPC_URL | string | — | 否 | EVM RPC 节点 URL |
-| CHAINLINK_RPC_URL | string | — | 否 | Chainlink 专用 RPC URL |
-| DATA_DIR | string | ./data | 否 | 数据目录路径 |
-| NODE_ENV | enum | development | 否 | 运行环境（development/production） |
+**实现要点**：
+
+- Zod schema 定义在 `src/env.ts`，启动时一次性解析
+- 支持 `.env` 文件和系统环境变量
+- 类型安全：通过 `z.infer<typeof EnvSchema>` 导出类型
+- 布尔值自动转换（`"true"` → `true`）
+- CSV 字段自动拆分为数组（如 `ACTIVE_MARKETS`）
 
 ---
 

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Orakel is a production-grade automated trading bot for Polymarket's 15-minute binary options (Up/Down) markets on cryptocurrencies (BTC, ETH, SOL, XRP). It combines real-time data fusion from Binance, Polymarket, and Chainlink with technical analysis, probabilistic modeling, and regime-aware strategy.
 
-**Tech Stack:** Bun Runtime, TypeScript, Hono API, SQLite, React 19, Vite, shadcn/ui, wagmi/viem
+**Tech Stack:** Bun Runtime, TypeScript, Hono API, SQLite, React 19, Vite, shadcn/ui
 
 ## Common Commands
 
@@ -21,7 +21,7 @@ bun run lint:fix           # Auto-fix lint issues
 bun run format             # Format code with Biome
 
 # Web Dashboard
-cd web && bun run dev      # Start dev server (port 9998)
+cd web && bun run dev      # Start dev server (Vite default port)
 cd web && bun run build    # Build for production
 
 # Docker
@@ -36,7 +36,7 @@ bun run lint && bun run typecheck && bun run test  # Run all checks
 The system consists of two main services communicating via REST/WebSocket:
 
 1. **Bot Service** (port 9999) - Trading engine and API server
-2. **Web Dashboard** (port 9998) - React monitoring UI
+2. **Web Dashboard** (Cloudflare Pages / local Vite dev) - React monitoring UI
 
 ### Main Trading Loop (`src/index.ts` → `processMarket()`)
 
@@ -94,21 +94,14 @@ Executed every 1 second per market:
 - `computeEdge()` - Calculates edge = modelProb - marketPrice with confidence scoring, orderbook adjustments (imbalance, spread), arbitrage detection (sum < 0.98), and high vig detection (sum > 1.04)
 - `computeConfidence()` - 5-factor weighted score: Indicator Alignment (25%), Volatility Score (15%), Orderbook Score (15%), Timing Score (25%), Regime Score (20%)
 - `decide()` - Main decision logic with phase-based thresholds, regime multipliers, market-specific adjustments, and overconfidence protection (SOFT_CAP_EDGE: 0.22, HARD_CAP_EDGE: 0.3)
-- `regimeMultiplier()` - Returns REGIME_DISABLED (999) to skip CHOP entirely for underperforming markets (winRate < 45%)
+- `regimeMultiplier()` - Returns regime-based threshold multiplier from config (CHOP: 1.4, RANGE: 1.0, TREND_ALIGNED: 0.75, TREND_OPPOSED: 1.3)
 
 **Regime Detection** ([`src/engines/regime.ts`](src/engines/regime.ts))
 - `detectRegime()` - Classifies market as TREND_UP/TREND_DOWN/CHOP/RANGE based on VWAP relationship, slope, and crossover frequency
 
-### Market-Specific Adjustments (from backtest)
+### Market-Specific Adjustments
 
-Hardcoded in [`src/engines/edge.ts`](src/engines/edge.ts#L24-L29):
-
-| Market | Win Rate | Edge Multiplier |
-|--------|----------|-----------------|
-| BTC | 42.1% | 1.5× (require 50% more edge) |
-| ETH | 46.9% | 1.2× (require 20% more edge) |
-| SOL | 51.0% | 1.0× (standard) |
-| XRP | 54.2% | 1.0× (best performer) |
+All markets use `edgeMultiplier: 1.0` (conservative branch — uniform edge requirements). Market performance data is configurable via `strategy.marketPerformance` in `config.json` but currently all set to 1.0×.
 
 ## Configuration System
 
@@ -135,7 +128,7 @@ Hardcoded in [`src/engines/edge.ts`](src/engines/edge.ts#L24-L29):
    - `strategy.edgeThresholdEarly/Mid/Late` - Phase-based edge thresholds (default: 0.06/0.08/0.10)
    - `strategy.minProbEarly/Mid/Late` - Phase-based probability thresholds (default: 0.52/0.55/0.60)
    - `strategy.blendWeights` - Vol vs TA probability weights (default: vol 0.50, ta 0.50)
-   - `strategy.regimeMultipliers` - CHOP (1.3), RANGE (1.0), TREND_ALIGNED (0.8), TREND_OPPOSED (1.2)
+   - `strategy.regimeMultipliers` - CHOP (1.4), RANGE (1.0), TREND_ALIGNED (0.75), TREND_OPPOSED (1.3)
    - `strategy.maxGlobalTradesPerWindow` - Max trades across all markets per window
    - `strategy.minConfidence` - Minimum confidence score (default: 0.50)
    - `strategy.skipMarkets` - Markets to skip entirely (array of market IDs)
@@ -151,11 +144,11 @@ Config changes are auto-reloaded on next cycle - no restart needed.
 - Daily state persisted to SQLite
 
 **Live Mode**:
-- Requires wallet connection via Web UI (wagmi + viem)
-- Private key sent to `/api/live/connect` (POST)
+- Auto-connects wallet on startup if `PRIVATE_KEY` is set in `.env` (64-char hex, `0x` prefix optional)
 - Creates ClobClient for Polymarket CLOB API
 - Orders created via limit orders, polled by OrderManager
 - Manual redemption via [`src/redeemer.ts`](src/redeemer.ts)
+- Legacy: `/api/live/connect` endpoint still exists for manual connection
 
 **Critical:** Paper and live state are completely separate - separate configs, separate daily state tracking, different spending models.
 
@@ -189,11 +182,11 @@ New code should use SQLite prepared statements from [`src/db.ts`](src/db.ts).
 
 1. **Multi-Sensor Fusion** - 4 independent price sources with fallback chain (Binance WS > Polymarket WS > Chainlink WS > Chainlink RPC > Binance REST)
 
-2. **Regime-Aware Strategy** - Market state detection adapts thresholds dynamically (TREND_ALIGNED gets 20% discount, CHOP disabled for poor markets)
+2. **Regime-Aware Strategy** - Market state detection adapts thresholds dynamically (TREND_ALIGNED gets 25% discount, CHOP gets 40% penalty)
 
 3. **Confidence Scoring** - 5-factor weighted score gates trades even if edge looks good (indicator alignment, volatility, orderbook, timing, regime)
 
-4. **Market-Specific Performance** - Backtest-derived edge multipliers per market (BTC needs 50% more edge, ETH needs 20% more)
+4. **Uniform Edge Requirements** - All markets use edgeMultiplier 1.0× (conservative branch)
 
 5. **Cycle-Aware State** - Pending start/stop states for graceful 15-min window boundary transitions
 
@@ -209,13 +202,13 @@ New code should use SQLite prepared statements from [`src/db.ts`](src/db.ts).
 
 2. **Paper vs Live state is separate** - `paperRisk` and `liveRisk` configs, separate daily state tracking, different spending models.
 
-3. **Market-specific performance matters** - BTC requires 1.5× edge, XRP gets 1.0×. Hardcoded in [`src/engines/edge.ts`](src/engines/edge.ts#L21-L26) as `DEFAULT_MARKET_PERFORMANCE`.
+3. **All markets use uniform edge multiplier (1.0×)** - Configured in `strategy.marketPerformance` in `config.json`. Conservative branch treats all markets equally.
 
-4. **CHOP regime is dangerous** - Skip entirely for BTC/ETH (<45% win rate). Encoded in [`src/engines/edge.ts`](src/engines/edge.ts) via `regimeMultiplier()` returning `REGIME_DISABLED` (999) when regime is CHOP and market winRate < 0.45.
+4. **CHOP regime gets 1.4× threshold penalty** - Configured via `strategy.regimeMultipliers.CHOP` in `config.json`. All markets participate in CHOP (no per-market skip).
 
 5. **Edge overconfidence is the #1 killer** - High edge (≥20%) had 43.6% win rate vs low edge (<10%) at 57.9%. The model is overconfident when edge looks too good. Protected by SOFT_CAP_EDGE (0.22) and HARD_CAP_EDGE (0.3).
 
-6. **WebSocket is single-source of truth** - Dashboard connects to `/api` WS and receives `state:snapshot` events. Don't poll REST endpoints in the frontend.
+6. **WebSocket is single-source of truth** - Dashboard connects to `/ws` WS endpoint and receives `state:snapshot` events. Don't poll REST endpoints in the frontend.
 
 7. **15-min windows are sacred** - All paper trades keyed by `windowStartMs`. Settlement happens exactly at window boundary. Never start/stop mid-window (use pending states).
 
@@ -268,11 +261,11 @@ web/src/
 ├── components/
 │   ├── Dashboard.tsx         # Main dashboard
 │   ├── MarketCard.tsx        # Per-market display
-│   ├── ConnectWallet.tsx     # Wallet connection UI
-│   └── LiveConnect.tsx       # Live trading controls
+│   ├── AppErrorBoundary.tsx # Error boundary wrapper
+│   └── Header.tsx          # Navigation bar
 └── lib/
     ├── api.ts                # API client (fetch + WebSocket)
-    ├── stores/               # Zustand state management
+    ├── store.ts              # Zustand state management
     └── types.ts              # Frontend TypeScript types
 ```
 
@@ -284,10 +277,10 @@ REST API (port 9999):
 - `GET /api/signals?market=BTC&limit=200` - Recent signals for backtest
 - `GET /api/paper-stats` - Paper trading stats
 - `POST /api/paper/start|stop` - Start/stop paper trading (cycle-aware)
-- `POST /api/live/connect|disconnect` - Wallet management
+- `POST /api/live/connect|disconnect` - Wallet management (legacy; primary method is PRIVATE_KEY auto-connect)
 - `POST /api/live/start|stop` - Live trading controls
 
-WebSocket: `/api` - Real-time events: `state:snapshot`, `signal:new`, `trade:executed`
+WebSocket: `/ws` - Real-time events: `state:snapshot`, `signal:new`, `trade:executed`
 
 ## Code Style Conventions
 

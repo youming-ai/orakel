@@ -31,7 +31,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          web3: ["viem", "wagmi"],
           charts: ["recharts"],
           ui: ["radix-ui", "lucide-react"],
         },

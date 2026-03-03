@@ -1,6 +1,6 @@
 # Orakel 开发计划
 
-> 基于 [CODE_REVIEW.md](./CODE_REVIEW.md) 的 32 项审查发现
+> 基于 [code-review.md](./code-review.md) 的 32 项审查发现
 > 总估时：7-9 工作日（单人）
 > 原则：每个 task 可独立提交，不引入新的 broken state
 

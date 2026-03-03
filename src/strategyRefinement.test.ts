@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { BACKTEST_INSIGHTS, MARKET_ADJUSTMENTS, shouldTakeTrade } from "./strategyRefinement.ts";
 
 describe("MARKET_ADJUSTMENTS", () => {
-	it("should set BTC skipChop to true", () => {
-		expect(MARKET_ADJUSTMENTS.BTC?.skipChop).toBe(true);
+	it("should set BTC skipChop to false", () => {
+		expect(MARKET_ADJUSTMENTS.BTC?.skipChop).toBe(false);
 	});
 
-	it("should set ETH skipChop to true", () => {
-		expect(MARKET_ADJUSTMENTS.ETH?.skipChop).toBe(true);
+	it("should set ETH skipChop to false", () => {
+		expect(MARKET_ADJUSTMENTS.ETH?.skipChop).toBe(false);
 	});
 
 	it("should set SOL skipChop to false", () => {
@@ -34,17 +34,7 @@ describe("BACKTEST_INSIGHTS", () => {
 });
 
 describe("shouldTakeTrade", () => {
-	it.each(["BTC", "ETH"])("should skip CHOP regime for %s when market skipChop is true", (market) => {
-		const result = shouldTakeTrade({
-			market,
-			regime: "CHOP",
-			volatility: 0.002,
-		});
-
-		expect(result).toEqual({ shouldTrade: false, reason: "skip_chop_regime" });
-	});
-
-	it.each(["SOL", "XRP"])("should allow CHOP regime for %s when market skipChop is false", (market) => {
+	it.each(["BTC", "ETH", "SOL", "XRP"])("should allow CHOP regime for %s when market skipChop is false", (market) => {
 		const result = shouldTakeTrade({
 			market,
 			regime: "CHOP",
@@ -64,14 +54,14 @@ describe("shouldTakeTrade", () => {
 		expect(result).toEqual({ shouldTrade: true });
 	});
 
-	it("should prioritize CHOP skip reason before volatility filters", () => {
+	it("should reject volatility even in CHOP when skipChop is disabled", () => {
 		const result = shouldTakeTrade({
 			market: "BTC",
 			regime: "CHOP",
 			volatility: 0.01,
 		});
 
-		expect(result).toEqual({ shouldTrade: false, reason: "skip_chop_regime" });
+		expect(result).toEqual({ shouldTrade: false, reason: "volatility_too_high" });
 	});
 
 	it("should reject trade when volatility is above max threshold", () => {
@@ -136,7 +126,7 @@ describe("shouldTakeTrade", () => {
 		}
 	});
 
-	it("should keep global CHOP toggle disabled while per-market settings still apply", () => {
+	it("should allow CHOP for all markets when global and per-market skipChop are both false", () => {
 		expect(BACKTEST_INSIGHTS.skipChop).toBe(false);
 
 		const solResult = shouldTakeTrade({
@@ -151,6 +141,6 @@ describe("shouldTakeTrade", () => {
 		});
 
 		expect(solResult).toEqual({ shouldTrade: true });
-		expect(btcResult).toEqual({ shouldTrade: false, reason: "skip_chop_regime" });
+		expect(btcResult).toEqual({ shouldTrade: true });
 	});
 });

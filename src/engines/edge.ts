@@ -13,17 +13,15 @@ import { clamp, estimatePolymarketFee } from "../utils.ts";
 
 const SOFT_CAP_EDGE = 0.22;
 const HARD_CAP_EDGE = 0.3;
-/** Sentinel multiplier: any regime multiplier >= this value means "skip trade entirely" */
-const REGIME_DISABLED = 999;
 
 // Market-specific performance from backtest (can be overridden in config.json)
 // edgeMultiplier > 1.0 = RAISE threshold (harder to trade) for poor performers
 // Use strategy.skipMarkets in config.json to skip markets entirely
 const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultiplier: number }> = {
-	BTC: { winRate: 0.421, edgeMultiplier: 1.5 }, // Worst performer → require 50% more edge
-	ETH: { winRate: 0.469, edgeMultiplier: 1.2 }, // Below avg → require 20% more edge
-	SOL: { winRate: 0.51, edgeMultiplier: 1.0 }, // Good performer → standard
-	XRP: { winRate: 0.542, edgeMultiplier: 1.0 }, // Best performer → standard
+	BTC: { winRate: 0.421, edgeMultiplier: 1.0 },
+	ETH: { winRate: 0.469, edgeMultiplier: 1.0 },
+	SOL: { winRate: 0.51, edgeMultiplier: 1.0 },
+	XRP: { winRate: 0.542, edgeMultiplier: 1.0 },
 };
 
 /** Get market performance from config or use defaults */
@@ -158,14 +156,8 @@ function regimeMultiplier(
 	regime: Regime | null | undefined,
 	side: Side,
 	multipliers: StrategyConfig["regimeMultipliers"] | null | undefined,
-	marketId: string = "",
 ): number {
-	// Skip CHOP completely for underperforming markets
 	if (regime === "CHOP") {
-		const marketPerf = getMarketPerformance(marketId);
-		if (marketPerf && marketPerf.winRate < 0.45) {
-			return REGIME_DISABLED;
-		}
 		return Number(multipliers?.CHOP ?? 1.3);
 	}
 
@@ -321,6 +313,18 @@ export function decide(params: {
 
 	const phase: Phase = remainingMinutes > 10 ? "EARLY" : remainingMinutes > 5 ? "MID" : "LATE";
 
+	// P1: Reject trades too close to window end
+	const minTimeLeft = strategy.minTimeLeftMin ?? 3;
+	if (remainingMinutes < minTimeLeft) {
+		return {
+			action: "NO_TRADE",
+			side: null,
+			phase,
+			regime,
+			reason: `time_left_${remainingMinutes.toFixed(1)}m_below_${minTimeLeft}m`,
+		};
+	}
+
 	// Refined thresholds based on backtest (lowered for better performance)
 	const baseThreshold =
 		phase === "EARLY"
@@ -354,6 +358,18 @@ export function decide(params: {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "market_skipped_by_config" };
 	}
 
+	// P1: Volatility hard limits — extreme volatility is too risky regardless of edge
+	if (volatility15m !== null) {
+		const maxVol = strategy.maxVolatility15m ?? 0.015;
+		const minVol = strategy.minVolatility15m ?? 0.0005;
+		if (volatility15m > maxVol) {
+			return { action: "NO_TRADE", side: null, phase, regime, reason: "volatility_too_high" };
+		}
+		if (volatility15m < minVol) {
+			return { action: "NO_TRADE", side: null, phase, regime, reason: "volatility_too_low" };
+		}
+	}
+
 	// Use effective edge if available
 	const effUp = effectiveEdgeUp ?? edgeUp;
 	const effDown = effectiveEdgeDown ?? edgeDown;
@@ -367,13 +383,8 @@ export function decide(params: {
 	const marketMult = marketPerf?.edgeMultiplier ?? 1.0;
 	const adjustedThreshold = baseThreshold * marketMult;
 
-	const multiplier = regimeMultiplier(regime, bestSide, strategy?.regimeMultipliers, marketId);
+	const multiplier = regimeMultiplier(regime, bestSide, strategy?.regimeMultipliers);
 	const threshold = adjustedThreshold * multiplier;
-
-	// Skip regime entirely when multiplier is the disabled sentinel
-	if (multiplier >= REGIME_DISABLED) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: "skip_chop_poor_market" };
-	}
 
 	if (bestEdge < threshold) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `edge_below_${threshold.toFixed(3)}` };
@@ -382,15 +393,6 @@ export function decide(params: {
 	if (bestModel !== null && bestModel < minProb) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${minProb}` };
 	}
-
-	// Apply BTC-specific probability threshold (Issue #4 fix)
-	const effectiveMinProb = marketId === "BTC" ? Math.max(minProb, 0.58) : minProb;
-	if (bestModel !== null && bestModel < effectiveMinProb) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${effectiveMinProb}_btc_adjusted` };
-	}
-
-	// BTC-specific protection: require higher confidence for poor performer (Issue #4 fix)
-	const effectiveMinConfidence = marketId === "BTC" ? Math.max(minConfidence, 0.6) : minConfidence;
 
 	// Overconfidence checks
 	if (Math.abs(bestEdge) > HARD_CAP_EDGE) {
@@ -417,14 +419,14 @@ export function decide(params: {
 		side: bestSide,
 	});
 
-	// Reject low confidence trades (using BTC-adjusted threshold)
-	if (confidence.score < effectiveMinConfidence) {
+	// Reject low confidence trades
+	if (confidence.score < minConfidence) {
 		return {
 			action: "NO_TRADE",
 			side: null,
 			phase,
 			regime,
-			reason: `confidence_${confidence.score.toFixed(2)}_below_${effectiveMinConfidence}`,
+			reason: `confidence_${confidence.score.toFixed(2)}_below_${minConfidence}`,
 			confidence,
 		};
 	}

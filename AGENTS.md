@@ -10,7 +10,7 @@ bun install                          # Install backend dependencies
 cd web && bun install                # Install frontend dependencies
 
 bun run start                        # Start bot (src/index.ts, port 9999)
-cd web && bun run dev                # Start frontend dev server (port 9998)
+cd web && bun run dev                # Start frontend dev server (Vite default port)
 
 bun run typecheck                    # Typecheck all src/ (includes tests)
 bun run typecheck:ci                 # Typecheck src/ excluding test files

@@ -4,7 +4,7 @@ import { createLogger } from "./logger.ts";
 
 const log = createLogger("paperStats");
 
-import { PERSIST_BACKEND, statements } from "./db.ts";
+import { PERSIST_BACKEND, resetPaperDbData, statements } from "./db.ts";
 import type { PaperStats, PaperTradeEntry, Side } from "./types.ts";
 
 const STATS_PATH = "./logs/paper-stats.json";
@@ -537,4 +537,24 @@ function updateDailyPnl(tradeId: string, pnl: number): void {
 		state.dailyCountedTradeIds = state.dailyCountedTradeIds.slice(-500);
 		dailyCountedTradeIdSet = new Set(state.dailyCountedTradeIds);
 	}
+}
+
+export function resetPaperData(): void {
+	log.info("Resetting all paper trading data");
+	resetPaperDbData();
+	state = {
+		trades: [],
+		wins: 0,
+		losses: 0,
+		totalPnl: 0,
+		initialBalance: PAPER_INITIAL_BALANCE,
+		currentBalance: PAPER_INITIAL_BALANCE,
+		maxDrawdown: 0,
+		dailyPnl: [],
+		dailyCountedTradeIds: [],
+		stoppedAt: null,
+		stopReason: null,
+	};
+	dailyCountedTradeIdSet = new Set();
+	log.info("Paper trading data reset complete");
 }

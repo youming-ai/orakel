@@ -18,7 +18,7 @@ docker compose up --build
 ```
 
 - Bot API: http://localhost:9999
-- Web 前端: http://localhost:9998 (如已配置 web 服务)
+- Web 前端: `cd web && bun run dev`（Vite 默认端口）
 
 ### 1.3 本地开发
 
@@ -38,14 +38,13 @@ cd web && bun run dev
 
 ### 2.1 Dockerfile (多阶段构建)
 
-Dockerfile 分为三个阶段:
+Dockerfile 分为两个阶段:
 
 1. **bot-deps** (`oven/bun:1-alpine`): 使用冻结锁文件安装生产依赖
-2. **web-build** (`oven/bun:1-alpine`): 安装前端依赖并构建静态资源 (`bun run build`)
-3. **release** (`oven/bun:1-alpine`):
+2. **release** (`oven/bun:1-alpine`):
    - 安装 `dumb-init` 处理进程信号
    - 通过构建参数 `BUILD_UID` / `BUILD_GID` (默认 1000) 创建用户
-   - 复制: `node_modules`、源码、构建后的前端资源
+   - 复制: `node_modules`、源码
    - 创建 `data` 目录并设置正确归属
    - 以非 root 用户 (`bun`) 运行
    - 暴露端口 9999
@@ -121,10 +120,13 @@ services:
 | `POLYGON_WSS_URLS` | string (CSV) | "" | Polygon WebSocket 备用列表 |
 | `CHAINLINK_BTC_USD_AGGREGATOR` | string | "" | Chainlink BTC/USD 聚合器地址 |
 | `HTTPS_PROXY` | string | "" | HTTP 代理 |
+| `PRIVATE_KEY` | string | "" | 64 位 hex 私钥（可选 `0x` 前缀，启动时自动连接钱包） |
+| `CORS_ORIGIN` | string | `*` | CORS 允许的来源（生产环境建议设为前端域名） |
 
 ### 3.2 安全说明
 
-- 实盘交易通过 Web 界面连接钱包, 不再支持 `PRIVATE_KEY` 环境变量
+- `PRIVATE_KEY`：64 位 hex 私钥（可选 `0x` 前缀），启动时自动连接钱包进行实盘交易
+- `CORS_ORIGIN`：CORS 允许的来源（默认 `*`，生产环境建议设为前端域名）
 - `API_TOKEN` 保护所有写操作 (POST/PUT), 建议在生产环境设置
 - `api-creds.json` 以 0o600 权限存储, 包含派生的 API 凭证
 
@@ -208,7 +210,7 @@ curl -X PUT http://localhost:9999/api/config \
 
 | 命令 | 说明 |
 |------|------|
-| `cd web && bun run dev` | 启动前端开发服务器 (port 9998) |
+| `cd web && bun run dev` | 启动前端开发服务器 |
 | `cd web && bun run build` | 构建前端 |
 | `cd web && bun install` | 安装前端依赖 |
 

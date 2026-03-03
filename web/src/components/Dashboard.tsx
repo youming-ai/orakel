@@ -1,23 +1,5 @@
 import { useCallback, useMemo } from "react";
 import {
-	useDashboardStateWithWs,
-	useLiveCancel,
-	useLiveToggle,
-	usePaperCancel,
-	usePaperStats,
-	usePaperToggle,
-	useTrades,
-} from "@/lib/queries";
-import { useUIStore } from "@/lib/store";
-import type { ViewMode } from "@/lib/types";
-import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
-import { AnalyticsTabs } from "./AnalyticsTabs";
-import { Header } from "./Header";
-import { Web3Provider } from "./Web3Provider";
-import { LiveConnect } from "./LiveConnect";
-import { Toaster } from "@/components/ui/toaster";
-import { toast } from "@/lib/toast";
-import {
 	AlertDialog,
 	AlertDialogAction,
 	AlertDialogCancel,
@@ -27,6 +9,24 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Toaster } from "@/components/ui/toaster";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
+import {
+	useDashboardStateWithWs,
+	useLiveCancel,
+	useLiveToggle,
+	usePaperCancel,
+	usePaperStats,
+	usePaperToggle,
+	useTrades,
+} from "@/lib/queries";
+import { useUIStore } from "@/lib/store";
+import { toast } from "@/lib/toast";
+import type { ViewMode } from "@/lib/types";
+import { AnalyticsTabs } from "./AnalyticsTabs";
+import { AppErrorBoundary } from "./AppErrorBoundary";
+import { Header } from "./Header";
 
 const DEFAULT_CONFIG: DashboardState["config"] = {
 	strategy: {
@@ -58,6 +58,7 @@ const DEFAULT_CONFIG: DashboardState["config"] = {
 };
 
 function DashboardContent() {
+	const prefersReducedMotion = useReducedMotion();
 	const viewMode = useUIStore((s) => s.viewMode);
 	const setViewMode = useUIStore((s) => s.setViewMode);
 	const confirmAction = useUIStore((s) => s.confirmAction);
@@ -153,11 +154,14 @@ function DashboardContent() {
 						</>
 					) : (
 						<>
-							<div
-								className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
-								role="status"
-								aria-label="Loading dashboard"
-							/>
+						{/* biome-ignore lint/a11y/useSemanticElements: role=status is correct for ARIA live region loading spinners */}
+						<div
+							className={`inline-block h-6 w-6 rounded-full border-2 border-muted-foreground border-t-transparent${
+								prefersReducedMotion ? "" : " animate-spin"
+							}`}
+							role="status"
+							aria-label="Loading dashboard"
+						/>
 							<p className="text-sm text-muted-foreground">Connecting to bot...</p>
 						</>
 					)}
@@ -182,26 +186,22 @@ function DashboardContent() {
 			onLiveToggle={handleLiveToggle}
 			paperMutationPending={paperToggle.isPending || paperCancel.isPending}
 			liveMutationPending={liveToggle.isPending || liveCancel.isPending}
-		/>
-			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
-				{viewMode === "live" && (
-					<LiveConnect
-						clientReady={state.liveWallet?.clientReady ?? false}
-						walletAddress={state.liveWallet?.address ?? null}
+			/>
+			<AppErrorBoundary>
+				<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
+					<AnalyticsTabs
+						stats={viewMode === "paper" ? state.paperStats : state.liveStats}
+						trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
+						byMarket={viewMode === "paper" ? paperByMarket : undefined}
+						config={state.config ?? DEFAULT_CONFIG}
+						markets={state.markets ?? []}
+						liveTrades={trades}
+						viewMode={viewMode}
+						stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
+						todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
 					/>
-				)}
-				<AnalyticsTabs
-					stats={viewMode === "paper" ? state.paperStats : state.liveStats}
-					trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
-					byMarket={viewMode === "paper" ? paperByMarket : undefined}
-				config={state.config ?? DEFAULT_CONFIG}
-					markets={state.markets ?? []}
-					liveTrades={trades}
-					viewMode={viewMode}
-					stopLoss={viewMode === "paper" ? state.stopLoss : undefined}
-					todayStats={viewMode === "paper" ? state.todayStats : state.liveTodayStats}
-				/>
-			</main>
+				</main>
+			</AppErrorBoundary>
 
 			<AlertDialog
 				open={confirmAction !== null}
@@ -230,11 +230,11 @@ function DashboardContent() {
 	);
 }
 
-export default function Dashboard() {
+export function Dashboard() {
 	return (
-		<Web3Provider>
+		<>
 			<DashboardContent />
 			<Toaster />
-		</Web3Provider>
+		</>
 	);
 }

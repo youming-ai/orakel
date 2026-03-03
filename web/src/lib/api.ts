@@ -68,9 +68,8 @@ export const api = {
 	liveStop: () => post<{ ok: boolean }>("/live/stop"),
 	liveCancel: () => post<{ ok: boolean }>("/live/cancel"),
 	paperClearStop: () => post<{ ok: boolean }>("/paper/clear-stop"),
-	liveConnect: (privateKey: string) =>
-		postJson<{ ok: boolean; address?: string; error?: string }>("/live/connect", { privateKey }),
-	liveDisconnect: () => post<{ ok: boolean }>("/live/disconnect"),
+	paperReset: () => post<{ ok: boolean }>("/paper/reset"),
+	liveReset: () => post<{ ok: boolean }>("/live/reset"),
 };
 
 // ============ Stop Loss Types ============

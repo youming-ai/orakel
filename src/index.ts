@@ -1,6 +1,7 @@
 import { applyEvent, enrichPosition, initAccountState, resetAccountState, updateFromSnapshot } from "./accountState.ts";
 import { startApiServer } from "./api.ts";
 import { CONFIG } from "./config.ts";
+import { env } from "./env.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
 import { startBalancePolling } from "./data/polygonBalance.ts";
@@ -37,6 +38,7 @@ import {
 import { shouldTakeTrade } from "./strategyRefinement.ts";
 import { renderDashboard } from "./terminal.ts";
 import {
+	connectWallet,
 	executeTrade,
 	getClientStatus,
 	getLiveStats,
@@ -106,6 +108,16 @@ let reconcilerHandle: { runNow(): Promise<number>; close(): void } | null = null
 
 async function main(): Promise<void> {
 	startApiServer();
+
+	// Auto-connect wallet if PRIVATE_KEY is configured
+	if (env.PRIVATE_KEY) {
+		try {
+			const { address } = await connectWallet(env.PRIVATE_KEY);
+			log.info(`Auto-connected wallet: ${address}`);
+		} catch (err) {
+			log.error("Failed to auto-connect wallet:", err instanceof Error ? err.message : String(err));
+		}
+	}
 
 	const orderManager = new OrderManager();
 

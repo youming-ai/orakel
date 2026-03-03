@@ -68,16 +68,13 @@ orakel/
 ## 技术栈
 
 - **Backend**: Bun, TypeScript, Hono, ethers
-- **Frontend**: Vite, React 19, Tailwind CSS v4, shadcn/ui, wagmi
+- **Frontend**: Vite, React 19, Tailwind CSS v4, shadcn/ui
 - **Blockchain**: Polygon, Polymarket CLOB
 
 ## 许可证
 
 通过贡献代码，你同意你的贡献将在 [MIT 许可证](LICENSE) 下发布。
 
----
-
-任何问题欢迎提交 Issue 或参与讨论！
 ---
 
 任何问题欢迎提交 Issue 或参与讨论！

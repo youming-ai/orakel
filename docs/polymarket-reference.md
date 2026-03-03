@@ -5,7 +5,7 @@
 
 ---
 
-## 📚 文档索引
+## 文档索引
 
 完整索引: https://docs.polymarket.com/llms.txt
 
@@ -319,7 +319,7 @@ setInterval(async () => {
 
 ---
 
-## 💡 套利策略要点
+## 套利策略要点
 
 ### 1. Spread 套利
 - 当 `marketYes + marketNo < 0.98` 时存在套利机会
@@ -353,7 +353,7 @@ setInterval(async () => {
 
 ---
 
-## 📎 有用的 API 端点
+## 有用的 API 端点
 
 ### CLOB API
 ```
@@ -394,7 +394,7 @@ wss://ws-subscriptions-clob.polymarket.com/ws/market
 wss://ws-live-data.polymarket.com
 ```
 
-## 🚀 速率限制 (Rate Limits)
+## 速率限制 (Rate Limits)
 
 ### CLOB API 速率限制 (2025-2026)
 | 类别 | 限制 |
@@ -407,7 +407,7 @@ wss://ws-live-data.polymarket.com
 
 ---
 
-## 🔗 相关链接
+## 相关链接
 
 - [官方文档](https://docs.polymarket.com/)
 - [TypeScript SDK](https://github.com/Polymarket/clob-client)

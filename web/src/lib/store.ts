@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ViewMode } from "./types";
 
+
 /* ── UI state ─────────────────────────────────────────── */
 
 interface UIState {
@@ -12,10 +13,6 @@ interface UIState {
 	/** Confirmation dialog state for start/stop actions */
 	confirmAction: "start" | "stop" | null;
 	setConfirmAction: (action: "start" | "stop" | null) => void;
-
-	/** UI color theme */
-	theme: "light" | "dark";
-	toggleTheme: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -27,17 +24,10 @@ export const useUIStore = create<UIState>()(
 			confirmAction: null,
 			setConfirmAction: (action) => set({ confirmAction: action }),
 
-			theme: "dark",
-			toggleTheme: () =>
-				set((state) => {
-					const next = state.theme === "dark" ? "light" : "dark";
-					document.documentElement.classList.toggle("dark", next === "dark");
-					return { theme: next };
-				}),
 		}),
 		{
 			name: "orakel-ui",
-			partialize: (state) => ({ viewMode: state.viewMode, theme: state.theme }),
+			partialize: (state) => ({ viewMode: state.viewMode }),
 		},
 	),
 );

@@ -19,10 +19,10 @@ export const MARKET_ADJUSTMENTS: Record<
 		skipChop: boolean; // Skip CHOP regime trades entirely
 	}
 > = {
-	BTC: { skipChop: true }, // 42.1% WR in CHOP — unprofitable after vig
-	ETH: { skipChop: true }, // 46.9% WR in CHOP — marginal
-	SOL: { skipChop: false }, // 51.0% WR — acceptable
-	XRP: { skipChop: false }, // 54.2% WR — best performer
+	BTC: { skipChop: false },
+	ETH: { skipChop: false },
+	SOL: { skipChop: false },
+	XRP: { skipChop: false },
 };
 
 // Additional filtering rules learned from backtest
