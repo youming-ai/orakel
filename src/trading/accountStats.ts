@@ -221,7 +221,7 @@ export class AccountStatsManager {
 							totalPnl += pnl;
 							currentBalance += pnl;
 						} else {
-							currentBalance -= t.size;
+							currentBalance -= t.size * t.price;
 						}
 						const drawdown = this.initialBalanceDefault - currentBalance;
 						if (drawdown > maxDrawdown) maxDrawdown = drawdown;
@@ -292,6 +292,30 @@ export class AccountStatsManager {
 
 		// Initialize the Set mirror from persisted array
 		this.dailyCountedTradeIdSet = new Set(this.state.dailyCountedTradeIds);
+
+		// Recalculate balance from trades to fix any historical inconsistencies
+		// (e.g., old balance used size instead of size*price for deduction)
+		this.recalculateBalance();
+	}
+
+	/**
+	 * Recalculate currentBalance from trades to ensure consistency.
+	 * Resolved trades contribute their pnl; pending trades hold size*price (USDC cost).
+	 */
+	private recalculateBalance(): void {
+		let balance = this.state.initialBalance;
+		for (const t of this.state.trades) {
+			if (t.resolved) {
+				balance += t.pnl ?? 0;
+			} else {
+				balance -= t.size * t.price;
+			}
+		}
+		if (Math.abs(balance - this.state.currentBalance) > 0.001) {
+			this.log.info(`Balance recalculated: ${this.state.currentBalance.toFixed(4)} → ${balance.toFixed(4)}`);
+			this.state.currentBalance = balance;
+			this.saveState();
+		}
 	}
 
 	// ---- Persistence ----
@@ -374,8 +398,16 @@ export class AccountStatsManager {
 
 	// ---- Trade Lifecycle ----
 
-	addTrade(entry: Omit<TradeEntry, "id" | "resolved" | "won" | "pnl" | "settlePrice">): string {
-		const id = `${this.mode}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+	/**
+	 * Add a new trade entry. For live trading, pass exchangeOrderId to ensure
+	 * the trades table can be matched and updated with settlement P&L.
+	 */
+	addTrade(
+		entry: Omit<TradeEntry, "id" | "resolved" | "won" | "pnl" | "settlePrice">,
+		exchangeOrderId?: string,
+	): string {
+		// For live trading with exchangeOrderId provided, use it; otherwise generate
+		const id = exchangeOrderId ?? `${this.mode}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		const trade: TradeEntry = {
 			...entry,
 			id,
@@ -385,14 +417,14 @@ export class AccountStatsManager {
 			settlePrice: null,
 		};
 		this.state.trades.push(trade);
-		this.state.currentBalance -= entry.size;
+		this.state.currentBalance -= entry.size * entry.price;
 		try {
 			this.upsertTrade(trade);
 			this.save();
 		} catch (err) {
 			// Rollback in-memory state on DB write failure
 			this.state.trades.pop();
-			this.state.currentBalance += entry.size;
+			this.state.currentBalance += entry.size * entry.price;
 			throw err;
 		}
 		return id;
@@ -423,7 +455,7 @@ export class AccountStatsManager {
 				this.state.losses++;
 			}
 
-			this.state.currentBalance += trade.size + trade.pnl;
+			this.state.currentBalance += (trade.size * trade.price) + trade.pnl;
 			const drawdown = this.state.initialBalance - this.state.currentBalance;
 			if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
 			this.state.totalPnl += trade.pnl;
@@ -441,6 +473,31 @@ export class AccountStatsManager {
 			this.save();
 		}
 		return resolved;
+	}
+
+	/**
+	 * Settle pending trades from windows that have already ended.
+	 * Handles recovery after restart when window transitions were missed.
+	 * Uses current spot prices as settlement proxy (accurate for recently-ended windows).
+	 */
+	resolveExpiredTrades(currentPrices: Map<string, number>, windowMinutes: number): number {
+		const now = Date.now();
+		const windowMs = windowMinutes * 60_000;
+		let totalResolved = 0;
+
+		const expiredWindows = new Set<number>();
+		for (const trade of this.state.trades) {
+			if (!trade.resolved && trade.windowStartMs + windowMs < now) {
+				expiredWindows.add(trade.windowStartMs);
+			}
+		}
+
+		for (const windowStartMs of expiredWindows) {
+			const resolved = this.resolveTrades(windowStartMs, currentPrices);
+			totalResolved += resolved;
+		}
+
+		return totalResolved;
 	}
 
 	// ---- Queries ----

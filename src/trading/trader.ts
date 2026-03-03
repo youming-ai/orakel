@@ -584,16 +584,19 @@ export async function executeTrade(
 				});
 
 				const liveAccount = getAccount("live");
-				liveAccount.addTrade({
-					marketId: signal.marketId ?? "",
-					windowStartMs: getCandleWindowTiming(15).startMs,
-					side,
-					price,
-					size: Number(riskConfig.maxTradeSizeUsdc || 0),
-					priceToBeat: signal.priceToBeat ?? 0,
-					currentPriceAtEntry: signal.currentPrice,
-					timestamp: liveTradeTimestamp,
-				});
+				liveAccount.addTrade(
+					{
+						marketId: signal.marketId ?? "",
+						windowStartMs: getCandleWindowTiming(15).startMs,
+						side,
+						price,
+						size: Number(riskConfig.maxTradeSizeUsdc || 0),
+						priceToBeat: signal.priceToBeat ?? 0,
+						currentPriceAtEntry: signal.currentPrice,
+						timestamp: liveTradeTimestamp,
+					},
+					finalOrderId, // Use exchange orderId so trades table can be matched for P&L updates
+				);
 			} catch (recordErr) {
 				log.error(
 					`Post-trade recording failed (order ${finalOrderId} was placed successfully):`,
