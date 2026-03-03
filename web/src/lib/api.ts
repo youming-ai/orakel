@@ -265,4 +265,5 @@ export type TradeRecord = {
 	mode?: string;
 	pnl: number | null;
 	won: number | null;
+	currentPriceAtEntry: number | null;
 };

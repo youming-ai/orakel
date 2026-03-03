@@ -1,4 +1,5 @@
 import { startApiServer } from "./api.ts";
+import { fetchRedeemablePositions, redeemAll } from "./blockchain/redeemer.ts";
 import { CONFIG } from "./core/config.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
@@ -24,7 +25,7 @@ import { getAccount, initAccountStats, liveAccount, paperAccount } from "./tradi
 import { OrderManager, type TrackedOrder } from "./trading/orderManager.ts";
 import { shouldTakeTrade } from "./trading/strategyRefinement.ts";
 import { renderDashboard } from "./trading/terminal.ts";
-import { connectWallet, executeTrade, stopHeartbeat, unregisterOpenGtdOrder } from "./trading/trader.ts";
+import { connectWallet, executeTrade, getWallet, stopHeartbeat, unregisterOpenGtdOrder } from "./trading/trader.ts";
 import type { MarketSnapshot, StreamHandles, WsStreamHandle } from "./types.ts";
 
 export type { ProcessMarketResult } from "./pipeline/processMarket.ts";
@@ -79,6 +80,11 @@ const liveTracker = createTradeTracker();
 let balancePollingHandle: { getLast(): unknown; close(): void } | null = null;
 let eventStreamHandle: { close(): void } | null = null;
 let reconcilerHandle: { runNow(): Promise<number>; close(): void } | null = null;
+let redeemTimerHandle: ReturnType<typeof setInterval> | null = null;
+
+// Auto-redeem configuration
+const AUTO_REDEEM_ENABLED = env.AUTO_REDEEM_ENABLED;
+const AUTO_REDEEM_INTERVAL_MS = env.AUTO_REDEEM_INTERVAL_MS; // Default: 30 minutes (set in env.ts)
 
 async function main(): Promise<void> {
 	startApiServer();
@@ -89,6 +95,70 @@ async function main(): Promise<void> {
 		try {
 			const { address } = await connectWallet(env.PRIVATE_KEY);
 			log.info(`Auto-connected wallet: ${address}`);
+
+			// Start auto-redeem timer if enabled
+			if (AUTO_REDEEM_ENABLED) {
+				log.info(`Auto-redeem enabled: checking every ${AUTO_REDEEM_INTERVAL_MS / 60_000} minutes`);
+				redeemTimerHandle = setInterval(async () => {
+					try {
+						const wallet = getWallet();
+						if (!wallet) {
+							log.warn("Auto-redeem skipped: wallet not connected");
+							return;
+						}
+
+						const positions = await fetchRedeemablePositions(wallet.address);
+						if (positions.length === 0) {
+							log.debug("Auto-redeem: no redeemable positions found");
+							return;
+						}
+
+						const totalValue = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+						log.info(
+							`Auto-redeem: found ${positions.length} position(s) worth $${totalValue.toFixed(2)}, redeeming...`,
+						);
+
+						const results = await redeemAll(wallet);
+						const successCount = results.filter((r) => !r.error).length;
+						const redeemedValue = results
+							.filter((r) => r.value !== undefined)
+							.reduce((sum, r) => sum + (r.value ?? 0), 0);
+
+						if (successCount > 0) {
+							log.info(
+								`Auto-redeem success: ${successCount}/${results.length} redeemed, total value: $${redeemedValue.toFixed(2)}`,
+							);
+						} else {
+							log.warn(`Auto-redeem failed: all ${results.length} redemption(s) failed`);
+						}
+
+						// Log individual failures
+						for (const result of results) {
+							if (result.error) {
+								log.warn(`Redeem failed for ${result.conditionId.slice(0, 10)}...: ${result.error}`);
+							}
+						}
+					} catch (err) {
+						log.error("Auto-redeem error:", err instanceof Error ? err.message : String(err));
+					}
+				}, AUTO_REDEEM_INTERVAL_MS);
+
+				// Run once on startup to check for any pending redemptions
+				setTimeout(async () => {
+					try {
+						const wallet = getWallet();
+						if (!wallet) return;
+
+						const positions = await fetchRedeemablePositions(wallet.address);
+						if (positions.length > 0) {
+							const totalValue = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
+							log.info(`Startup auto-redeem check: ${positions.length} position(s) worth $${totalValue.toFixed(2)}`);
+						}
+					} catch (err) {
+						log.error("Startup redeem check failed:", err instanceof Error ? err.message : String(err));
+					}
+				}, 5000); // Check after 5 seconds to ensure RPC is ready
+			}
 		} catch (err) {
 			log.error("Failed to auto-connect wallet:", err instanceof Error ? err.message : String(err));
 		}
@@ -212,6 +282,11 @@ async function main(): Promise<void> {
 		if (reconcilerHandle) {
 			reconcilerHandle.close();
 			reconcilerHandle = null;
+		}
+		if (redeemTimerHandle) {
+			clearInterval(redeemTimerHandle);
+			redeemTimerHandle = null;
+			log.info("Auto-redeem timer stopped");
 		}
 		setTimeout(() => process.exit(0), 2000);
 	};

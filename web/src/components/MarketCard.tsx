@@ -239,7 +239,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					className={cn(
 						"rounded-xl px-3 py-2.5 text-xs font-semibold text-center border transition-all duration-200",
 						isEntry
-							? cn("bg-white/10 dark:bg-white/5 border-white/20 dark:border-white/10 backdrop-blur-sm", confidence.score >= 0.7 && "shadow-lg shadow-emerald-500/20", confidence.score >= 0.5 && confidence.score < 0.7 && "shadow-lg shadow-amber-500/20")
+							? cn("bg-white/10 dark:bg-white/5 border-white/20 dark:border-white/10 backdrop-blur-sm", confidence && confidence.score >= 0.7 && "shadow-lg shadow-emerald-500/20", confidence && confidence.score >= 0.5 && confidence.score < 0.7 && "shadow-lg shadow-amber-500/20")
 							: "bg-white/5 dark:bg-black/20 text-muted-foreground/70 border-white/10 dark:border-white/5 backdrop-blur-sm",
 					)}
 				>

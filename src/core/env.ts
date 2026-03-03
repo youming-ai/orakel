@@ -64,6 +64,14 @@ const envSchema = z.object({
 
 	// Logging
 	LOG_LEVEL: z.enum(["debug", "info", "warn", "error", "silent"]).default("info"),
+
+	// Auto-redeem (optional — automatic redemption of settled positions)
+	AUTO_REDEEM_ENABLED: z.stringbool().default(false),
+	AUTO_REDEEM_INTERVAL_MS: z.coerce
+		.number()
+		.int()
+		.min(60_000)
+		.default(30 * 60 * 1000), // 30 minutes
 });
 
 // ── validate & export ────────────────────────────────────

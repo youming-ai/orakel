@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LiquidGlassPanel } from "@/components/ui/liquid-glass";
 import type { MarketSnapshot, PaperStats, StopLossStatus, TodayStats } from "@/lib/api";
 import { CHART_COLORS, CHART_HEIGHT, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
 import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
@@ -13,6 +14,24 @@ import { EmptyPlaceholder } from "../EmptyPlaceholder";
 import { OverviewSkeleton } from "../OverviewSkeleton";
 import { MarketCard } from "../MarketCard";
 import { StatCard } from "../StatCard";
+
+// Add a starting point (cumulative = 0) to make chart animation start from zero line
+const addTimelineStartPoint = <T extends { cumulative: number }>(
+	timeline: T[],
+): Array<T & { isFirst: boolean }> => {
+	if (timeline.length === 0) return [];
+	// Create a starting point with cumulative = 0 at the time of the first trade
+	const firstPoint = timeline[0];
+	return [
+		{
+			...firstPoint,
+			cumulative: 0,
+			pnl: 0,
+			isFirst: true,
+		} as T & { isFirst: boolean },
+		...timeline.map((item) => ({ ...item, isFirst: false })),
+	];
+};
 
 interface OverviewTabProps {
 	stopLoss?: StopLossStatus;
@@ -51,12 +70,19 @@ export function OverviewTab({
 	markets,
 }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {
+		const marketOrder = ["BTC", "ETH", "SOL", "XRP"];
 		return [...markets].sort((a, b) => {
-			if (a.action === "ENTER" && b.action !== "ENTER") return -1;
-			if (b.action === "ENTER" && a.action !== "ENTER") return 1;
-			return 0;
+			const aIndex = marketOrder.indexOf(a.id);
+			const bIndex = marketOrder.indexOf(b.id);
+			if (aIndex === -1 && bIndex === -1) return 0;
+			if (aIndex === -1) return 1;
+			if (bIndex === -1) return -1;
+			return aIndex - bIndex;
 		});
 	}, [markets]);
+
+	// Add starting point for smooth chart animation
+	const chartData = useMemo(() => addTimelineStartPoint(pnlTimeline), [pnlTimeline]);
 
 	if (mergedStats.totalTrades === 0 && markets.length === 0) {
 		return <OverviewSkeleton />;
@@ -65,8 +91,8 @@ export function OverviewTab({
 		<div className="space-y-4">
 			{/* Stop Loss Warning */}
 			{stopLoss?.stoppedAt && (
-				<Card className="border-red-500/50 bg-red-500/10">
-					<CardContent className="py-3">
+				<LiquidGlassPanel className="border-red-500/30 bg-red-500/5">
+					<div className="p-3">
 						<div className="flex items-center gap-3">
 							<AlertTriangle className="size-5 text-red-400" />
 							<div className="flex-1">
@@ -85,14 +111,14 @@ export function OverviewTab({
 								{clearStopMutation.isPending ? "Resetting..." : "Reset & Resume"}
 							</Button>
 						</div>
-					</CardContent>
-				</Card>
+					</div>
+				</LiquidGlassPanel>
 			)}
 
 			{/* Today Stats & Stop Loss Status */}
 			{todayStats && (
-				<Card className="border-border/50">
-					<CardContent className="py-3">
+				<LiquidGlassPanel className="border-white/10 dark:border-white/5">
+					<div className="p-3">
 						<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
 							<div className="flex items-center gap-3 sm:gap-4 min-w-0">
 								<div className="flex items-center gap-2 shrink-0">
@@ -114,7 +140,7 @@ export function OverviewTab({
 							</div>
 							<div className="flex items-center gap-2 pl-6 sm:pl-0">
 								<span className="text-xs text-muted-foreground shrink-0">Daily Limit:</span>
-								<div className="w-24 h-2 bg-muted/30 rounded-full overflow-hidden shrink-0">
+								<div className="w-24 h-2 bg-white/10 dark:bg-black/30 rounded-full overflow-hidden shrink-0">
 									<div
 										className={cn(
 											"h-full rounded-full transition-all",
@@ -134,18 +160,18 @@ export function OverviewTab({
 								</span>
 							</div>
 						</div>
-					</CardContent>
-				</Card>
+					</div>
+				</LiquidGlassPanel>
 			)}
 
 			<div className="flex flex-col xl:flex-row gap-4">
 				{/* Hero Stats */}
-				<Card
+				<LiquidGlassPanel
 					className={cn(
-						"flex flex-col justify-center p-6 border-border/60 shadow-sm shrink-0 xl:w-72",
+						"flex flex-col justify-center p-6 shrink-0 xl:w-72",
 						mergedStats.totalPnl >= 0
-							? "bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20"
-							: "bg-gradient-to-br from-red-500/10 to-transparent border-red-500/20",
+							? "border-emerald-500/20"
+							: "border-red-500/20",
 					)}
 				>
 					<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 mb-2">
@@ -164,17 +190,16 @@ export function OverviewTab({
 							USDC
 						</span>
 					</span>
-				</Card>
+				</LiquidGlassPanel>
 
 				{/* Standard Stats */}
-				<Card className="flex-1 overflow-hidden border-border/60 shadow-sm">
-					<div className="grid grid-cols-2 sm:grid-cols-4 gap-px sm:gap-0 bg-border/60 sm:bg-card sm:divide-x sm:divide-border/60 h-full">
+				<LiquidGlassPanel className="flex-1 overflow-hidden">
+					<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 h-full">
 						<StatCard
-							label="Trades"
-							value={String(mergedStats.totalTrades)}
-							icon={<Hash className="size-3.5" />}
-							trend="neutral"
-						/>
+						label="Trades"
+						value={String(mergedStats.totalTrades)}
+						icon={<Hash className="size-3.5" />}
+					/>
 						<StatCard
 							label="Win Rate"
 							value={mergedStats.wins + mergedStats.losses > 0 ? `${(mergedStats.winRate * 100).toFixed(1)}%` : "-"}
@@ -197,20 +222,24 @@ export function OverviewTab({
 							trend="down"
 						/>
 					</div>
-				</Card>
+				</LiquidGlassPanel>
 			</div>
 
-			<Card>
-				<CardHeader className="pb-2">
-					<CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Cumulative P&L</CardTitle>
-				</CardHeader>
-				<CardContent className={CHART_HEIGHT.responsive}>
+			<LiquidGlassPanel>
+				<div className="px-6 pb-2 pt-4">
+					<div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Cumulative P&L</div>
+				</div>
+				<div className={cn("px-6", CHART_HEIGHT.responsive)}>
 					{pnlTimeline.length === 0 ? (
 						<EmptyPlaceholder />
 					) : (
 						<ChartErrorBoundary>
 							<ResponsiveContainer width="100%" height="100%">
-								<AreaChart data={pnlTimeline}>
+								<AreaChart
+									data={chartData}
+									animationDuration={750}
+									animationEasing="ease-in-out"
+								>
 									<defs>
 										<linearGradient id="timelineGrad" x1="0" y1="0" x2="0" y2="1">
 											<stop
@@ -238,9 +267,10 @@ export function OverviewTab({
 										contentStyle={TOOLTIP_CONTENT_STYLE}
 										labelFormatter={(_, payload) => {
 											const row = payload?.[0]?.payload as
-												| { ts: string; market: string; side: string; pnl: number }
+												| { ts: string; market: string; side: string; pnl: number; isFirst?: boolean }
 												| undefined;
 											if (!row) return "-";
+											if (row.isFirst) return fmtDateTime(row.ts) + "  (Start)";
 											return `${fmtDateTime(row.ts)}  ${row.market} ${row.side}`;
 										}}
 										formatter={(value, key, item) => {
@@ -262,8 +292,8 @@ export function OverviewTab({
 							</ResponsiveContainer>
 						</ChartErrorBoundary>
 					)}
-				</CardContent>
-			</Card>
+				</div>
+			</LiquidGlassPanel>
 
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 				{sortedMarkets.map((m) => (
