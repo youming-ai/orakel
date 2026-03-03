@@ -1,4 +1,0 @@
-# Cloudflare Pages Single Page Application (SPA) Fallback
-# All routes should serve index.html for React Router to handle
-
-/* /index.html 200
