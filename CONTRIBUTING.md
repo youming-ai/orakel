@@ -1,80 +1,80 @@
-# 贡献指南
+# Contributing to Orakel
 
-感谢你对 Orakel 项目的兴趣！我们欢迎任何形式的贡献，包括但不限于 Bug 修复、功能开发、文档改进等。
+Thank you for your interest in the Orakel project! We welcome contributions in all forms, including but not limited to bug fixes, feature development, and documentation improvements.
 
-## 如何贡献
+## How to Contribute
 
-### 1. 报告问题
+### 1. Report Issues
 
-如果你发现 Bug 或有新功能建议，请先搜索 [Issues](https://github.com/youming-ai/orakel/issues) 是否已存在。如果不存在，请创建一个新的 Issue 并包含以下信息：
+If you find a bug or have a feature suggestion, please first search [Issues](https://github.com/youming-ai/orakel/issues) to see if it already exists. If not, please create a new Issue with the following information:
 
-- **Bug 报告**: 复现步骤、预期行为、实际行为、环境信息
-- **功能请求**: 详细的功能描述、使用场景、可能的实现方案
+- **Bug Report**: Reproduction steps, expected behavior, actual behavior, environment info
+- **Feature Request**: Detailed feature description, use cases, possible implementation
 
-### 2. 提交代码
+### 2. Submit Code
 
-1. **Fork** 本仓库
-2. 创建你的特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交你的更改 (`git commit -m 'Add some amazing feature'`)
-4. 推送分支 (`git push origin feature/amazing-feature`)
-5. 打开 **Pull Request**
+1. **Fork** this repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a **Pull Request**
 
-### 3. 开发环境设置
+### 3. Development Environment Setup
 
 ```bash
-# 克隆你的 Fork
+# Clone your fork
 git clone https://github.com/YOUR_USERNAME/orakel.git
 cd orakel
 
-# 安装依赖
+# Install dependencies
 bun install
 
-# 安装 Web 依赖
+# Install web dependencies
 cd web && bun install && cd ..
 
-# 创建功能分支
+# Create feature branch
 git checkout -b feature/your-feature
 ```
 
-### 4. 代码规范
+### 4. Code Standards
 
-- 使用 **TypeScript** 进行开发
-- 运行类型检查: `bun run typecheck`
-- 遵循项目现有的代码风格
-- 添加必要的注释和文档
+- Use **TypeScript** for development
+- Run type check: `bun run typecheck`
+- Follow existing project code style
+- Add necessary comments and documentation
 
-### 5. Pull Request 指南
+### 5. Pull Request Guidelines
 
-- PR 标题应清晰描述所做的事情
-- 描述中应包含：
-  - 解决的问题或添加的功能
-  - 涉及的变更
-  - 测试结果（如果有）
-- 确保所有测试通过
+- PR title should clearly describe what the PR does
+- Description should include:
+  - Problem being solved or feature being added
+  - Changes involved
+  - Test results (if applicable)
+- Ensure all tests pass
 
-## 项目结构
+## Project Structure
 
 ```
 orakel/
-├── src/              # Bot 核心代码
-│   ├── engines/      # 交易策略引擎
-│   ├── indicators/   # 技术指标
-│   └── data/         # 数据源
-├── web/              # 前端代码 (Vite + React)
-├── data/             # 运行时数据
-└── config.json       # 策略配置
+├── src/              # Bot core code
+│   ├── engines/      # Trading strategy engines
+│   ├── indicators/   # Technical indicators
+│   └── data/         # Data sources
+├── web/              # Frontend code (Vite + React)
+├── data/             # Runtime data
+└── config.json       # Strategy configuration
 ```
 
-## 技术栈
+## Tech Stack
 
 - **Backend**: Bun, TypeScript, Hono, ethers
 - **Frontend**: Vite, React 19, Tailwind CSS v4, shadcn/ui
 - **Blockchain**: Polygon, Polymarket CLOB
 
-## 许可证
+## License
 
-通过贡献代码，你同意你的贡献将在 [MIT 许可证](LICENSE) 下发布。
+By contributing code, you agree that your contributions will be released under the [MIT License](LICENSE).
 
 ---
 
-任何问题欢迎提交 Issue 或参与讨论！
+Feel free to submit Issues or join discussions!

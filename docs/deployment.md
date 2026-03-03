@@ -1,14 +1,14 @@
-# 部署指南
+# Deployment Guide
 
-## 1. 快速开始
+## 1. Quick Start
 
-### 1.1 前置要求
+### 1.1 Prerequisites
 
 - Bun v1.0+ (https://bun.sh/)
-- Docker + Docker Compose (容器化部署)
-- OrbStack (macOS 推荐) 或 Docker Desktop
+- Docker + Docker Compose (containerized deployment)
+- OrbStack (macOS recommended) or Docker Desktop
 
-### 1.2 Docker 部署 (推荐)
+### 1.2 Docker Deployment (Recommended)
 
 ```bash
 git clone https://github.com/youming-ai/orakel.git
@@ -17,14 +17,14 @@ cp .env.example .env
 docker compose up --build
 ```
 
-访问 http://localhost:9999 查看集成的 Web 仪表板。
+Visit http://localhost:9999 to view the integrated web dashboard.
 
-### 1.3 远程访问（使用 Tunnel）
+### 1.3 Remote Access (Using Tunnel)
 
-推荐使用 Cloudflare Tunnel、frp 或 ngrok 暴露本地端口：
+Recommended to use Cloudflare Tunnel, frp, or ngrok to expose local port:
 
 ```bash
-# Cloudflare Tunnel (推荐)
+# Cloudflare Tunnel (recommended)
 cloudflare tunnel --url http://localhost:9999
 
 # frp
@@ -34,7 +34,7 @@ frp tcp --local-port 9999 --remote-port 6000
 ngrok http 9999
 ```
 
-### 1.4 本地开发（可选）
+### 1.4 Local Development (Optional)
 
 ```bash
 bun install
@@ -42,27 +42,27 @@ cd web && bun install && cd ..
 cp .env.example .env
 # Terminal 1: Bot
 bun run start
-# Terminal 2: Web 开发服务器
+# Terminal 2: Web dev server
 cd web && bun run dev
 ```
 
 ---
 
-## 2. Docker 架构
+## 2. Docker Architecture
 
-### 2.1 Dockerfile (多阶段构建)
+### 2.1 Dockerfile (Multi-stage Build)
 
-Dockerfile 分为两个阶段:
+Dockerfile divided into two stages:
 
-1. **bot-deps** (`oven/bun:1-alpine`): 使用冻结锁文件安装生产依赖
+1. **bot-deps** (`oven/bun:1-alpine`): Installs production dependencies using frozen lockfile
 2. **release** (`oven/bun:1-alpine`):
-   - 安装 `dumb-init` 处理进程信号
-   - 通过构建参数 `BUILD_UID` / `BUILD_GID` (默认 1000) 创建用户
-   - 复制: `node_modules`、源码
-   - 创建 `data` 目录并设置正确归属
-   - 以非 root 用户 (`bun`) 运行
-   - 暴露端口 9999
-   - 入口点: `dumb-init` → `bun run src/index.ts`
+   - Installs `dumb-init` for signal handling
+   - Creates user via build args `BUILD_UID` / `BUILD_GID` (default 1000)
+   - Copies: `node_modules`, source code
+   - Creates `data` directory with correct ownership
+   - Runs as non-root user (`bun`)
+   - Exposes port 9999
+   - Entry point: `dumb-init` → `bun run src/index.ts`
 
 ### 2.2 docker-compose.yml
 
@@ -80,8 +80,8 @@ services:
     ports:
       - "9999:9999"
     volumes:
-      - ./data:/app/data                       # 持久化数据
-      - ./config.json:/app/config.json:ro      # 配置 (只读)
+      - ./data:/app/data                       # Persistent data
+      - ./config.json:/app/config.json:ro      # Config (read-only)
     restart: unless-stopped
     healthcheck:
       test: wget -q --spider http://localhost:9999/api/health || exit 1
@@ -91,88 +91,88 @@ services:
       start_period: 15s
 ```
 
-关键说明:
+Key notes:
 
-- `BUILD_UID` / `BUILD_GID` 与宿主机用户匹配, 避免卷挂载权限问题
-- `data/` 卷持久化 SQLite 数据库和每日状态
-- `config.json` 以只读方式挂载 (文件监听热重载仍然有效)
-- 健康检查通过 `/api/health` 端点
-- `PAPER_MODE` 默认为 `true` (安全默认值)
+- `BUILD_UID` / `BUILD_GID` match host user to avoid volume mount permission issues
+- `data/` volume persists SQLite database and daily state
+- `config.json` mounted read-only (file watching hot-reload still works)
+- Health check via `/api/health` endpoint
+- `PAPER_MODE` defaults to `true` (safe default)
 
-### 2.3 数据持久化
+### 2.3 Data Persistence
 
-卷挂载 `./data:/app/data` 持久化以下内容:
+Volume mount `./data:/app/data` persists:
 
-- `bot.sqlite` — 交易记录、信号、模拟交易、每日统计、模拟状态
-- `paper-daily-state.json` — 遗留每日状态
-- `live-daily-state.json` — 遗留每日状态
-- `api-creds.json` — 派生的 API 凭证 (权限 0o600)
+- `bot.sqlite` — Trade records, signals, paper trades, daily stats, paper state
+- `paper-daily-state.json` — Legacy daily state
+- `live-daily-state.json` — Legacy daily state
+- `api-creds.json` — Derived API credentials (permissions 0o600)
 
 ---
 
-## 3. 环境变量
+## 3. Environment Variables
 
-### 3.1 完整变量表
+### 3.1 Complete Variable Table
 
-| 变量 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `PAPER_MODE` | boolean | false | 启动时是否启用模拟交易 |
-| `API_PORT` | number | 9999 | API 服务端口 |
-| `API_TOKEN` | string | "" | API 认证令牌 (保护写操作) |
-| `ACTIVE_MARKETS` | string (CSV) | "" | 启用市场 (如 `"BTC,ETH,SOL,XRP"`, 空=全部) |
-| `LOG_LEVEL` | enum | info | 日志级别 (`debug`/`info`/`warn`/`error`/`silent`) |
-| `PERSIST_BACKEND` | enum | sqlite | 写入后端 (`sqlite`/`csv`/`dual`) |
-| `READ_BACKEND` | enum | sqlite | 读取后端 (`sqlite`/`csv`) |
-| `POLYMARKET_SLUG` | string | "" | Polymarket 市场 slug |
-| `POLYMARKET_AUTO_SELECT_LATEST` | boolean | true | 自动选择最新市场 |
-| `POLYMARKET_LIVE_WS_URL` | string | `wss://ws-live-data.polymarket.com` | 实时数据 WebSocket |
-| `POLYMARKET_UP_LABEL` | string | Up | UP 结果标签 |
-| `POLYMARKET_DOWN_LABEL` | string | Down | DOWN 结果标签 |
-| `POLYGON_RPC_URL` | string | `https://polygon-rpc.com` | Polygon RPC 主端点 |
-| `POLYGON_RPC_URLS` | string (CSV) | "" | Polygon RPC 备用列表 |
-| `POLYGON_WSS_URL` | string | "" | Polygon WebSocket 主端点 |
-| `POLYGON_WSS_URLS` | string (CSV) | "" | Polygon WebSocket 备用列表 |
-| `CHAINLINK_BTC_USD_AGGREGATOR` | string | "" | Chainlink BTC/USD 聚合器地址 |
-| `HTTPS_PROXY` | string | "" | HTTP 代理 |
-| `PRIVATE_KEY` | string | "" | 64 位 hex 私钥（可选 `0x` 前缀，启动时自动连接钱包） |
-| `CORS_ORIGIN` | string | `*` | CORS 允许的来源（生产环境建议设为前端域名） |
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `PAPER_MODE` | boolean | false | Enable paper trading at startup |
+| `API_PORT` | number | 9999 | API service port |
+| `API_TOKEN` | string | "" | API authentication token (protects write operations) |
+| `ACTIVE_MARKETS` | string (CSV) | "" | Enabled markets (e.g., `"BTC,ETH,SOL,XRP"`, empty = all) |
+| `LOG_LEVEL` | enum | info | Log level (`debug`/`info`/`warn`/`error`/`silent`) |
+| `PERSIST_BACKEND` | enum | sqlite | Write backend (`sqlite`/`csv`/`dual`) |
+| `READ_BACKEND` | enum | sqlite | Read backend (`sqlite`/`csv`) |
+| `POLYMARKET_SLUG` | string | "" | Polymarket market slug |
+| `POLYMARKET_AUTO_SELECT_LATEST` | boolean | true | Auto-select latest market |
+| `POLYMARKET_LIVE_WS_URL` | string | `wss://ws-live-data.polymarket.com` | Live data WebSocket |
+| `POLYMARKET_UP_LABEL` | string | Up | UP outcome label |
+| `POLYMARKET_DOWN_LABEL` | string | Down | DOWN outcome label |
+| `POLYGON_RPC_URL` | string | `https://polygon-rpc.com` | Polygon RPC primary endpoint |
+| `POLYGON_RPC_URLS` | string (CSV) | "" | Polygon RPC fallback list |
+| `POLYGON_WSS_URL` | string | "" | Polygon WebSocket primary endpoint |
+| `POLYGON_WSS_URLS` | string (CSV) | "" | Polygon WebSocket fallback list |
+| `CHAINLINK_BTC_USD_AGGREGATOR` | string | "" | Chainlink BTC/USD aggregator address |
+| `HTTPS_PROXY` | string | "" | HTTP proxy |
+| `PRIVATE_KEY` | string | "" | 64-digit hex private key (optional `0x` prefix, auto-connects wallet at startup) |
+| `CORS_ORIGIN` | string | `*` | CORS allowed origin (recommend setting to frontend domain in production) |
 
-### 3.2 安全说明
+### 3.2 Security Notes
 
-- `PRIVATE_KEY`：64 位 hex 私钥（可选 `0x` 前缀），启动时自动连接钱包进行实盘交易
-- `CORS_ORIGIN`：CORS 允许的来源（默认 `*`，生产环境建议设为前端域名）
-- `API_TOKEN` 保护所有写操作 (POST/PUT), 建议在生产环境设置
-- `api-creds.json` 以 0o600 权限存储, 包含派生的 API 凭证
+- `PRIVATE_KEY`: 64-digit hex private key (optional `0x` prefix), auto-connects wallet for live trading at startup
+- `CORS_ORIGIN`: CORS allowed origin (default `*`, recommend setting to frontend domain in production)
+- `API_TOKEN` protects all write operations (POST/PUT), recommend setting in production
+- `api-creds.json` stored with 0o600 permissions, contains derived API credentials
 
 ---
 
 ## 4. CI/CD (.github/workflows/ci.yml)
 
-### 4.1 触发条件
+### 4.1 Triggers
 
-- Push 到 `main` 分支
-- 向 `main` 分支发起 Pull Request
-- 并发控制: 同一 ref 的进行中任务会被取消
+- Push to `main` branch
+- Pull Request to `main` branch
+- Concurrency control: In-flight jobs for same ref are canceled
 
-### 4.2 Pipeline 步骤
+### 4.2 Pipeline Steps
 
 **Job 1: check** (Lint · Typecheck · Test)
 
-1. Checkout 代码
-2. 安装 Bun (最新版)
-3. 安装依赖 (冻结锁文件)
-4. `bunx biome lint src/` — 代码检查 (比 `bun run lint` 更严格)
-5. `bunx tsc --noEmit -p tsconfig.check.json` — 类型检查 (排除测试文件)
-6. `bun run test` — 运行所有 vitest 测试
+1. Checkout code
+2. Install Bun (latest version)
+3. Install dependencies (frozen lockfile)
+4. `bunx biome lint src/` — Code linting (stricter than `bun run lint`)
+5. `bunx tsc --noEmit -p tsconfig.check.json` — Type checking (excludes test files)
+6. `bun run test` — Run all vitest tests
 
-**Job 2: docker** (Docker 构建, 依赖 check 通过)
+**Job 2: docker** (Docker build, depends on check passing)
 
-1. Checkout 代码
-2. `docker build -t orakel:ci .` — 构建 Docker 镜像
+1. Checkout code
+2. `docker build -t orakel:ci .` — Build Docker image
 
-### 4.3 本地预检
+### 4.3 Local Pre-check
 
-推送前运行:
+Before pushing, run:
 
 ```bash
 bun run lint && bun run typecheck && bun run test
@@ -180,19 +180,19 @@ bun run lint && bun run typecheck && bun run test
 
 ---
 
-## 5. 配置管理
+## 5. Configuration Management
 
 ### 5.1 config.json
 
-策略和风险参数, 详见 [后端文档](./backend.md#4-配置系统-srcconfigts)。
+Strategy and risk parameters, see [Backend Documentation](./backend.md#4-configuration-system-srcconfigts).
 
-### 5.2 热重载
+### 5.2 Hot Reload
 
-- `config.json` 变更自动检测 (`fs.watch`)
-- Zod 重新验证
-- 无需重启服务
+- `config.json` changes auto-detected (`fs.watch`)
+- Zod re-validation
+- No service restart needed
 
-### 5.3 通过 API 更新
+### 5.3 Update via API
 
 ```bash
 curl -X PUT http://localhost:9999/api/config \
@@ -203,84 +203,84 @@ curl -X PUT http://localhost:9999/api/config \
 
 ---
 
-## 6. 开发命令
+## 6. Development Commands
 
-### 6.1 后端命令
+### 6.1 Backend Commands
 
-| 命令 | 说明 |
-|------|------|
-| `bun run start` | 启动 bot (`src/index.ts`, port 9999) |
-| `bun run typecheck` | TypeScript 类型检查 (含测试文件) |
-| `bun run typecheck:ci` | CI 类型检查 (排除测试文件) |
-| `bun run lint` | Biome 检查 (lint + format) |
-| `bun run lint:fix` | Biome 自动修复 |
-| `bun run format` | Biome 格式化 |
-| `bun run test` | 运行所有测试 (vitest) |
-| `bun run test:watch` | 测试监听模式 |
-| `bunx vitest run src/utils.test.ts` | 运行单个测试文件 |
-| `bunx vitest run -t "clamp"` | 按名称匹配运行测试 |
+| Command | Description |
+|---------|-------------|
+| `bun run start` | Start bot (`src/index.ts`, port 9999) |
+| `bun run typecheck` | TypeScript type checking (includes test files) |
+| `bun run typecheck:ci` | CI type checking (excludes test files) |
+| `bun run lint` | Biome check (lint + format) |
+| `bun run lint:fix` | Biome auto-fix |
+| `bun run format` | Biome formatting |
+| `bun run test` | Run all tests (vitest) |
+| `bun run test:watch` | Test watch mode |
+| `bunx vitest run src/utils.test.ts` | Run single test file |
+| `bunx vitest run -t "clamp"` | Run tests matching name |
 
-### 6.2 前端命令
+### 6.2 Frontend Commands
 
-| 命令 | 说明 |
-|------|------|
-| `cd web && bun run dev` | 启动前端开发服务器 |
-| `cd web && bun run build` | 构建前端 |
-| `cd web && bun install` | 安装前端依赖 |
+| Command | Description |
+|---------|-------------|
+| `cd web && bun run dev` | Start frontend dev server |
+| `cd web && bun run build` | Build frontend |
+| `cd web && bun install` | Install frontend dependencies |
 
-### 6.3 Docker 命令
+### 6.3 Docker Commands
 
-| 命令 | 说明 |
-|------|------|
-| `docker compose up --build` | 构建并启动 |
-| `docker compose up -d` | 后台启动 |
-| `docker compose down` | 停止并移除 |
-| `docker compose logs -f bot` | 查看 bot 日志 |
-| `docker compose restart bot` | 重启 bot |
+| Command | Description |
+|---------|-------------|
+| `docker compose up --build` | Build and start |
+| `docker compose up -d` | Start in background |
+| `docker compose down` | Stop and remove |
+| `docker compose logs -f bot` | View bot logs |
+| `docker compose restart bot` | Restart bot |
 
 ---
 
-## 7. 运维
+## 7. Operations
 
-### 7.1 健康检查
+### 7.1 Health Check
 
 ```bash
 curl http://localhost:9999/api/health
 # { "ok": true, "timestamp": "...", "uptime": 3600, "memory": {...} }
 ```
 
-### 7.2 数据库诊断
+### 7.2 Database Diagnostics
 
 ```bash
 curl http://localhost:9999/api/db/diagnostics
 # { "ok": true, "diagnostics": { "dbPath": "...", "dbSize": ..., ... } }
 ```
 
-### 7.3 日志级别
+### 7.3 Log Levels
 
-通过 `LOG_LEVEL` 环境变量控制:
+Control via `LOG_LEVEL` environment variable:
 
-| 级别 | 说明 |
-|------|------|
-| `debug` | 详细诊断信息 |
-| `info` | 正常操作 (默认) |
-| `warn` | 可恢复问题 |
-| `error` | 失败 |
-| `silent` | 静默 |
+| Level | Description |
+|-------|-------------|
+| `debug` | Detailed diagnostic information |
+| `info` | Normal operation (default) |
+| `warn` | Recoverable issues |
+| `error` | Failures |
+| `silent` | Silent |
 
-### 7.4 故障排除
+### 7.4 Troubleshooting
 
-- **数据库权限**: 确保 `data/` 目录的 UID/GID 匹配容器用户 (`BUILD_UID`/`BUILD_GID`)
-- **端口冲突**: 修改 `API_PORT` 环境变量
-- **RPC 连接失败**: 添加备用 RPC 到 `POLYGON_RPC_URLS`
-- **WebSocket 断连**: 自动重连 (指数退避, 最大 10s)
-- **配置无效**: 查看日志中的 Zod 验证错误, 回退到默认值
+- **Database permissions**: Ensure `data/` directory UID/GID matches container user (`BUILD_UID`/`BUILD_GID`)
+- **Port conflicts**: Change `API_PORT` environment variable
+- **RPC connection failures**: Add fallback RPCs to `POLYGON_RPC_URLS`
+- **WebSocket disconnects**: Auto-reconnect (exponential backoff, max 10s)
+- **Invalid config**: Check logs for Zod validation errors, falls back to defaults
 
 ---
 
-## 8. CI/CD 自动化部署 (VPS)
+## 8. CI/CD Auto-Deployment (VPS)
 
-### 8.1 部署架构
+### 8.1 Deployment Architecture
 
 ```
 ┌─────────────────┐      ┌──────────────────┐      ┌─────────────┐
@@ -289,59 +289,59 @@ curl http://localhost:9999/api/db/diagnostics
 └─────────────────┘      └──────────────────┘      └─────────────┘
 ```
 
-### 8.2 GitHub Secrets 配置
+### 8.2 GitHub Secrets Configuration
 
-进入 GitHub 仓库 **Settings → Secrets and variables → Actions**，添加以下 Secrets:
+Go to GitHub repo **Settings → Secrets and variables → Actions**, add these Secrets:
 
-| Secret 名称 | 说明 | 示例值 |
-|------------|------|--------|
-| `VPS_HOST` | VPS IP 地址 | `123.45.67.89` |
-| `VPS_PORT` | SSH 端口（可选） | `22` |
-| `VPS_USER` | SSH 用户名 | `root` 或 `ubuntu` |
-| `VPS_SSH_KEY` | SSH 私钥 | `cat ~/.ssh/id_rsa` |
-| `VPS_DEPLOY_PATH` | VPS 上项目路径 | `~/orakel` |
+| Secret Name | Description | Example Value |
+|-------------|-------------|---------------|
+| `VPS_HOST` | VPS IP address | `123.45.67.89` |
+| `VPS_PORT` | SSH port (optional) | `22` |
+| `VPS_USER` | SSH username | `root` or `ubuntu` |
+| `VPS_SSH_KEY` | SSH private key | `cat ~/.ssh/id_rsa` |
+| `VPS_DEPLOY_PATH` | Project path on VPS | `~/orakel` |
 
-#### 获取 SSH 私钥
+#### Getting SSH Private Key
 
 ```bash
-# 从本地电脑
+# From local machine
 cat ~/.ssh/id_rsa
-# 或
+# or
 cat ~/.ssh/id_ed25519
 ```
 
-复制完整内容（包括 `-----BEGIN` 和 `-----END` 行）粘贴到 GitHub Secret。
+Copy full content (including `-----BEGIN` and `-----END` lines) and paste to GitHub Secret.
 
-### 8.3 VPS 初始设置
+### 8.3 VPS Initial Setup
 
-第一次部署前，在 VPS 上准备环境：
+Before first deployment, prepare environment on VPS:
 
 ```bash
-# 1. 安装 Docker 和 Docker Compose
+# 1. Install Docker and Docker Compose
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
-# 2. 登录到 GitHub Container Registry
-# 在 GitHub Settings → Developer settings → Personal access tokens → Tokens (classic) 创建 PAT
-# 权限: read:packages, write:packages
+# 2. Login to GitHub Container Registry
+# Create PAT in GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
+# Permissions: read:packages, write:packages
 echo "<YOUR_GITHUB_PAT>" | docker login ghcr.io -u <YOUR_GITHUB_USERNAME> --password-stdin
 
-# 3. 克隆仓库
+# 3. Clone repository
 git clone https://github.com/<your-username>/orakel.git ~/orakel
 cd ~/orakel
 
-# 4. 配置环境
+# 4. Configure environment
 cp .env.example .env
 nano .env
 mkdir -p data
 
-# 5. 首次启动
+# 5. First start
 docker compose up -d
 ```
 
-### 8.4 自动部署流程
+### 8.4 Auto-Deployment Flow
 
-完成上述设置后，**每次推送到 `main` 分支会自动部署**：
+After setup above, **every push to `main` branch auto-deploys**:
 
 ```bash
 git add .
@@ -349,36 +349,36 @@ git commit -m "feat: new feature"
 git push origin main
 ```
 
-GitHub Actions 会自动：
-1. 运行测试和 lint
-2. 构建 Docker 镜像（在 CI 环境，速度快）
-3. 推送到 GitHub Container Registry
-4. SSH 到 VPS 拉取最新镜像
-5. 重启容器
+GitHub Actions will automatically:
+1. Run tests and lint
+2. Build Docker image (fast in CI environment)
+3. Push to GitHub Container Registry
+4. SSH to VPS to pull latest image
+5. Restart container
 
-### 8.5 手动部署
+### 8.5 Manual Deployment
 
-**方式 1: GitHub UI**
-- 进入 Actions 标签页
-- 选择 "Deploy to VPS" workflow
-- 点击 "Run workflow"
+**Method 1: GitHub UI**
+- Go to Actions tab
+- Select "Deploy to VPS" workflow
+- Click "Run workflow"
 
-**方式 2: VPS 手动拉取**
+**Method 2: VPS Manual Pull**
 ```bash
 cd ~/orakel
 ./scripts/vps-deploy.sh ghcr.io/<username>/orakel:<commit-sha>
 ```
 
-### 8.6 故障排查
+### 8.6 Troubleshooting
 
-| 问题 | 解决方案 |
-|------|----------|
-| SSH 连接失败 | 检查 Secret 配置，确认 VPS 防火墙允许 SSH |
-| Docker 登录失败 | 检查 GITHUB_TOKEN 权限，确认 Workflow permissions 已启用 |
-| 镜像拉取缓慢 | 配置 Docker 镜像加速（见下方） |
-| 容器启动失败 | `docker compose logs -f` 查看日志 |
+| Issue | Solution |
+|-------|----------|
+| SSH connection fails | Check Secret configuration, confirm VPS firewall allows SSH |
+| Docker login fails | Check GITHUB_TOKEN permissions, confirm Workflow permissions enabled |
+| Slow image pull | Configure Docker image acceleration (see below) |
+| Container startup fails | `docker compose logs -f` to view logs |
 
-**Docker 镜像加速（国内 VPS）：**
+**Docker Image Acceleration (for domestic VPS):**
 ```bash
 sudo nano /etc/docker/daemon.json
 ```
@@ -393,13 +393,13 @@ sudo nano /etc/docker/daemon.json
 sudo systemctl restart docker
 ```
 
-### 8.7 回滚版本
+### 8.7 Rollback Version
 
 ```bash
-# 查看可用镜像
+# View available images
 docker images "ghcr.io/<username>/orakel" --format "table {{.Tag}}\t{{.CreatedAt}}"
 
-# 回滚到特定版本
+# Rollback to specific version
 export IMAGE_TAG="ghcr.io/<username>/orakel:<commit-sha>"
 docker compose up -d
 ```

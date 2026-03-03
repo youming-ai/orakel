@@ -1,282 +1,295 @@
-# Orakel 系统架构文档
+# Orakel System Architecture
 
-## 1. 系统概览
+## 1. System Overview
 
-Orakel 是一个针对 Polymarket 15 分钟加密货币涨跌市场的自动化交易机器人。
+Orakel is an automated trading bot for Polymarket 15-minute cryptocurrency Up/Down markets.
 
-**技术栈**
+**Tech Stack**
 
-- 后端：Bun 运行时 + TypeScript + Hono + SQLite
-- 前端：React 19 + Vite + shadcn/ui + Tailwind v4
-- 仓库结构：Monorepo（`src/` 后端 + `web/` 前端）
+- Backend: Bun Runtime + TypeScript + Hono + SQLite
+- Frontend: React 19 + Vite + shadcn/ui + Tailwind v4
+- Repository Structure: Monorepo (`src/` backend + `web/` frontend)
 
-**核心特性**
+**Core Features**
 
-- 后端单进程同时承载 API 服务与交易逻辑
-- 支持纸面交易（Paper）与实盘交易（Live）两种模式
-- 通信层：REST API 处理初始加载与变更操作，WebSocket 推送实时状态快照
-- 数据来源：Binance（价格/K线）、Polymarket（市场/订单簿）、Chainlink（链上预言机）
+- Backend single process hosts both API service and trading logic
+- Supports both Paper Trading and Live Trading modes
+- Communication Layer: REST API for initial load and mutations, WebSocket for real-time state snapshots
+- Data Sources: Binance (price/klines), Polymarket (markets/orderbook), Chainlink (on-chain oracle)
 
 ---
 
-## 2. 架构图
+## 2. Architecture Diagram
 
 ```
-外部数据源                        后端（Bun 运行时）                        前端（React 19）
+External Data Sources                Backend (Bun Runtime)                      Frontend (React 19)
 ┌──────────────────┐     ┌─────────────────────────────────────┐    ┌────────────────────┐
-│ Binance REST/WS  │────>│ 数据层 (src/data/)                  │    │ Dashboard          │
+│ Binance REST/WS  │────>│ Data Layer (src/data/)              │    │ Dashboard          │
 │ Polymarket API   │────>│   ├ binance.ts / binanceWs.ts       │    │   ├ Header         │
 │ Polymarket WS    │────>│   ├ polymarket.ts / polymarketLiveWs│    │   ├ MarketCard[]   │
 │ Chainlink RPC    │────>│   ├ chainlink.ts / chainlinkWs.ts   │    │   ├ AnalyticsTabs  │
 │ Chainlink WS     │     │   ├ polymarketClobWs.ts             │    │   └ TradeTable     │
 │ CLOB WS          │     │   └ polygonEvents.ts / Balance.ts   │    └────────────────────┘
 └──────────────────┘     │                                     │              ↑
-                         │ 引擎层 (src/engines/)               │              │
-                         │   ├ probability.ts（概率混合）       │    ┌──────────┴─────────┐
-                         │   ├ regime.ts（市场状态检测）        │    │ REST API (/api/*)   │
-                         │   ├ edge.ts（决策与边缘计算）        │    │ WebSocket (/ws)     │
-                         │   ├ positionSizing.ts（仓位计算）    │    └────────────────────┘
-                         │   ├ arbitrage.ts（套利检测）         │              ↑
-                         │   └ feeOptimization.ts（费用优化）   │              │
+                         │ Engine Layer (src/engines/)        │    ┌──────────┴─────────┐
+                         │   ├ probability.ts (probability)   │    │ REST API (/api/*)   │
+                         │   ├ regime.ts (market state)       │    │ WebSocket (/ws)     │
+                         │   ├ edge.ts (decision & edge)      │    └────────────────────┘
+                         │   ├ positionSizing.ts (sizing)     │              ↑
+                         │   ├ arbitrage.ts (arbitrage)       │              │
+                         │   └ feeOptimization.ts (fees)     │              │
                          │                                     │──────────────┘
-                         │ 指标层 (src/indicators/)            │
+                         │ Indicators Layer (src/indicators/)  │
                          │   ├ rsi.ts      ├ macd.ts          │
                          │   ├ vwap.ts     └ heikenAshi.ts    │
                          │                                     │
-                         │ 交易层 (src/trading/)               │
-                         │   ├ trader.ts（交易执行）            │
-                         │   ├ orderManager.ts（订单管理）      │
-                         │   ├ paperStats.ts（模拟统计）        │
-                         │   ├ persistence.ts（持久化）         │
+                         │ Trading Layer (src/trading/)       │
+                         │   ├ trader.ts (execution)          │
+                         │   ├ orderManager.ts (orders)       │
+                         │   ├ paperStats.ts (paper stats)    │
+                         │   ├ persistence.ts (persistence)   │
                          │   └ terminal.ts / strategyRefinement│
                          │                                     │
-                         │ 区块链层 (src/blockchain/)          │
-                         │   ├ contracts.ts（合约交互）         │
-                         │   ├ reconciler.ts（账本核对）        │
-                         │   ├ redeemer.ts（赎回）              │
-                         │   └ accountState.ts（账户状态）      │
+                         │ Blockchain Layer (src/blockchain/) │
+                         │   ├ contracts.ts (contracts)       │
+                         │   ├ reconciler.ts (reconciliation)  │
+                         │   ├ redeemer.ts (redemption)        │
+                         │   └ accountState.ts (account)      │
                          │                                     │
-                         │ 流水线层 (src/pipeline/)            │
-                         │   ├ fetch.ts（数据获取）             │
-                         │   ├ compute.ts（指标计算）           │
-                         │   └ processMarket.ts（市场处理）    │
+                         │ Pipeline Layer (src/pipeline/)     │
+                         │   ├ fetch.ts (data fetch)          │
+                         │   ├ compute.ts (indicators)        │
+                         │   └ processMarket.ts (market)      │
                          │                                     │
-                         │ 核心层 (src/core/)                  │
-                         │   ├ config.ts（配置管理）            │
-                         │   ├ env.ts（环境变量）               │
-                         │   ├ state.ts（共享状态）             │
-                         │   ├ db.ts（SQLite）                  │
-                         │   ├ logger.ts（日志）                │
-                         │   ├ markets.ts（市场定义）           │
-                         │   ├ utils.ts（工具函数）             │
-                         │   └ cache.ts（缓存）                 │
+                         │ Core Layer (src/core/)             │
+                         │   ├ config.ts (config)             │
+                         │   ├ env.ts (environment)           │
+                         │   ├ state.ts (shared state)        │
+                         │   ├ db.ts (SQLite)                 │
+                         │   ├ logger.ts (logging)            │
+                         │   ├ markets.ts (markets)           │
+                         │   ├ utils.ts (utils)               │
+                         │   └ cache.ts (cache)               │
                          │                                     │
-                         │ 入口 (src/)                         │
-                         │   ├ index.ts（主循环）              │
-                         │   ├ api.ts（Hono 服务器）           │
-                         │   └ types.ts（类型定义）            │
+                         │ Entry (src/)                        │
+                         │   ├ index.ts (main loop)           │
+                         │   ├ api.ts (Hono server)          │
+                         │   └ types.ts (types)              │
                          └─────────────────────────────────────┘
 ```
 
 ---
 
-## 3. 核心模块职责
+## 3. Core Module Responsibilities
 
-### index.ts — 主事件循环
+### index.ts — Main Event Loop
 
-系统入口，驱动整个交易流程。
+System entry point, drives the entire trading flow.
 
-启动阶段按顺序执行：初始化 API 服务器 → 初始化 OrderManager → 加载活跃市场 → 初始化 WebSocket 流（Binance、Polymarket、Chainlink、CLOB）。
+Startup phase executes sequentially: Initialize API server → Initialize OrderManager → Load active markets → Initialize WebSocket streams (Binance, Polymarket, Chainlink, CLOB).
 
-主循环每秒执行一次（由 `CONFIG.pollIntervalMs` 控制）：检查运行状态 → 检测窗口边界 → 处理挂起的启动/停止转换 → 结算纸面交易 → 并行处理所有市场 → 筛选候选交易（ENTER 决策 + 有效价格 + 时机合适）→ 按边缘值降序、rawSum 升序排序 → 执行交易 → 发送状态快照 → 渲染仪表盘 → 休眠。
+Main loop executes every second (controlled by `CONFIG.pollIntervalMs`): Check running state → Detect window boundary → Process pending start/stop transitions → Settle paper trades → Process all markets in parallel → Filter candidates (ENTER decision + valid price + proper timing) → Sort by edge DESC, rawSum ASC → Execute trades → Emit state snapshot → Sleep.
 
-连续 3 次全市场失败后进入安全模式，跳过执行直至恢复。
+Enters safe mode after 3 consecutive all-market failures, skips execution until recovery.
 
-### trading/trader.ts — 交易执行
+### trading/trader.ts — Trade Execution
 
-负责纸面与实盘两种模式的交易执行。
+Handles trade execution for both paper and live modes.
 
-**纸面模式**：验证价格 → 应用限价折扣 → 加入纸面跟踪 → 写入数据库。
+**Paper Mode**: Validate price → Apply limit discount → Add to paper tracking → Write to database.
 
-**实盘模式**：验证客户端与钱包 → 检查每日亏损限额 → 根据时机与信心选择订单类型（LATE 阶段且高信心 → FOK；EARLY/MID 阶段 → GTD post-only）→ 计算动态过期时间 → 下单 → 注册心跳监控。
+**Live Mode**: Validate client and wallet → Check daily loss limit → Select order type based on timing and confidence (LATE phase + HIGH confidence → FOK; EARLY/MID phase → GTD post-only) → Calculate dynamic expiry → Place order → Register heartbeat monitoring.
 
-**心跳机制**：每 5 秒检查一次，仅在存在 GTD 订单时激活。连续 3 次失败则停止实盘并启动指数退避重连（最多 5 次尝试）。
+**Heartbeat Mechanism**: Checks every 5 seconds, only active when GTD orders exist. After 3 consecutive failures, stops live trading and initiates exponential backoff reconnection (max 5 attempts).
 
-### trading/orderManager.ts — 订单轮询生命周期
+### trading/orderManager.ts — Order Polling Lifecycle
 
-每 5 秒通过 CLOB API 轮询活跃订单状态。
+Polls active order status via CLOB API every 5 seconds.
 
-状态流转：placed → live → matched / filled / cancelled / expired。状态变更时触发回调（驱动心跳跟踪）。自动清理超过 20 分钟的历史订单。
+State flow: placed → live → matched / filled / cancelled / expired. Triggers callbacks on state changes (drives heartbeat tracking). Auto-cleanup of historical orders older than 20 minutes.
 
-### core/state.ts — 共享运行时状态
+### core/state.ts — Shared Runtime State
 
-通过模块级单例 + EventEmitter 管理全局状态。
+Manages global state via module-level singleton + EventEmitter.
 
-管理内容：运行状态（paper/live）、挂起的启动/停止转换（周期感知）、各市场快照、状态版本号。
+Managed content: Running states (paper/live), pending start/stop transitions (cycle-aware), per-market snapshots, state version number.
 
-发出事件：`state:snapshot`（每次循环）、`signal:new`、`trade:executed`。
+Emitted events: `state:snapshot` (every loop), `signal:new`, `trade:executed`.
 
-周期感知的挂起转换机制确保状态变更不会发生在窗口处理中途，避免数据不一致。
+Cycle-aware pending transition mechanism ensures state changes don't occur mid-window processing, avoiding data inconsistencies.
 
-### api.ts — Hono HTTP 服务器
+### api.ts — Hono HTTP Server
 
-提供 15 个 REST 端点 + WebSocket 接口。
+Provides 15 REST endpoints + WebSocket interface.
 
-通过 Bearer Token 进行身份验证。速率限制为 600 令牌/60 秒。启用 CORS（来源可通过 `CORS_ORIGIN` 环境变量配置）。导出 `AppType` 供前端 RPC 类型推断使用。
+Authentication via Bearer Token. Rate limiting at 600 tokens/60s. CORS enabled (origin configurable via `CORS_ORIGIN` env var). Exports `AppType` for frontend RPC type inference.
 
-### core/config.ts — 配置管理
+### core/config.ts — Configuration Management
 
-通过 Zod 验证 `config.json`。支持 `fs.watch` 自动热重载。写入采用原子操作（临时文件 + 重命名）。支持旧格式迁移。包含 `RiskConfig`（paper/live 各一份）与 `StrategyConfig`。
+Validates `config.json` via Zod. Supports `fs.watch` auto hot-reload. Atomic writes (temp file + rename). Supports legacy format migration. Contains `RiskConfig` (separate for paper/live) and `StrategyConfig`.
 
-### core/db.ts — 数据库层
+### core/db.ts — Database Layer
 
-SQLite，启用 WAL 模式。包含 5 张表：`trades`、`signals`、`paper_trades`、`daily_stats`、`paper_state`。使用预编译语句缓存。包含 2 个迁移脚本。
+SQLite with WAL mode enabled. Contains 5 tables: `trades`, `signals`, `paper_trades`, `daily_stats`, `paper_state`. Uses prepared statement caching. Includes 2 migration scripts.
 
-### core/markets.ts — 市场定义
+### core/markets.ts — Market Definitions
 
-定义 BTC、ETH、SOL、XRP 四个市场。每个市场包含：Binance 交易对符号、Polymarket 系列 ID/slug、Chainlink 聚合器合约地址、价格精度。
-
----
-
-## 4. 数据流管线（每秒执行）
-
-### 第一阶段：数据采集（并行）
-
-| 数据源 | 内容 | 缓存策略 |
-|--------|------|----------|
-| Binance REST | 240 根 1 分钟 K 线 | 60 秒缓存 |
-| Binance WS | 实时成交数据 | 流式推送 |
-| Polymarket REST | 市场元数据 | 30 秒缓存 |
-| Polymarket REST | 价格与订单簿 | 3 秒缓存 |
-| Polymarket WS | Chainlink 价格推送 | 流式推送 |
-| Chainlink RPC | 链上价格 | 最小间隔 2 秒 |
-| Chainlink WS | AnswerUpdated 事件 | 流式推送 |
-| CLOB WS | 最优买卖价、tick size、结算状态 | 流式推送 |
-
-### 第二阶段：技术指标计算
-
-Heiken Ashi 平滑 K 线 → RSI(14) → MACD(12,26,9) → VWAP 及斜率 → 已实现波动率（60 根 K 线 × √15 年化）
-
-### 第三阶段：概率引擎
-
-1. TA 评分：6 个指标聚合为 `rawUp` 原始概率
-2. 波动率隐含概率：Φ(z) 正态分布，加入肥尾阻尼修正
-3. 时间衰减：S 曲线调整
-4. 混合：50% 波动率 + 50% TA
-5. 调整：Binance 领先效应 ±2%，订单簿失衡 ±2%
-
-### 第四阶段：市场状态检测
-
-`detectRegime()` 输出四种状态：`TREND_UP` / `TREND_DOWN` / `RANGE` / `CHOP`
-
-### 第五阶段：边缘计算
-
-`edge = 模型概率 - 市场价格`，依次扣除：订单簿滑点、价差惩罚、手续费，最终检查 vig 阈值。
-
-### 第六阶段：信心评分
-
-5 个维度加权评分：
-
-| 维度 | 权重 |
-|------|------|
-| 指标一致性 | 25% |
-| 波动率评分 | 15% |
-| 订单簿质量 | 15% |
-| 时机评分 | 25% |
-| 市场状态 | 20% |
-
-### 第七阶段：交易决策
-
-基于阶段的阈值 → 市场乘数 → 状态乘数 → 过度自信上限 → 最低信心检查 → 输出 `ENTER` 或 `NO_TRADE`。
-
-详细策略参数见 `docs/trading-strategy.md`。
-
-### 第八阶段：执行
-
-- **纸面模式**：记录交易，窗口结束时按结算价结算
-- **实盘模式**：通过 CLOB API 提交 FOK 或 GTD 订单
+Defines BTC, ETH, SOL, XRP markets. Each market contains: Binance trading pair symbol, Polymarket series ID/slug, Chainlink aggregator contract address, price precision.
 
 ---
 
-## 5. 15 分钟窗口生命周期
+## 4. Data Flow Pipeline (Per Second Execution)
 
-### 窗口对齐
+### Phase 1: Data Collection (Parallel)
 
-窗口严格对齐到整点刻度：0:00、0:15、0:30、0:45。通过 `prevWindowStartMs` 追踪上一窗口起始时间来检测边界。
+| Data Source | Content | Cache Strategy |
+|-------------|---------|----------------|
+| Binance REST | 240 × 1-minute klines | 60 second cache |
+| Binance WS | Real-time tick data | Streaming |
+| Polymarket REST | Market metadata | 30 second cache |
+| Polymarket REST | Price and orderbook | 3 second cache |
+| Polymarket WS | Chainlink price feed | Streaming |
+| Chainlink RPC | On-chain price | Min 2 second interval |
+| Chainlink WS | AnswerUpdated events | Streaming |
+| CLOB WS | Best bid/ask, tick size, settlement status | Streaming |
 
-### 阶段划分
+### Phase 2: Technical Indicator Calculation
 
-| 阶段 | 剩余时间 | 特征 |
-|------|----------|------|
-| EARLY | > 10 分钟 | 不确定性高，使用 GTD post-only 订单 |
-| MID | 5–10 分钟 | 中等确定性，使用 GTD post-only 订单 |
-| LATE | < 5 分钟 | 高确定性，高信心时使用 FOK 订单 |
+Heiken Ashi smoothed candles → RSI(14) → MACD(12,26,9) → VWAP and slope → Realized volatility (60 candles × √15 annualized)
 
-### 边界处理流程
+### Phase 3: Probability Engine
 
-检测到新窗口时，按顺序执行：
+1. TA Scoring: Aggregate 6 indicators into `rawUp` raw probability
+2. Volatility-Implied Probability: Φ(z) normal distribution with fat-tail dampening
+3. Time Decay: S-curve adjustment
+4. Blend: 50% volatility + 50% TA
+5. Adjustments: Binance lead effect ±2%, orderbook imbalance ±2%
 
-1. 处理挂起的启动/停止转换
-2. 结算上一窗口的纸面交易
-3. 赎回实盘持仓
-4. 重置各市场跟踪器
+### Phase 4: Market Regime Detection
 
-### 周期感知转换
+`detectRegime()` outputs four states: `TREND_UP` / `TREND_DOWN` / `RANGE` / `CHOP`
 
-挂起的模式切换（paper ↔ live）被推迟到窗口边界执行，防止在窗口处理中途发生状态变更导致数据不一致。
+### Phase 5: Edge Computation
+
+`edge = modelProb - marketPrice`, deduct in sequence: orderbook slippage, spread penalty, fees, finally check vig thresholds.
+
+### Phase 6: Confidence Scoring
+
+5 dimensions weighted scoring:
+
+| Dimension | Weight |
+|-----------|--------|
+| Indicator Alignment | 25% |
+| Volatility Score | 15% |
+| Orderbook Score | 15% |
+| Timing Score | 25% |
+| Regime Score | 20% |
+
+### Phase 7: Trading Decision
+
+Phase-based thresholds → Market multiplier → Regime multiplier → Overconfidence cap → Minimum confidence check → Output `ENTER` or `NO_TRADE`.
+
+For detailed strategy parameters, see `docs/trading-strategy.md`.
+
+### Phase 8: Execution
+
+- **Paper Mode**: Record trade, settle at window end by settlement price
+- **Live Mode**: Submit FOK or GTD order via CLOB API
 
 ---
 
-## 6. 状态管理模式
+## 5. 15-Minute Window Lifecycle
 
-**模块级单例**：无依赖注入框架，直接使用模块顶层变量作为共享状态。适合单进程机器人，简单且无额外开销。
+### Window Alignment
 
-**EventEmitter（botEvents）**：跨模块通信的核心机制。主要事件：
+Windows strictly aligned to quarter-hour marks: 0:00, 0:15, 0:30, 0:45. Tracks previous window start time via `prevWindowStartMs` to detect boundaries.
 
-- `state:snapshot` — 每次主循环结束后发出，携带完整状态快照，WebSocket 广播给前端
-- `signal:new` — 新信号产生时发出
-- `trade:executed` — 交易执行完成时发出
+### Phase Division
 
-**状态版本号**：每次快照递增，前端用于检测乱序消息。
+| Phase | Time Remaining | Characteristics |
+|-------|----------------|-----------------|
+| EARLY | > 10 minutes | High uncertainty, use GTD post-only orders |
+| MID | 5–10 minutes | Medium certainty, use GTD post-only orders |
+| LATE | < 5 minutes | High certainty, use FOK orders when confidence is high |
 
-**周期感知挂起转换**：`pendingStart` / `pendingStop` 标志位在窗口边界才被消费，确保状态切换的原子性。
+### Boundary Handling Flow
 
----
+When new window detected, execute in sequence:
 
-## 7. 错误处理策略
+1. Process pending start/stop transitions
+2. Settle previous window's paper trades
+3. Redeem live positions
+4. Reset per-market trackers
 
-**市场级隔离**：每个市场独立处理，单个市场失败不阻塞其他市场的执行。
+### Cycle-Aware Transitions
 
-**安全模式**：连续 3 次或以上全市场失败后进入安全模式，跳过交易执行，直至至少一个市场成功处理。
-
-**心跳韧性**：实盘 GTD 订单通过心跳监控。连续失败后启动指数退避重连，最多尝试 5 次。
-
-**RPC 故障转移**：Chainlink 配置多个 RPC 端点，自动记住上次成功的首选端点，失败时轮换。
-
-**WebSocket 自动重连**：所有 WebSocket 连接（Binance、Polymarket、Chainlink、CLOB）在断开后自动重连，退避时间从 500ms 指数增长至最大 10 秒。
-
-**优雅降级**：数据获取失败时使用缓存数据继续运行，记录警告日志但不中断主循环。
+Pending mode switches (paper ↔ live) are deferred to window boundaries, preventing state changes mid-window processing that could cause data inconsistencies.
 
 ---
 
-## 8. 设计决策
+## 6. State Management Pattern
 
-### 为什么选择 Bun
+**Module-Level Singleton**: No dependency injection framework, uses module top-level variables as shared state. Suitable for single-process bot, simple with no overhead.
 
-Bun 提供快速启动时间、原生 TypeScript 支持（无需额外编译步骤）以及内置 SQLite 驱动，减少了外部依赖数量，适合单进程交易机器人场景。
+**EventEmitter (botEvents)**: Core mechanism for cross-module communication. Main events:
 
-### 为什么选择 Hono
+- `state:snapshot` — Emitted after each main loop, carries full state snapshot, WebSocket broadcast to frontend
+- `signal:new` — Emitted when new signal generated
+- `trade:executed` — Emitted when trade execution completes
 
-Hono 轻量、无运行时依赖，支持链式路由定义并导出 `AppType`，前端可通过 `hc<AppType>()` 获得完整的端到端类型推断，消除 API 契约漂移风险。
+**State Version Number**: Increments each snapshot, frontend uses it to detect out-of-order messages.
 
-### 为什么使用模块级单例而非依赖注入
+**Cycle-Aware Pending Transitions**: `pendingStart` / `pendingStop` flags only consumed at window boundaries, ensuring atomic state transitions.
 
-Orakel 是单进程应用，不需要多实例或测试隔离。模块级单例代码更简洁，无框架开销，符合 YAGNI 原则。
+---
 
-### 为什么需要周期感知转换
+## 7. Error Handling Strategy
 
-15 分钟窗口内的状态切换（如从纸面切换到实盘）可能导致同一窗口内部分交易以纸面模式记录、部分以实盘模式执行，造成统计数据不一致。将转换推迟到窗口边界确保每个窗口内模式统一。
+**Market-Level Isolation**: Each market processed independently, single market failure doesn't block others.
 
-### 为什么同时使用 REST 和 WebSocket
+**Safe Mode**: After 3+ consecutive all-market failures, enters safe mode, skips trade execution until at least one market processes successfully.
 
-REST API 用于初始页面加载（获取历史数据、配置、交易记录）和变更操作（修改配置、启停机器人），语义清晰且易于调试。WebSocket 用于推送实时状态快照（每秒一次），避免前端频繁轮询，降低延迟。两者职责分离，互不干扰。
+**Heartbeat Resilience**: Live GTD orders monitored via heartbeat. After consecutive failures, initiates exponential backoff reconnection, max 5 attempts.
+
+**RPC Failover**: Chainlink configured with multiple RPC endpoints, auto-remembers last successful primary endpoint, rotates on failure.
+
+**WebSocket Auto-Reconnect**: All WebSocket connections (Binance, Polymarket, Chainlink, CLOB) auto-reconnect on disconnect, backoff grows exponentially from 500ms to max 10 seconds.
+
+**Graceful Degradation**: Uses cached data when data fetch fails, logs warning but doesn't interrupt main loop.
+
+---
+
+## 8. Design Decisions
+
+### Why Bun
+
+Bun provides fast startup time, native TypeScript support (no additional compilation step), and built-in SQLite driver, reducing external dependency count, suitable for single-process trading bot scenario.
+
+### Why Hono
+
+Hono is lightweight, no runtime dependencies, supports chained route definitions and exports `AppType`, frontend gets full end-to-end type inference via `hc<AppType>()`, eliminating API contract drift risk.
+
+### Why Module-Level Singleton Over Dependency Injection
+
+Orakel is a single-process application, doesn't need multiple instances or test isolation. Module-level singleton code is simpler, no framework overhead, follows YAGNI principle.
+
+### Why Cycle-Aware Transitions
+
+State switches within 15-minute windows (like switching from paper to live) could cause some trades in same window to be recorded in paper mode while others executed in live mode, creating statistical inconsistencies. Deferring transitions to window boundaries ensures mode uniformity within each window.
+
+### Why Both REST and WebSocket
+
+REST API used for initial page load (fetching historical data, config, trade records) and mutations (changing config, starting/stopping bot), semantically clear and easy to debug. WebSocket used for pushing real-time state snapshots (once per second), avoiding frontend frequent polling, reducing latency. Clear separation of concerns, no interference.
+
+---
+
+## 9. Architecture Diagrams
+
+For detailed flowcharts showing:
+- System data flow
+- Trading decision logic
+- Probability engine
+- Order execution
+- Market regime detection
+
+See [FLOWCHARTS.md](./FLOWCHARTS.md)
