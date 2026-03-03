@@ -1,5 +1,4 @@
 import type { ReconStatus } from "../types.ts";
-import { USDC_E_DECIMALS } from "./contracts.ts";
 
 // --- Local row types for type guards ---
 

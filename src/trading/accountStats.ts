@@ -455,7 +455,7 @@ export class AccountStatsManager {
 				this.state.losses++;
 			}
 
-			this.state.currentBalance += (trade.size * trade.price) + trade.pnl;
+			this.state.currentBalance += trade.size * trade.price + trade.pnl;
 			const drawdown = this.state.initialBalance - this.state.currentBalance;
 			if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
 			this.state.totalPnl += trade.pnl;

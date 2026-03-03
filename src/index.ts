@@ -25,7 +25,7 @@ import { OrderManager, type TrackedOrder } from "./trading/orderManager.ts";
 import { shouldTakeTrade } from "./trading/strategyRefinement.ts";
 import { renderDashboard } from "./trading/terminal.ts";
 import { connectWallet, executeTrade, stopHeartbeat, unregisterOpenGtdOrder } from "./trading/trader.ts";
-import type { MarketSnapshot, OrderTracker, StreamHandles, WsStreamHandle } from "./types.ts";
+import type { MarketSnapshot, StreamHandles, WsStreamHandle } from "./types.ts";
 
 export type { ProcessMarketResult } from "./pipeline/processMarket.ts";
 
@@ -158,7 +158,7 @@ async function main(): Promise<void> {
 				if (ts < cutoff) this.orders.delete(key);
 			}
 		},
-onCooldown(): boolean {
+		onCooldown(): boolean {
 			if (this.cooldownMs <= 0) return false;
 			return Date.now() - this.lastTradeMs < this.cooldownMs;
 		},
@@ -183,7 +183,9 @@ onCooldown(): boolean {
 		restoredCount++;
 	}
 	if (restoredCount > 0) {
-		log.info(`Restored ${restoredCount} pending live trades into trackers (window active: ${liveTracker.canTradeGlobally(1) ? 0 : "≥1"})`);
+		log.info(
+			`Restored ${restoredCount} pending live trades into trackers (window active: ${liveTracker.canTradeGlobally(1) ? 0 : "≥1"})`,
+		);
 	}
 
 	let prevWindowStartMs: number | null = null;

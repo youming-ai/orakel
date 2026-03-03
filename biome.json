@@ -46,6 +46,31 @@
 			}
 		}
 	},
+	"overrides": [
+		{
+			"includes": ["src/__tests__/**/*.test.ts", "src/**/__tests__/**/*.ts"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noExplicitAny": "off"
+					},
+					"style": {
+						"noNonNullAssertion": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["src/core/logger.ts"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noConsole": "off"
+					}
+				}
+			}
+		}
+	],
 	"assist": {
 		"actions": {
 			"source": {

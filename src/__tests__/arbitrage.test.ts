@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ArbitrageOpportunity } from "../engines/arbitrage.ts";
 import { detectArbitrage } from "../engines/arbitrage.ts";
 
 describe("detectArbitrage", () => {
@@ -39,8 +38,8 @@ describe("detectArbitrage", () => {
 		it("should set confidence between 0.5 and 1.0", () => {
 			const result = detectArbitrage("BTC", 0.3, 0.4, 0.5, 0.05);
 			expect(result).not.toBeNull();
-			expect(result!.confidence).toBeGreaterThanOrEqual(0.5);
-			expect(result!.confidence).toBeLessThanOrEqual(1);
+			expect(result?.confidence).toBeGreaterThanOrEqual(0.5);
+			expect(result?.confidence).toBeLessThanOrEqual(1);
 		});
 
 		it("should include timestamp", () => {
@@ -48,8 +47,8 @@ describe("detectArbitrage", () => {
 			const result = detectArbitrage("BTC", 0.3, 0.5, 0.5, 0.01);
 			const after = Date.now();
 			expect(result).not.toBeNull();
-			expect(result!.timestamp).toBeGreaterThanOrEqual(before);
-			expect(result!.timestamp).toBeLessThanOrEqual(after);
+			expect(result?.timestamp).toBeGreaterThanOrEqual(before);
+			expect(result?.timestamp).toBeLessThanOrEqual(after);
 		});
 	});
 
@@ -114,8 +113,8 @@ describe("detectArbitrage", () => {
 			// Prices above 1 are normalized
 			const result = detectArbitrage("BTC", 0.3, 0.5, 0.8, 0.01);
 			expect(result).not.toBeNull();
-			expect(result!.polymarketPrice).toBeLessThanOrEqual(1);
-			expect(result!.binancePrice).toBeLessThanOrEqual(1);
+			expect(result?.polymarketPrice).toBeLessThanOrEqual(1);
+			expect(result?.binancePrice).toBeLessThanOrEqual(1);
 		});
 
 		it("should handle very small spreads near minSpread boundary", () => {
@@ -145,7 +144,7 @@ describe("detectArbitrage", () => {
 		it("should have confidence at 0.5 when spread equals minSpread", () => {
 			// spreadStrength = (spread - minSpread) / minSpread = 0
 			// confidence = 0.5 + 0 * 0.5 = 0.5
-			const result = detectArbitrage("BTC", 0.3, 0.6, 0.5, 0.2);
+			const _result = detectArbitrage("BTC", 0.3, 0.6, 0.5, 0.2);
 			// spread = 0.2, minSpread = 0.2 => just at boundary
 			// polyUp=0.3, binanceUp=0.5, need 0.3 < 0.5-0.2=0.3 => false
 			// This won't trigger, let me fix:
@@ -154,7 +153,7 @@ describe("detectArbitrage", () => {
 			expect(result2).not.toBeNull();
 			// spreadStrength = (0.21 - 0.2) / 0.2 = 0.05
 			// confidence = 0.5 + 0.05 * 0.5 = 0.525
-			expect(result2!.confidence).toBeCloseTo(0.525, 1);
+			expect(result2?.confidence).toBeCloseTo(0.525, 1);
 		});
 	});
 });

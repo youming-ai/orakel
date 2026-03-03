@@ -46,9 +46,7 @@ export function getDb(): Database {
 			fs.unlinkSync(testFile);
 			log.info("  Directory is writable:", dataDir);
 		} catch (err) {
-			throw new Error(
-				`Directory "${dataDir}" is not writable. ` + `Error: ${err}. ` + `Check file permissions and ownership.`,
-			);
+			throw new Error(`Directory "${dataDir}" is not writable. Error: ${err}. Check file permissions and ownership.`);
 		}
 
 		// Open database with error handling
@@ -379,11 +377,12 @@ function runMigrations(db: Database): void {
 
 	// Repair: live_trades / live_state may be missing if migration 4 recorded but tables were dropped.
 	// Re-create with IF NOT EXISTS — idempotent, safe to run unconditionally.
-	const liveTblCount = (
-		db.query("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='live_trades'").get() as {
-			n: number;
-		} | null
-	)?.n ?? 0;
+	const liveTblCount =
+		(
+			db.query("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='live_trades'").get() as {
+				n: number;
+			} | null
+		)?.n ?? 0;
 	if (liveTblCount === 0) {
 		log.warn("live_trades table missing — recreating");
 		db.transaction(() => {
@@ -419,9 +418,7 @@ function runMigrations(db: Database): void {
 					settle_price REAL
 				)
 			`);
-			db.run(
-				"CREATE INDEX IF NOT EXISTS idx_live_trades_resolved ON live_trades(resolved, timestamp DESC)",
-			);
+			db.run("CREATE INDEX IF NOT EXISTS idx_live_trades_resolved ON live_trades(resolved, timestamp DESC)");
 		})();
 	}
 }
