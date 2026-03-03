@@ -85,6 +85,7 @@ cd web && bun run dev
 | [部署指南](./docs/deployment.md) | Docker、CI/CD、环境配置、VPS 自动部署 |
 | [开发与部署](./docs/development-and-deployment.md) | 本地开发、Docker 部署、生产环境完整流程 |
 | [Cloudflare Pages 部署](./docs/cloudflare-pages-deployment.md) | 前端部署到 Cloudflare Pages 详细指南 |
+| [测试文档](./docs/testing.md) | 测试覆盖范围、测试文件组织、运行测试 |
 
 ## 免责声明
 

@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 interface TradeTableProps {
 	trades: TradeRecord[];
 	paperMode: boolean;
+	viewMode?: "paper" | "live";
 }
 
 function fmtTimestamp(ts: string): string {
@@ -37,15 +38,15 @@ function getPolymarketUrl(slug: string): string {
 	return `https://polymarket.com/event/${slug}`;
 }
 
-export function TradeTable({ trades, paperMode }: TradeTableProps) {
+export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
+	// Determine the mode for display
+	const getDisplayMode = (trade: TradeRecord): string => {
+		return trade.mode?.toUpperCase() || (paperMode ? "PAPER" : "LIVE");
+	};
 	const [page, setPage] = useState(1);
 
-	// Reset page when trades change
+	// Reset to first page when trades list changes
 	useEffect(() => {
-		if (trades.length === 0) {
-			setPage(1);
-			return;
-		}
 		setPage(1);
 	}, [trades.length]);
 
@@ -69,7 +70,9 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 						<div key={`${t.orderId}-${i}`} className="p-3 border border-border/60 rounded-lg bg-card/50 flex flex-col gap-2 relative">
 							<div className="flex items-start justify-between">
 								<div className="flex flex-col">
-									<span className="text-xs text-muted-foreground">{fmtDate(t.timestamp)} {fmtTimestamp(t.timestamp)}</span>
+									<span className="text-xs text-muted-foreground">
+										{fmtDate(t.timestamp)} {fmtTimestamp(t.timestamp)}
+									</span>
 									<span className="font-mono text-sm font-medium mt-0.5 max-w-[200px] truncate">
 										{slug ? (
 											<a
@@ -100,7 +103,9 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 							<div className="grid grid-cols-2 gap-2 mt-1 text-xs">
 								<div className="flex flex-col bg-muted/20 border border-border/30 p-2 rounded-md">
 									<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Amount</span>
-									<span className="font-mono">{t.amount} {isUp ? "YES" : "NO"}</span>
+									<span className="font-mono">
+										{t.amount} {isUp ? "YES" : "NO"}
+									</span>
 								</div>
 								<div className="flex flex-col bg-muted/20 border border-border/30 p-2 rounded-md">
 									<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Price</span>
@@ -112,14 +117,17 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 								<Badge variant="outline" className="text-[10px] px-1.5 font-normal bg-background/50 text-muted-foreground">
 									status: {t.status || "placed"}
 								</Badge>
-								{paperMode && (
-									<Badge
-										variant="secondary"
-										className="text-[10px] px-1.5 bg-amber-500/15 text-amber-400 border-amber-500/30"
-									>
-										PAPER
-									</Badge>
-								)}
+								<Badge
+									variant="secondary"
+									className={cn(
+										"text-[10px] px-1.5",
+										getDisplayMode(t) === "PAPER"
+											? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+											: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+									)}
+								>
+									{getDisplayMode(t)}
+								</Badge>
 							</div>
 						</div>
 					);
@@ -138,7 +146,7 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 							<TableHead className="w-16 text-right hidden sm:table-cell">Amount</TableHead>
 							<TableHead className="w-16 text-right hidden sm:table-cell">Price</TableHead>
 							<TableHead className="w-24 hidden sm:table-cell">Status</TableHead>
-							{paperMode && <TableHead className="w-16 hidden sm:table-cell">Mode</TableHead>}
+							<TableHead className="w-16 hidden sm:table-cell">Mode</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -185,16 +193,19 @@ export function TradeTable({ trades, paperMode }: TradeTableProps) {
 											{t.status || "placed"}
 										</Badge>
 									</TableCell>
-									{paperMode && (
-										<TableCell className="hidden sm:table-cell">
-											<Badge
-												variant="secondary"
-												className="text-[11px] px-1.5 bg-amber-500/15 text-amber-400 border-amber-500/30"
-											>
-												PAPER
-											</Badge>
-										</TableCell>
-									)}
+									<TableCell className="hidden sm:table-cell">
+										<Badge
+											variant="secondary"
+											className={cn(
+												"text-[11px] px-1.5",
+												getDisplayMode(t) === "PAPER"
+													? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+													: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+											)}
+										>
+											{getDisplayMode(t)}
+										</Badge>
+									</TableCell>
 								</TableRow>
 							);
 						})}

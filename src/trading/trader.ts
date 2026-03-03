@@ -834,6 +834,7 @@ export function resolveLiveTrades(windowStartMs: number, finalPrices: Map<string
 				$won: won ? 1 : 0,
 				$orderId: trade.orderId,
 				$mode: "live",
+				$status: won ? "won" : "lost",
 			});
 		} catch (err) {
 			log.warn(`Failed to update trade outcome for ${trade.orderId}:`, err);

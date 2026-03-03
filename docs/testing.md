@@ -11,8 +11,7 @@
 3. [技术指标](#3-技术指标)
 4. [数据处理](#4-数据处理)
 5. [区块链集成](#5-区块链集成)
-6. [工具函数](#6-工具函数)
-7. [运行测试](#7-运行测试)
+6. [运行测试](#6-运行测试)
 
 ---
 
@@ -20,15 +19,13 @@
 
 ### 测试文件统计
 
-| 类别 | 测试文件数 | 覆盖范围 |
+| 类别 | 测试文件数 | 测试数量 |
 |------|-----------|---------|
-| 核心交易引擎 | 5 | 概率、边缘、仓位、套利、费率优化 |
-| 技术指标 | 4 | RSI、MACD、Heiken Ashi、VWAP |
-| 数据处理 | 3 | Polymarket、Chainlink、缓存 |
-| 区块链集成 | 2 | 账户状态、对账、合约 |
-| 工具函数 | 2 | 通用工具、策略优化 |
-| 市场状态 | 1 | 市场制度检测 |
-| **总计** | **17** | |
+| 核心交易引擎 | 3 | 106 |
+| 技术指标 | 4 | 91 |
+| 数据处理 | 3 | 71 |
+| 区块链集成 | 3 | 30 |
+| **总计** | **13** | **298** |
 
 ### 测试组织结构
 
@@ -38,9 +35,7 @@ src/
 │   ├── engines/          # 核心交易引擎测试
 │   ├── indicators/       # 技术指标测试
 │   ├── data/             # 数据源测试
-│   ├── blockchain/       # 区块链集成测试
-│   ├── trading/          # 交易逻辑测试
-│   └── core/             # 核心工具测试
+│   └── blockchain/       # 区块链集成测试
 ```
 
 ---
@@ -63,6 +58,8 @@ src/
 - Heiken Ashi 颜色和连续计数
 - 失败 VWAP 收回检测
 
+**测试数量：** 36
+
 ### 2.2 边缘引擎 ([edge.test.ts](../src/__tests__/edge.test.ts))
 
 **测试函数：**
@@ -77,20 +74,9 @@ src/
 - 高 vig 检测（sum > 1.04）
 - 市场制度乘数应用
 
-### 2.3 仓位计算 ([positionSizing.test.ts](../src/__tests__/positionSizing.test.ts))
+**测试数量：** 49
 
-**测试函数：**
-- `calculateKellyPositionSize()` - Kelly 公式仓位
-
-**覆盖场景：**
-- 有效输入范围
-- 胜率 < 50%（做空）
-- 胜率 > 50%（做多）
-- 概率 = 50%（无信号）
-- 胜率 + 赔率 = 1（中性）
-- 零除保护
-
-### 2.4 套利检测 ([arbitrage.test.ts](../src/__tests__/arbitrage.test.ts))
+### 2.3 套利检测 ([arbitrage.test.ts](../src/__tests__/arbitrage.test.ts))
 
 **测试函数：**
 - `detectArbitrage()` - UP/DOWN 价格套利检测
@@ -102,16 +88,7 @@ src/
 - 置信度计算
 - 时间戳生成
 
-### 2.5 费率优化 ([feeOptimization.test.ts](../src/__tests__/feeOptimization.test.ts))
-
-**测试函数：**
-- `selectOrderStrategy()` - 订单策略选择
-- `optimizeBuyPrice()` - 买入价优化
-
-**覆盖场景：**
-- 阶段基于策略（EARLY/MID/LATE）
-- 流动性阈值检查
-- 买入价计算
+**测试数量：** 21
 
 ---
 
@@ -130,6 +107,8 @@ src/
 - RSI 极值（超买/超卖）
 - RSI 中性区间
 
+**测试数量：** 36
+
 ### 3.2 MACD 指标 ([macd.test.ts](../src/__tests__/macd.test.ts))
 
 **测试函数：**
@@ -138,6 +117,8 @@ src/
 **覆盖场景：**
 - 完整 MACD 计算
 - 零柱状图保护
+
+**测试数量：** 13
 
 ### 3.3 Heiken Ashi ([heikenAshi.test.ts](../src/__tests__/heikenAshi.test.ts))
 
@@ -149,6 +130,8 @@ src/
 - HA 蜡烛颜色（红/绿）
 - 连续计数逻辑
 
+**测试数量：** 25
+
 ### 3.4 VWAP 指标 ([vwap.test.ts](../src/__tests__/vwap.test.ts))
 
 **测试函数：**
@@ -159,6 +142,8 @@ src/
 - 会话 VWAP 计算
 - VWAP 系列斜率
 - 斜率方向分类
+
+**测试数量：** 17
 
 ---
 
@@ -176,6 +161,8 @@ src/
 - 事件市场扁平化
 - 价格基准获取
 
+**测试数量：** 51
+
 ### 4.2 Chainlink 数据 ([chainlinkWs.test.ts](../src/__tests__/chainlinkWs.test.ts))
 
 **测试函数：**
@@ -185,6 +172,8 @@ src/
 - 正数转换
 - 负数转换（最高位为 1）
 - 零值
+
+**测试数量：** 15
 
 ### 4.3 缓存 ([cache.test.ts](../src/__tests__/cache.test.ts))
 
@@ -196,6 +185,8 @@ src/
 - TTL 过期
 - 命中率追踪
 
+**测试数量：** 5
+
 ---
 
 ## 5. 区块链集成
@@ -203,112 +194,85 @@ src/
 ### 5.1 账户状态 ([accountState.test.ts](../src/__tests__/accountState.test.ts))
 
 **测试函数：**
-- `updateFromSnapshot()` - 快照更新
-- `applyEvent()` - 事件应用
+- `initAccountState()` - 初始化账户状态
+- `updateFromSnapshot()` - 从快照更新
+- `applyEvent()` - 应用链上事件
+- `enrichPosition()` - 仓位信息丰富
+- `resetAccountState()` - 重置状态
 
 **覆盖场景：**
-- 余额快照更新
-- 铸造事件
-- 赎回事件
-- CTF 代币位置追踪
+- USDC 余额更新
+- CTF 代币仓位追踪
+- 链上事件应用（转账、单次转账）
+- 仓位信息丰富
+- 账户摘要获取
 
-### 5.2 对账 ([reconciler.test.ts](../src/__tests__/reconciler.test.ts))
+**测试数量：** 9
+
+### 5.2 对账逻辑 ([reconciler.test.ts](../src/__tests__/reconciler.test.ts))
 
 **测试函数：**
-- `statusFromConfidence()` - 置信度转状态
-- `rawToUsdc()` - 原始值转 USDC
-- `isEventRow()` - 事件行验证
-- `isKnownTokenRow()` - 已知代币行验证
-- `isTradeRow()` - 交易行验证
+- `statusFromConfidence()` - 置信度转对账状态
+- `rawToUsdc()` - 代币原始值转 USDC
+- `isEventRow()` - 事件行类型检查
+- `isKnownTokenRow()` - 已知代币行类型检查
+- `isTradeRow()` - 交易行类型检查
 
 **覆盖场景：**
-- 置信度阈值（unreconciled/pending/confirmed/disputed）
-- Token 数量转 USDC
-- 行类型验证
+- 对账状态分类（已确认/待处理/未对账/有争议）
+- 代币金额转换（不同小数位数）
+- 数据库行类型验证
 
-### 5.3 合约 ([contracts.test.ts](../src/__tests__/contracts.test.ts))
+**测试数量：** 16
+
+### 5.3 合约常量 ([contracts.test.ts](../src/__tests__/contracts.test.ts))
 
 **测试函数：**
-- ConditionalToken 合约接口
-- CTFToken 合约接口
+- 合约地址验证
+- 代币精度常量
 
 **覆盖场景：**
-- 合约地址常量
-- ABI 接口
+- CTF 合约地址格式
+- USDC-E 合约地址格式
+- USDC 精度（6 位小数）
+
+**测试数量：** 5
 
 ---
 
-## 6. 工具函数
+## 6. 运行测试
 
-### 6.1 通用工具 ([utils.test.ts](../src/__tests__/utils.test.ts))
-
-**测试函数：**
-- `clamp()` - 数值限制
-- `getCandleWindowTiming()` - 窗口时间计算
-
-**覆盖场景：**
-- 范围限制
-- 边界值
-- 窗口边界计算
-
-### 6.2 策略优化 ([strategyRefinement.test.ts](../src/__tests__/strategyRefinement.test.ts))
-
-**测试常量：**
-- `MARKET_ADJUSTMENTS` - 市场特定调整
-- `BACKTEST_INSIGHTS` - 回测洞察
-
-**测试函数：**
-- `shouldTakeTrade()` - 交易决策
-
-**覆盖场景：**
-- 市场调整系数
-- 回测洞察数据
-- 交易过滤逻辑
-
----
-
-## 7. 市场状态
-
-### 7.1 制度检测 ([regime.test.ts](../src/__tests__/regime.test.ts))
-
-**测试函数：**
-- `detectRegime()` - 市场制度检测
-
-**覆盖场景：**
-- TREND_UP（价格 > VWAP，VWAP 上升）
-- TREND_DOWN（价格 < VWAP，VWAP 下降）
-- CHOP（VWAP 频繁交叉）
-- RANGE（默认状态）
-
----
-
-## 8. 运行测试
-
-### 8.1 运行所有测试
+### 6.1 运行所有测试
 
 ```bash
 bun run test
 ```
 
-### 8.2 监听模式
+**当前结果：**
+```
+✓ 13 passed (298 tests)
+Duration: ~1.7s
+```
+
+### 6.2 监听模式
 
 ```bash
 bun run test:watch
 ```
 
-### 8.3 运行单个测试文件
+### 6.3 运行单个测试文件
 
 ```bash
 bunx vitest run src/__tests__/edge.test.ts
 ```
 
-### 8.4 运行匹配的测试
+### 6.4 运行匹配的测试
 
 ```bash
 bunx vitest run -t "computeEdge"
 ```
 
-### 8.5 测试覆盖率
+### 6.5 测试覆盖率
 
 ```bash
 bunx vitest run --coverage
@@ -316,27 +280,39 @@ bunx vitest run --coverage
 
 ---
 
-## 9. 测试最佳实践
+## 7. 测试文件清单
 
-### 9.1 测试组织
+| 文件 | 类别 | 测试数 | 说明 |
+|------|------|--------|------|
+| `probability.test.ts` | 核心引擎 | 36 | 概率模型、方向评分、时间衰减 |
+| `edge.test.ts` | 核心引擎 | 49 | 边缘计算、置信度、交易决策 |
+| `arbitrage.test.ts` | 核心引擎 | 21 | 套利检测 |
+| `rsi.test.ts` | 技术指标 | 36 | RSI、SMA、斜率 |
+| `macd.test.ts` | 技术指标 | 13 | MACD 计算 |
+| `heikenAshi.test.ts` | 技术指标 | 25 | HA 蜡烛、连续计数 |
+| `vwap.test.ts` | 技术指标 | 17 | VWAP 系列、斜率 |
+| `polymarket.test.ts` | 数据处理 | 51 | Polymarket 数据解析 |
+| `chainlinkWs.test.ts` | 数据处理 | 15 | Chainlink 价格转换 |
+| `cache.test.ts` | 数据处理 | 5 | TTL 缓存 |
+| `accountState.test.ts` | 区块链 | 9 | 账户状态管理 |
+| `reconciler.test.ts` | 区块链 | 16 | 对账逻辑、类型检查 |
+| `contracts.test.ts` | 区块链 | 5 | 合约地址、常量 |
 
-```
-src/
-├── engines/
-│   ├── edge.ts
-│   └── edge.test.ts          # 与源文件同目录
-├── indicators/
-│   ├── rsi.ts
-│   └── rsi.test.ts
-```
+---
 
-### 9.2 测试命名
+## 8. 测试最佳实践
+
+### 8.1 测试组织
+
+测试文件与源文件同目录（如有），或统一放在 `__tests__` 目录。
+
+### 8.2 测试命名
 
 - 使用 `describe` 分组相关测试
 - 测试命名：`should [预期] when [条件]`
 - 使用 `describe` 嵌套分组复杂场景
 
-### 9.3 断言风格
+### 8.3 断言风格
 
 ```typescript
 // 推荐：具体断言
@@ -347,34 +323,22 @@ expect(result).toBeCloseTo(0.5, 1);
 expect(result).toBeTruthy();
 ```
 
-### 9.4 测试数据
+### 8.4 测试数据
 
 - 使用固定的时间戳（如 `BASE_NOW_MS`）确保可重复性
 - 测试边界值（0、null、极值）
 - 测试正常路径和错误路径
 
----
+### 8.5 区块链测试注意事项
 
-## 10. 待改进
-
-### 10.1 测试覆盖率缺口
-
-| 模块 | 覆盖率 | 建议 |
-|------|--------|------|
-| `src/pipeline/` | 低 | 添加集成测试 |
-| `src/trading/trader.ts` | 低 | 添加执行流程测试 |
-| `src/api.ts` | 无 | 添加 API 端点测试 |
-| 前端组件 | 无 | 添加 React 组件测试 |
-
-### 10.2 测试质量
-
-- 移除 `!` 非空断言（linter 警告）
-- 增加边界条件测试
-- 添加错误场景测试
+- **避免数据库依赖**：将纯工具函数提取到独立模块（如 `reconciler-utils.ts`）
+- **使用 snake_case**：数据库行类型使用 snake_case 属性名
+- **类型守卫**：类型守卫只检查最小必需字段，不做完整验证
+- **测试隔离**：使用 `beforeEach`/`afterEach` 确保测试间状态独立
 
 ---
 
-## 11. 相关文档
+## 9. 相关文档
 
 - [开发与部署指南](./development-and-deployment.md) — 测试命令
 - [系统架构](./architecture.md) — 模块关系

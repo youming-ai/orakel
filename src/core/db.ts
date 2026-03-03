@@ -560,7 +560,7 @@ export const statements = {
 
 	updateTradeOutcome: () =>
 		cachedPrepare(`
-			UPDATE trades SET pnl = $pnl, won = $won WHERE orderId = $orderId AND mode = $mode
+			UPDATE trades SET pnl = $pnl, won = $won, status = $status WHERE orderId = $orderId AND mode = $mode
 		`),
 };
 
