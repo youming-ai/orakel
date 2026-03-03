@@ -3,11 +3,24 @@
 ARG BUILD_UID=1000
 ARG BUILD_GID=1000
 
+# Backend dependencies
 FROM oven/bun:1-alpine AS bot-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile --production
+
+# Frontend builder
+FROM oven/bun:1-alpine AS web-builder
+WORKDIR /web
+COPY web/package.json web/bun.lock ./
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
+COPY web/tsconfig.json web/vite.config.ts web/index.html ./
+COPY web/src ./src
+RUN bun run build
+
+# Final release image
 FROM oven/bun:1-alpine AS release
 ARG BUILD_UID
 ARG BUILD_GID
@@ -33,6 +46,9 @@ RUN if id bun >/dev/null 2>&1; then \
 COPY --from=bot-deps /app/node_modules node_modules
 COPY package.json bun.lock tsconfig.json ./
 COPY src src
+
+# Copy frontend build output
+COPY --from=web-builder /web/dist ./web/dist
 
 # Create data directory with correct ownership
 RUN mkdir -p /app/data && chown -R bun:bun /app/data
