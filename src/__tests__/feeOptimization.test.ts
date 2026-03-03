@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { optimizeBuyPrice, selectOrderStrategy } from "../engines/feeOptimization.ts";
 import type { Phase } from "../types.ts";
-import { optimizeBuyPrice, selectOrderStrategy } from "./feeOptimization.ts";
 
 describe("selectOrderStrategy", () => {
 	it("should return FOK for LATE phase with high confidence", () => {

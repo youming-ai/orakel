@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTtlCache } from "./cache.ts";
+import { createTtlCache } from "../core/cache.ts";
 
 describe("createTtlCache", () => {
 	beforeEach(() => {

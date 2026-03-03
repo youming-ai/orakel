@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeRsi, slopeLast, sma } from "./rsi.ts";
+import { computeRsi, slopeLast, sma } from "../indicators/rsi.ts";
 
 describe("computeRsi", () => {
 	it("should return null for empty array", () => {

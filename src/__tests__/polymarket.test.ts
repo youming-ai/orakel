@@ -1,3 +1,5 @@
+const BASE_NOW_MS = 1700000000000; // Fixed timestamp for tests
+
 import { describe, expect, it } from "vitest";
 import {
 	filterBtcUpDown15mMarkets,
@@ -5,9 +7,7 @@ import {
 	parseGammaMarket,
 	pickLatestLiveMarket,
 	summarizeOrderBook,
-} from "./polymarket.ts";
-
-const BASE_NOW_MS = Date.parse("2026-02-26T00:00:00.000Z");
+} from "../data/polymarket.ts";
 
 function minutesFromBase(minutes: number): string {
 	return new Date(BASE_NOW_MS + minutes * 60_000).toISOString();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { PositionSizingParams } from "./positionSizing.ts";
-import { calculateKellyPositionSize } from "./positionSizing.ts";
+import type { PositionSizingParams } from "../engines/positionSizing.ts";
+import { calculateKellyPositionSize } from "../engines/positionSizing.ts";
 
 function makeParams(overrides: Partial<PositionSizingParams> = {}): PositionSizingParams {
 	return {

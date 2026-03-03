@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { computeHeikenAshi, countConsecutive } from "../indicators/heikenAshi.ts";
 import type { Candle, HaCandle } from "../types.ts";
-import { computeHeikenAshi, countConsecutive } from "./heikenAshi.ts";
 
 function makeCandle(o: number, h: number, l: number, c: number, v: number): Candle {
 	return { openTime: 0, open: o, high: h, low: l, close: c, volume: v, closeTime: 0 };

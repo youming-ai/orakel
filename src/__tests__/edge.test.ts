@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { computeConfidence, computeEdge, decide } from "../engines/edge.ts";
 import type { Regime, StrategyConfig } from "../types.ts";
-import { computeConfidence, computeEdge, decide } from "./edge.ts";
 
 function makeStrategy(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
 	return {

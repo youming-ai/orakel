@@ -4,11 +4,21 @@ import { Hono } from "hono";
 import { createBunWebSocket, serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
-import { getAccountSummary, getAllPositions } from "./accountState.ts";
-import { atomicWriteConfig, CONFIG, reloadConfig } from "./config.ts";
-import { getDbDiagnostics, READ_BACKEND, resetLiveDbData, statements } from "./db.ts";
-import { env } from "./env.ts";
-import { createLogger } from "./logger.ts";
+import { getAccountSummary, getAllPositions } from "./blockchain/accountState.ts";
+import { getReconStatus } from "./blockchain/reconciler.ts";
+import { atomicWriteConfig, CONFIG, reloadConfig } from "./core/config.ts";
+import { getDbDiagnostics, READ_BACKEND, resetLiveDbData, statements } from "./core/db.ts";
+import { env } from "./core/env.ts";
+import { createLogger } from "./core/logger.ts";
+import {
+	botEvents,
+	getMarkets,
+	getUpdatedAt,
+	isLiveRunning,
+	isPaperRunning,
+	setLiveRunning,
+	setPaperRunning,
+} from "./core/state.ts";
 import {
 	clearStopFlag,
 	getMarketBreakdown,
@@ -19,38 +29,15 @@ import {
 	getTodayStats,
 	isStopped,
 	resetPaperData,
-} from "./paperStats.ts";
-import { getReconStatus } from "./reconciler.ts";
-import {
-	botEvents,
-	clearLivePending,
-	clearPaperPending,
-	getLivePendingSince,
-	getMarkets,
-	getPaperPendingSince,
-	getUpdatedAt,
-	isLivePendingStart,
-	isLivePendingStop,
-	isLiveRunning,
-	isPaperPendingStart,
-	isPaperPendingStop,
-	isPaperRunning,
-	setLivePendingStart,
-	setLivePendingStop,
-	setLiveRunning,
-	setPaperPendingStart,
-	setPaperPendingStop,
-} from "./state.ts";
+} from "./trading/paperStats.ts";
 import {
 	connectWallet,
 	disconnectWallet,
-	getClientStatus,
 	getLiveDailyState,
 	getLiveStats,
 	getLiveTodayStats,
 	getPaperDailyState,
-	getWalletAddress,
-} from "./trader.ts";
+} from "./trading/trader.ts";
 import type { SignalNewPayload, StateSnapshotPayload, TradeExecutedPayload, WsMessage } from "./types.ts";
 
 const PORT = env.API_PORT;
@@ -277,14 +264,13 @@ const apiRoutes = new Hono()
 	})
 
 	.get("/state", (c) => {
-		const status = getClientStatus();
 		const todayStats = getTodayStats();
 		const stopLoss = getStopReason();
 
 		return c.json({
 			markets: getMarkets(),
 			updatedAt: getUpdatedAt(),
-			wallet: { address: getWalletAddress(), connected: status.clientReady },
+			wallet: { address: null, connected: false },
 			paperDaily: getPaperDailyState(),
 			liveDaily: getLiveDailyState(),
 			config: {
@@ -298,16 +284,16 @@ const apiRoutes = new Hono()
 			liveStats: getLiveStats(),
 			paperBalance: getPaperBalance(),
 			liveWallet: {
-				address: status.walletAddress ?? null,
-				connected: status.walletLoaded,
-				clientReady: status.clientReady,
+				address: null,
+				connected: false,
+				clientReady: false,
 			},
-			paperPendingStart: isPaperPendingStart(),
-			paperPendingStop: isPaperPendingStop(),
-			livePendingStart: isLivePendingStart(),
-			livePendingStop: isLivePendingStop(),
-			paperPendingSince: getPaperPendingSince(),
-			livePendingSince: getLivePendingSince(),
+			paperPendingStart: false,
+			paperPendingStop: false,
+			livePendingStart: false,
+			livePendingStop: false,
+			paperPendingSince: null,
+			livePendingSince: null,
 			stopLoss: isStopped() ? stopLoss : null,
 			todayStats: todayStats,
 			liveTodayStats: getLiveTodayStats(),
@@ -489,28 +475,25 @@ const apiRoutes = new Hono()
 	})
 
 	.post("/paper/start", (c) => {
-		setPaperPendingStart(true);
+		setPaperRunning(true);
 		return c.json({
 			ok: true as const,
-			paperPendingStart: true,
-			message: "Starting at next cycle",
+			message: "Paper trading started",
 		});
 	})
 
 	.post("/paper/stop", (c) => {
-		setPaperPendingStop(true);
+		setPaperRunning(false);
 		return c.json({
 			ok: true as const,
-			paperPendingStop: true,
-			message: "Stopping after current cycle settlement",
+			message: "Paper trading stopped",
 		});
 	})
 
 	.post("/paper/cancel", (c) => {
-		clearPaperPending();
 		return c.json({
 			ok: true as const,
-			message: "Pending operation cancelled",
+			message: "Operation cancelled",
 		});
 	})
 
@@ -559,45 +542,31 @@ const apiRoutes = new Hono()
 	})
 
 	.post("/live/disconnect", (c) => {
-		clearLivePending();
 		setLiveRunning(false);
 		disconnectWallet();
 		return c.json({ ok: true as const, liveRunning: false });
 	})
 
 	.post("/live/start", (c) => {
-		const status = getClientStatus();
-		if (!status.walletLoaded || !status.clientReady) {
-			return c.json(
-				{
-					ok: false as const,
-					error: "Wallet not connected. Use POST /api/live/connect first.",
-				},
-				400,
-			);
-		}
-		setLivePendingStart(true);
+		setLiveRunning(true);
 		return c.json({
 			ok: true as const,
-			livePendingStart: true,
-			message: "Starting at next cycle",
+			message: "Live trading started",
 		});
 	})
 
 	.post("/live/stop", (c) => {
-		setLivePendingStop(true);
+		setLiveRunning(false);
 		return c.json({
 			ok: true as const,
-			livePendingStop: true,
-			message: "Stopping after current cycle settlement",
+			message: "Live trading stopped",
 		});
 	})
 
 	.post("/live/cancel", (c) => {
-		clearLivePending();
 		return c.json({
 			ok: true as const,
-			message: "Pending operation cancelled",
+			message: "Operation cancelled",
 		});
 	})
 
@@ -716,10 +685,10 @@ app.get(
 				updatedAt: getUpdatedAt(),
 				paperRunning: isPaperRunning(),
 				liveRunning: isLiveRunning(),
-				paperPendingStart: isPaperPendingStart(),
-				paperPendingStop: isPaperPendingStop(),
-				livePendingStart: isLivePendingStart(),
-				livePendingStop: isLivePendingStop(),
+				paperPendingStart: false,
+				paperPendingStop: false,
+				livePendingStart: false,
+				livePendingStop: false,
 				paperStats: getPaperStats(),
 				liveStats: getLiveStats(),
 				liveTodayStats: getLiveTodayStats(),

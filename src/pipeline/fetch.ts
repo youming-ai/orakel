@@ -1,4 +1,5 @@
-import { CONFIG } from "../config.ts";
+import { CONFIG } from "../core/config.ts";
+import { createLogger } from "../core/logger.ts";
 import { fetchKlines, fetchLastPrice } from "../data/binance.ts";
 import { fetchChainlinkPrice } from "../data/chainlink.ts";
 import {
@@ -11,7 +12,6 @@ import {
 	pickLatestLiveMarket,
 	summarizeOrderBook,
 } from "../data/polymarket.ts";
-import { createLogger } from "../logger.ts";
 import type {
 	Candle,
 	CandleWindowTiming,

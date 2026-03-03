@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { clamp, estimatePolymarketFee, formatNumber, formatPct, getCandleWindowTiming, normalCDF } from "./utils.ts";
+import {
+	clamp,
+	estimatePolymarketFee,
+	formatNumber,
+	formatPct,
+	getCandleWindowTiming,
+	normalCDF,
+} from "../core/utils.ts";
 
 describe("clamp", () => {
 	it("should return value when within range", () => {

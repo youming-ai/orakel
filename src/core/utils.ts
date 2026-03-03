@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { CandleWindowTiming } from "./types.ts";
+import type { CandleWindowTiming } from "../types.ts";
 
 export function clamp(x: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, x));

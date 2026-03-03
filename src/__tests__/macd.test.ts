@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeMacd } from "./macd.ts";
+import { computeMacd } from "../indicators/macd.ts";
 
 describe("computeMacd", () => {
 	// Guard: empty array

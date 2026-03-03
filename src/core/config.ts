@@ -19,7 +19,7 @@ export function offConfigReload(listener: ConfigReloadListener): void {
 	reloadListeners.delete(listener);
 }
 
-import type { AppConfig, RiskConfig } from "./types.ts";
+import type { AppConfig, RiskConfig } from "../types.ts";
 
 export const PERSIST_BACKEND = env.PERSIST_BACKEND;
 export const READ_BACKEND = env.READ_BACKEND;

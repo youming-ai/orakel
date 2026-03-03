@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { CONFIG } from "../config.ts";
+import { CONFIG } from "../core/config.ts";
 import type { PriceTick } from "../types.ts";
 
 const AGGREGATOR_ABI = [

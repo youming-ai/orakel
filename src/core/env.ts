@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { StorageBackend } from "./types.ts";
+import type { StorageBackend } from "../types.ts";
 
 // ── helpers ──────────────────────────────────────────────
 

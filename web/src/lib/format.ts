@@ -5,13 +5,6 @@ export function fmtTime(ts: string): string {
 	return d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-/** Format timestamp to HH:MM (no seconds) */
-export function fmtTimeShort(ts: string): string {
-	const d = new Date(ts);
-	if (Number.isNaN(d.getTime())) return "-";
-	return d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
-}
-
 /** Format timestamp to MM/DD HH:MM:SS */
 export function fmtDateTime(ts: string): string {
 	const d = new Date(ts);

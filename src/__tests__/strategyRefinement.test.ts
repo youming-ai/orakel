@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BACKTEST_INSIGHTS, MARKET_ADJUSTMENTS, shouldTakeTrade } from "./strategyRefinement.ts";
+import { BACKTEST_INSIGHTS, MARKET_ADJUSTMENTS, shouldTakeTrade } from "../trading/strategyRefinement.ts";
 
 describe("MARKET_ADJUSTMENTS", () => {
 	it("should set BTC skipChop to false", () => {

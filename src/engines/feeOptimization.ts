@@ -1,5 +1,5 @@
+import { estimatePolymarketFee } from "../core/utils.ts";
 import type { Phase } from "../types.ts";
-import { estimatePolymarketFee } from "../utils.ts";
 
 export type OrderStrategy = "FOK" | "GTD_POST_ONLY";
 

@@ -48,8 +48,4 @@ export const TOOLTIP_CURSOR_STYLE = {
 export const CHART_HEIGHT = {
 	/** Default chart height: smaller on mobile, larger on desktop */
 	responsive: "w-full h-56 sm:h-72",
-	/** Taller chart for detailed views */
-	tall: "w-full h-64 sm:h-80",
-	/** Fixed height for compact displays */
-	compact: "w-full h-48",
 } as const;

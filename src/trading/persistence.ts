@@ -1,7 +1,8 @@
 import fs from "node:fs";
-import { PERSIST_BACKEND, statements } from "./db.ts";
-import { createLogger } from "./logger.ts";
-import { emitSignalNew } from "./state.ts";
+import { PERSIST_BACKEND, statements } from "../core/db.ts";
+import { createLogger } from "../core/logger.ts";
+import { emitSignalNew } from "../core/state.ts";
+import { appendCsvRow } from "../core/utils.ts";
 import type {
 	BlendResult,
 	CandleWindowTiming,
@@ -11,8 +12,7 @@ import type {
 	Regime,
 	TradeDecision,
 	TradeSignal,
-} from "./types.ts";
-import { appendCsvRow } from "./utils.ts";
+} from "../types.ts";
 
 const log = createLogger("bot");
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hexToSignedBigInt } from "./chainlinkWs.ts";
+import { hexToSignedBigInt } from "../data/chainlinkWs.ts";
 
 const TWO_255 = 1n << 255n;
 const MAX_POSITIVE_INT256 = TWO_255 - 1n;

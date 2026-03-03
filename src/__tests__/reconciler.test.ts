@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./db.ts", () => ({
+vi.mock("../core/db.ts", () => ({
 	onchainStatements: {},
 }));
 
-import { isEventRow, isKnownTokenRow, isTradeRow, rawToUsdc, statusFromConfidence } from "./reconciler.ts";
-import type { ReconStatus } from "./types.ts";
+import { isEventRow, isKnownTokenRow, isTradeRow, rawToUsdc, statusFromConfidence } from "../blockchain/reconciler.ts";
+import type { ReconStatus } from "../types.ts";
 
 describe("statusFromConfidence", () => {
 	const confidenceCases: Array<[number, ReconStatus]> = [

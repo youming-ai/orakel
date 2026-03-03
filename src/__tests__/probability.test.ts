@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { MacdResult } from "../types.ts";
 import {
 	applyAdaptiveTimeDecay,
 	applyTimeAwareness,
@@ -7,7 +6,8 @@ import {
 	computeRealizedVolatility,
 	computeVolatilityImpliedProb,
 	scoreDirection,
-} from "./probability.ts";
+} from "../engines/probability.ts";
+import type { MacdResult } from "../types.ts";
 
 function buildMacd(overrides: Partial<MacdResult> = {}): MacdResult {
 	return {

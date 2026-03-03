@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ArbitrageOpportunity } from "./arbitrage.ts";
-import { detectArbitrage } from "./arbitrage.ts";
+import type { ArbitrageOpportunity } from "../engines/arbitrage.ts";
+import { detectArbitrage } from "../engines/arbitrage.ts";
 
 describe("detectArbitrage", () => {
 	describe("valid opportunities", () => {

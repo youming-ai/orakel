@@ -8,7 +8,7 @@ import {
 	USDC_E_ADDRESS,
 	USDC_E_DECIMALS,
 	usdcIface,
-} from "./contracts.ts";
+} from "../blockchain/contracts.ts";
 
 const canonicalAddressLength = 42;
 const topicHexLength = 66;

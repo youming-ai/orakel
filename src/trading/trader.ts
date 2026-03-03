@@ -2,15 +2,15 @@ import fs from "node:fs";
 import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
-import { enrichPosition } from "./accountState.ts";
-import { CONFIG } from "./config.ts";
-import { onchainStatements, PERSIST_BACKEND, statements } from "./db.ts";
-import { env } from "./env.ts";
-import { createLogger } from "./logger.ts";
+import { enrichPosition } from "../blockchain/accountState.ts";
+import { CONFIG } from "../core/config.ts";
+import { onchainStatements, PERSIST_BACKEND, statements } from "../core/db.ts";
+import { env } from "../core/env.ts";
+import { createLogger } from "../core/logger.ts";
+import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
+import { getCandleWindowTiming } from "../core/utils.ts";
+import type { DailyState, MarketConfig, RiskConfig, TradeResult, TradeSignal } from "../types.ts";
 import { addPaperTrade } from "./paperStats.ts";
-import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "./state.ts";
-import type { DailyState, MarketConfig, RiskConfig, TradeResult, TradeSignal } from "./types.ts";
-import { getCandleWindowTiming } from "./utils.ts";
 
 const log = createLogger("trader");
 

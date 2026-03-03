@@ -1,9 +1,9 @@
 import readline from "node:readline";
-import type { ProcessMarketResult } from "./index.ts";
-import { createLogger } from "./logger.ts";
-import { isLiveRunning, isPaperRunning } from "./state.ts";
-import type { MacdResult, TradeDecision } from "./types.ts";
-import { formatNumber } from "./utils.ts";
+import { createLogger } from "../core/logger.ts";
+import { isLiveRunning, isPaperRunning } from "../core/state.ts";
+import { formatNumber } from "../core/utils.ts";
+import type { ProcessMarketResult } from "../pipeline/processMarket.ts";
+import type { MacdResult, TradeDecision } from "../types.ts";
 
 const log = createLogger("bot");
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectRegime } from "./regime.ts";
+import { detectRegime } from "../engines/regime.ts";
 
 describe("detectRegime", () => {
 	it("should return CHOP with 'missing_inputs' when price is null", () => {

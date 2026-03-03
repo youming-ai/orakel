@@ -12,8 +12,9 @@ import {
 	initAccountState,
 	resetAccountState,
 	updateFromSnapshot,
-} from "./accountState.ts";
-import type { BalanceSnapshotPayload, CtfPosition, OnChainEvent } from "./types.ts";
+} from "../blockchain/accountState.ts";
+
+import type { BalanceSnapshotPayload, CtfPosition, OnChainEvent } from "../types.ts";
 
 const WALLET = "0xAbC123";
 const OTHER = "0x999";

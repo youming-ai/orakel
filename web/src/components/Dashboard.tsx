@@ -120,7 +120,6 @@ function DashboardContent() {
 			toast({ type: "info", description: "Live bot start/stop cancelled" });
 			return;
 		}
-		if (!state.liveRunning && !state.liveWallet?.clientReady) return;
 		setConfirmAction(state.liveRunning ? "stop" : "start");
 	}, [state, liveCancel, setConfirmAction]);
 
@@ -176,7 +175,6 @@ function DashboardContent() {
 				viewMode={viewMode}
 				paperRunning={state.paperRunning}
 				liveRunning={state.liveRunning}
-				liveWalletReady={state.liveWallet?.clientReady ?? false}
 				paperPendingStart={state.paperPendingStart ?? false}
 				paperPendingStop={state.paperPendingStop ?? false}
 				livePendingStart={state.livePendingStart ?? false}
@@ -190,7 +188,8 @@ function DashboardContent() {
 			<AppErrorBoundary>
 				<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
 					<AnalyticsTabs
-						stats={viewMode === "paper" ? state.paperStats : state.liveStats}
+						// For paper mode, use stats from /paper-stats for consistency with trades
+						stats={viewMode === "paper" ? (paperStatsData?.stats ?? null) : state.liveStats}
 						trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
 						byMarket={viewMode === "paper" ? paperByMarket : undefined}
 						config={state.config ?? DEFAULT_CONFIG}

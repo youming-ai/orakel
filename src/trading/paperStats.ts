@@ -1,11 +1,11 @@
 import fs from "node:fs";
-import { CONFIG, PAPER_INITIAL_BALANCE } from "./config.ts";
-import { createLogger } from "./logger.ts";
+import { CONFIG, PAPER_INITIAL_BALANCE } from "../core/config.ts";
+import { createLogger } from "../core/logger.ts";
 
 const log = createLogger("paperStats");
 
-import { PERSIST_BACKEND, resetPaperDbData, statements } from "./db.ts";
-import type { PaperStats, PaperTradeEntry, Side } from "./types.ts";
+import { PERSIST_BACKEND, resetPaperDbData, statements } from "../core/db.ts";
+import type { PaperStats, PaperTradeEntry, Side } from "../types.ts";
 
 const STATS_PATH = "./logs/paper-stats.json";
 

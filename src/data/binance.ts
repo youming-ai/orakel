@@ -1,5 +1,5 @@
-import { createTtlCache } from "../cache.ts";
-import { CONFIG } from "../config.ts";
+import { createTtlCache } from "../core/cache.ts";
+import { CONFIG } from "../core/config.ts";
 import type { Candle } from "../types.ts";
 
 function toNumber(x: unknown): number | null {
