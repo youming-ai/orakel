@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LiquidGlassPanel } from "@/components/ui/liquid-glass";
 import type { MarketSnapshot, PaperStats, StopLossStatus, TodayStats } from "@/lib/api";
 import { CHART_COLORS, CHART_HEIGHT, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
 import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
@@ -86,7 +85,7 @@ export function OverviewTab({
 		<div className="space-y-4">
 			{/* Stop Loss Warning */}
 			{stopLoss?.stoppedAt && (
-				<LiquidGlassPanel className="border-red-500/30 bg-red-500/5">
+				<Card className="border-red-500/30 bg-red-500/5">
 					<div className="p-3">
 						<div className="flex items-center gap-3">
 							<AlertTriangle className="size-5 text-red-400" />
@@ -107,12 +106,12 @@ export function OverviewTab({
 							</Button>
 						</div>
 					</div>
-				</LiquidGlassPanel>
+				</Card>
 			)}
 
 			{/* Today Stats & Stop Loss Status */}
 			{todayStats && (
-				<LiquidGlassPanel className="border-white/10 dark:border-white/5">
+				<Card className="border-white/10 dark:border-white/5">
 					<div className="p-3">
 						<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
 							<div className="flex items-center gap-3 sm:gap-4 min-w-0">
@@ -156,12 +155,12 @@ export function OverviewTab({
 							</div>
 						</div>
 					</div>
-				</LiquidGlassPanel>
+				</Card>
 			)}
 
 			<div className="flex flex-col xl:flex-row gap-4">
 				{/* Hero Stats */}
-				<LiquidGlassPanel
+				<Card
 					className={cn(
 						"flex flex-col justify-center p-6 shrink-0 xl:w-72",
 						mergedStats.totalPnl >= 0
@@ -185,10 +184,10 @@ export function OverviewTab({
 							USDC
 						</span>
 					</span>
-				</LiquidGlassPanel>
+				</Card>
 
 				{/* Standard Stats */}
-				<LiquidGlassPanel className="flex-1 overflow-hidden">
+				<Card className="flex-1 overflow-hidden">
 					<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 h-full">
 						<StatCard
 							label="Trades"
@@ -217,7 +216,7 @@ export function OverviewTab({
 							trend="down"
 						/>
 					</div>
-				</LiquidGlassPanel>
+				</Card>
 			</div>
 
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -226,7 +225,7 @@ export function OverviewTab({
 				))}
 			</div>
 
-			<LiquidGlassPanel>
+			<Card>
 				<div className="px-6 pb-2 pt-4">
 					<div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Cumulative P&L</div>
 				</div>
@@ -294,7 +293,7 @@ export function OverviewTab({
 						</ChartErrorBoundary>
 					)}
 				</div>
-			</LiquidGlassPanel>
+			</Card>
 		</div>
 	);
 }

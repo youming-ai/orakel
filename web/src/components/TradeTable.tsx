@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LiquidGlassPanel } from "@/components/ui/liquid-glass";
 import type { TradeRecord } from "@/lib/api";
 import { TRADE_TABLE_PAGE_SIZE } from "@/lib/constants";
 import { fmtDate, fmtTime } from "@/lib/format";
@@ -68,7 +68,7 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 					const { text, isUp } = sideLabel(t.side);
 					const slug = getMarketCycleSlug(t.market, t.timestamp);
 					return (
-						<LiquidGlassPanel key={`${t.orderId}-${i}`} className="p-3">
+						<Card key={`${t.orderId}-${i}`} className="p-3">
 							<div className="flex items-start justify-between">
 								<div className="flex flex-col">
 									<span className="text-xs text-muted-foreground">
@@ -130,13 +130,13 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 									{getDisplayMode(t)}
 								</Badge>
 							</div>
-						</LiquidGlassPanel>
+						</Card>
 					);
 				})}
 			</div>
 
 			{/* Desktop View: Table */}
-			<LiquidGlassPanel className="hidden sm:block p-0 overflow-hidden">
+			<Card className="hidden sm:block p-0 overflow-hidden">
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -216,7 +216,7 @@ export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
 						})}
 					</TableBody>
 				</Table>
-			</LiquidGlassPanel>
+			</Card>
 
 			{totalPages > 1 && (
 				<div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-2">
