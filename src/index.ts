@@ -138,7 +138,7 @@ async function main(): Promise<void> {
 	const orderTracker: SimpleOrderTracker = {
 		orders: new Map<string, number>(),
 		lastTradeMs: 0,
-		cooldownMs: 0,
+		cooldownMs: 30_000,
 		keyFor(marketId: string, windowSlug: string): string {
 			return `${marketId}:${windowSlug}`;
 		},
@@ -158,16 +158,35 @@ async function main(): Promise<void> {
 				if (ts < cutoff) this.orders.delete(key);
 			}
 		},
-		onCooldown(): boolean {
-			return false;
+onCooldown(): boolean {
+			if (this.cooldownMs <= 0) return false;
+			return Date.now() - this.lastTradeMs < this.cooldownMs;
 		},
 	};
 
-	const typedOrderTracker: OrderTracker = orderTracker;
-	void typedOrderTracker;
+	// Restore tracker state from DB to prevent duplicate orders after restart.
+	// Without this, a restart mid-window could allow re-placing orders.
+	const currentTiming = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+	const pendingLive = liveAccount.getPendingTrades();
+	let restoredCount = 0;
+	for (const trade of pendingLive) {
+		// Restore orderTracker — use windowStartMs as slug proxy for position counting.
+		// The exact Polymarket slug isn't stored, but this ensures totalActive() is correct
+		// and hasOrder() blocks the same market in the same window.
+		const slugProxy = String(trade.windowStartMs);
+		orderTracker.record(trade.marketId, slugProxy);
+
+		// Restore liveTracker — only for trades in the current window
+		if (trade.windowStartMs === currentTiming.startMs) {
+			liveTracker.record(trade.marketId, trade.windowStartMs);
+		}
+		restoredCount++;
+	}
+	if (restoredCount > 0) {
+		log.info(`Restored ${restoredCount} pending live trades into trackers (window active: ${liveTracker.canTradeGlobally(1) ? 0 : "≥1"})`);
+	}
 
 	let prevWindowStartMs: number | null = null;
-
 	const shutdown = () => {
 		log.info("Shutdown signal received, stopping bot...");
 		orderManager.stopPolling();
@@ -228,6 +247,8 @@ async function main(): Promise<void> {
 		prevWindowStartMs = timing.startMs;
 
 		orderTracker.prune();
+		paperTracker.setWindow(timing.startMs);
+		liveTracker.setWindow(timing.startMs);
 		const results: ProcessMarketResult[] = await Promise.all(
 			markets.map(async (market) => {
 				try {

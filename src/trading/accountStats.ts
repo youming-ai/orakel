@@ -386,8 +386,15 @@ export class AccountStatsManager {
 		};
 		this.state.trades.push(trade);
 		this.state.currentBalance -= entry.size;
-		this.upsertTrade(trade);
-		this.save();
+		try {
+			this.upsertTrade(trade);
+			this.save();
+		} catch (err) {
+			// Rollback in-memory state on DB write failure
+			this.state.trades.pop();
+			this.state.currentBalance += entry.size;
+			throw err;
+		}
 		return id;
 	}
 

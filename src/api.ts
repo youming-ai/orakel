@@ -5,6 +5,7 @@ import { createBunWebSocket, serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { getAccountSummary, getAllPositions } from "./blockchain/accountState.ts";
+import { fetchRedeemablePositions, redeemAll } from "./blockchain/redeemer.ts";
 import { getReconStatus } from "./blockchain/reconciler.ts";
 import { atomicWriteConfig, CONFIG, reloadConfig } from "./core/config.ts";
 import { getDbDiagnostics, READ_BACKEND, statements } from "./core/db.ts";
@@ -20,7 +21,7 @@ import {
 	setPaperRunning,
 } from "./core/state.ts";
 import { liveAccount, paperAccount } from "./trading/accountStats.ts";
-import { connectWallet, disconnectWallet } from "./trading/trader.ts";
+import { connectWallet, disconnectWallet, getWallet, getWalletAddress } from "./trading/trader.ts";
 import type { SignalNewPayload, StateSnapshotPayload, TradeExecutedPayload, WsMessage } from "./types.ts";
 
 const PORT = env.API_PORT;
@@ -588,6 +589,24 @@ const apiRoutes = new Hono()
 
 	.get("/live/recon-status", (c) => {
 		return c.json({ ok: true as const, data: getReconStatus() });
+	})
+
+	.get("/live/redeemable", async (c) => {
+		const address = getWalletAddress();
+		if (!address) {
+			return c.json({ ok: false as const, error: "Wallet not connected" }, 503);
+		}
+		const positions = await fetchRedeemablePositions(address);
+		return c.json({ ok: true as const, data: positions });
+	})
+
+	.post("/live/redeem", async (c) => {
+		const w = getWallet();
+		if (!w) {
+			return c.json({ ok: false as const, error: "Wallet not connected" }, 503);
+		}
+		const results = await redeemAll(w);
+		return c.json({ ok: true as const, data: results });
 	});
 
 // ---------------------------------------------------------------------------

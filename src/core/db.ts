@@ -376,6 +376,54 @@ function runMigrations(db: Database): void {
 			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (4, strftime('%s', 'now'))");
 		})();
 	}
+
+	// Repair: live_trades / live_state may be missing if migration 4 recorded but tables were dropped.
+	// Re-create with IF NOT EXISTS — idempotent, safe to run unconditionally.
+	const liveTblCount = (
+		db.query("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='live_trades'").get() as {
+			n: number;
+		} | null
+	)?.n ?? 0;
+	if (liveTblCount === 0) {
+		log.warn("live_trades table missing — recreating");
+		db.transaction(() => {
+			db.run(`
+				CREATE TABLE IF NOT EXISTS live_state (
+					id INTEGER PRIMARY KEY CHECK (id = 1),
+					initial_balance REAL NOT NULL DEFAULT 1000,
+					current_balance REAL NOT NULL DEFAULT 1000,
+					max_drawdown REAL NOT NULL DEFAULT 0,
+					wins INTEGER NOT NULL DEFAULT 0,
+					losses INTEGER NOT NULL DEFAULT 0,
+					total_pnl REAL NOT NULL DEFAULT 0,
+					stopped_at TEXT,
+					stop_reason TEXT,
+					daily_pnl TEXT NOT NULL DEFAULT '[]',
+					daily_counted_trade_ids TEXT NOT NULL DEFAULT '[]'
+				)
+			`);
+			db.run(`
+				CREATE TABLE IF NOT EXISTS live_trades (
+					id TEXT PRIMARY KEY,
+					market_id TEXT NOT NULL,
+					window_start_ms INTEGER NOT NULL,
+					side TEXT NOT NULL,
+					price REAL NOT NULL,
+					size REAL NOT NULL,
+					price_to_beat REAL NOT NULL,
+					current_price_at_entry REAL,
+					timestamp TEXT NOT NULL,
+					resolved INTEGER DEFAULT 0,
+					won INTEGER,
+					pnl REAL,
+					settle_price REAL
+				)
+			`);
+			db.run(
+				"CREATE INDEX IF NOT EXISTS idx_live_trades_resolved ON live_trades(resolved, timestamp DESC)",
+			);
+		})();
+	}
 }
 
 // P2-3: Cache prepared statements — prepare once per SQL string, clear on DB reinit

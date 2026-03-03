@@ -567,31 +567,42 @@ export async function executeTrade(
 
 		if (resultOrderId || resultId) {
 			const finalOrderId = resultOrderId || resultId || "unknown";
-			emitTradeExecuted({
-				marketId: signal.marketId,
-				mode,
-				side,
-				price,
-				size: Number(riskConfig.maxTradeSizeUsdc || 0),
-				timestamp: liveTradeTimestamp,
-				orderId: finalOrderId,
-				status: resultStatus || "placed",
-			});
 
-			const liveAccount = getAccount("live");
-			liveAccount.addTrade({
-				marketId: signal.marketId ?? "",
-				windowStartMs: getCandleWindowTiming(15).startMs,
-				side,
-				price,
-				size: Number(riskConfig.maxTradeSizeUsdc || 0),
-				priceToBeat: signal.priceToBeat ?? 0,
-				currentPriceAtEntry: signal.currentPrice,
-				timestamp: liveTradeTimestamp,
-			});
+			// Post-trade recording — failures here must NOT affect success status.
+			// The order is already placed on Polymarket (real money spent).
+			// If recording fails, we still return success:true so guards update correctly.
+			try {
+				emitTradeExecuted({
+					marketId: signal.marketId,
+					mode,
+					side,
+					price,
+					size: Number(riskConfig.maxTradeSizeUsdc || 0),
+					timestamp: liveTradeTimestamp,
+					orderId: finalOrderId,
+					status: resultStatus || "placed",
+				});
 
-			if (tokenId && tokenId.length > 0) {
-				try {
+				const liveAccount = getAccount("live");
+				liveAccount.addTrade({
+					marketId: signal.marketId ?? "",
+					windowStartMs: getCandleWindowTiming(15).startMs,
+					side,
+					price,
+					size: Number(riskConfig.maxTradeSizeUsdc || 0),
+					priceToBeat: signal.priceToBeat ?? 0,
+					currentPriceAtEntry: signal.currentPrice,
+					timestamp: liveTradeTimestamp,
+				});
+			} catch (recordErr) {
+				log.error(
+					`Post-trade recording failed (order ${finalOrderId} was placed successfully):`,
+					recordErr instanceof Error ? recordErr.message : String(recordErr),
+				);
+			}
+
+			try {
+				if (tokenId && tokenId.length > 0) {
 					onchainStatements.upsertKnownCtfToken().run({
 						$tokenId: tokenId,
 						$marketId: signal.marketId ?? "",
@@ -599,13 +610,12 @@ export async function executeTrade(
 						$conditionId: null,
 					});
 					enrichPosition(tokenId, signal.marketId ?? "", side);
-				} catch (err) {
-					log.warn("Failed to persist known CTF token:", err);
 				}
+			} catch (enrichErr) {
+				log.warn("Failed to persist known CTF token:", enrichErr);
 			}
 
-			// Start heartbeat and track order ONLY for GTD orders
-			// FOK orders fill immediately and don't need heartbeat
+			// Heartbeat tracking — always runs regardless of recording success
 			if (!isLatePhase || !isHighConfidence) {
 				registerOpenGtdOrder(finalOrderId);
 				startHeartbeat();
