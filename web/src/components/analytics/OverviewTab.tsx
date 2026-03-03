@@ -190,7 +190,7 @@ export function OverviewTab({
 
 				{/* Standard Stats */}
 				<LiquidGlassPanel className="flex-1 overflow-hidden">
-					<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-0 sm:divide-x sm:divide-white/10 h-full">
+					<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-0 sm:divide-x sm:divide-white/10 h-full px-4">
 						<StatCard
 							label="Trades"
 							value={String(mergedStats.totalTrades)}

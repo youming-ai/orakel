@@ -121,10 +121,12 @@ export function Header({
 
 				{/* Logo */}
 				<div className="flex items-center gap-2 cursor-default select-none shrink-0">
-					<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20 backdrop-blur-md">
-						<Zap className="size-3.5" />
-					</div>
-					<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
+					<Link to="/" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity no-underline">
+						<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20 backdrop-blur-md">
+							<Zap className="size-3.5" />
+						</div>
+						<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
+					</Link>
 					<span className="text-xs text-muted-foreground">/</span>
 					<Link
 						to="/trades"

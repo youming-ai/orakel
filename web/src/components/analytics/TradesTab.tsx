@@ -12,13 +12,13 @@ interface TradesTabProps {
 export function TradesTab({ viewMode, liveTrades, marketRows }: TradesTabProps) {
 	return (
 		<div className="space-y-4">
-			<MarketComparisonTable rows={marketRows} />
 			<div>
 				<h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
 					{viewMode === "paper" ? "Paper Trades" : "Live Trades"}
 				</h2>
 				<TradeTable trades={liveTrades} paperMode={viewMode === "paper"} />
 			</div>
+			<MarketComparisonTable rows={marketRows} />
 		</div>
 	);
 }
