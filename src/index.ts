@@ -1,61 +1,30 @@
 import { startApiServer } from "./api.ts";
-import {
-	applyEvent,
-	enrichPosition,
-	initAccountState,
-	resetAccountState,
-	updateFromSnapshot,
-} from "./blockchain/accountState.ts";
-import { startReconciler } from "./blockchain/reconciler.ts";
-import { redeemAll } from "./blockchain/redeemer.ts";
 import { CONFIG } from "./core/config.ts";
-import { onchainStatements } from "./core/db.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
 import {
-	emitBalanceSnapshot,
 	emitStateSnapshot,
 	getUpdatedAt,
 	isLiveRunning,
 	isPaperRunning,
 	setLiveRunning,
-	setOnchainBalance,
 	setPaperRunning,
 	updateMarkets,
 } from "./core/state.ts";
 import { getCandleWindowTiming, sleep } from "./core/utils.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
-import { startBalancePolling } from "./data/polygonBalance.ts";
-import { startOnChainEventStream } from "./data/polygonEvents.ts";
 import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
 import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
 import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
 import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
+import { getAccount, initAccountStats, liveAccount, paperAccount } from "./trading/accountStats.ts";
 import { OrderManager, type TrackedOrder } from "./trading/orderManager.ts";
-import {
-	canAffordTradeWithStopCheck,
-	getPaperStats,
-	getPendingPaperTrades,
-	resolvePaperTrades,
-} from "./trading/paperStats.ts";
 import { shouldTakeTrade } from "./trading/strategyRefinement.ts";
 import { renderDashboard } from "./trading/terminal.ts";
-import {
-	connectWallet,
-	executeTrade,
-	getClientStatus,
-	getLiveStats,
-	getLiveTodayStats,
-	getWallet,
-	resolveLiveTrades,
-	startHeartbeat,
-	stopHeartbeat,
-	unregisterOpenGtdOrder,
-	updatePnl,
-} from "./trading/trader.ts";
+import { connectWallet, executeTrade, stopHeartbeat, unregisterOpenGtdOrder } from "./trading/trader.ts";
 import type { MarketSnapshot, OrderTracker, StreamHandles, WsStreamHandle } from "./types.ts";
 
 export type { ProcessMarketResult } from "./pipeline/processMarket.ts";
@@ -113,6 +82,7 @@ let reconcilerHandle: { runNow(): Promise<number>; close(): void } | null = null
 
 async function main(): Promise<void> {
 	startApiServer();
+	initAccountStats();
 
 	// Auto-connect wallet if PRIVATE_KEY is configured
 	if (env.PRIVATE_KEY) {
@@ -238,6 +208,23 @@ async function main(): Promise<void> {
 		}
 
 		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+
+		if (prevWindowStartMs !== null && prevWindowStartMs !== timing.startMs) {
+			const finalPrices = new Map<string, number>();
+			for (const market of markets) {
+				const marketState = states.get(market.id);
+				if (marketState?.prevCurrentPrice !== null && marketState?.prevCurrentPrice !== undefined) {
+					finalPrices.set(market.id, marketState.prevCurrentPrice);
+				}
+			}
+			if (finalPrices.size > 0) {
+				const paperResolved = paperAccount.resolveTrades(prevWindowStartMs, finalPrices);
+				const liveResolved = liveAccount.resolveTrades(prevWindowStartMs, finalPrices);
+				if (paperResolved > 0 || liveResolved > 0) {
+					log.info(`Window settled: paper=${paperResolved} live=${liveResolved}`);
+				}
+			}
+		}
 		prevWindowStartMs = timing.startMs;
 
 		orderTracker.prune();
@@ -337,8 +324,9 @@ async function main(): Promise<void> {
 			const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
 
 			if (isPaperRunning()) {
+				const paperAcc = getAccount("paper");
 				const tradeSize = Number(CONFIG.paperRisk.maxTradeSizeUsdc || 0);
-				const affordCheck = canAffordTradeWithStopCheck(tradeSize);
+				const affordCheck = paperAcc.canAffordTradeWithStopCheck(tradeSize);
 				const minPaperLiquidity = Number(CONFIG.paperRisk.minLiquidity || 0);
 				const hasPaperLiquidity = sideLiquidity !== null && sideLiquidity >= minPaperLiquidity;
 				if (
@@ -346,7 +334,7 @@ async function main(): Promise<void> {
 					affordCheck.canTrade &&
 					hasPaperLiquidity &&
 					paperTracker.canTradeGlobally(Math.min(maxGlobalTrades, CONFIG.paperRisk.maxTradesPerWindow)) &&
-					getPendingPaperTrades().length < CONFIG.paperRisk.maxOpenPositions
+					paperAcc.getPendingTrades().length < CONFIG.paperRisk.maxOpenPositions
 				) {
 					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.paperRisk }, "paper");
 					if (result?.success) {
@@ -364,56 +352,58 @@ async function main(): Promise<void> {
 			}
 
 			if (isLiveRunning()) {
+				const liveAcc = getAccount("live");
 				const minLiveLiquidity = Number(CONFIG.liveRisk.minLiquidity || 0);
 				const hasLiveLiquidity = sideLiquidity !== null && sideLiquidity >= minLiveLiquidity;
 				if (!hasLiveLiquidity) {
 					log.info(
 						`Skip ${mkt.id} live: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minLiveLiquidity.toFixed(0)}`,
 					);
-					continue;
-				}
-
-				const liveWindowLimit = Math.min(maxGlobalTrades, CONFIG.liveRisk.maxTradesPerWindow);
-				const canPlace =
-					orderTracker &&
-					!orderTracker.hasOrder(mkt.id, slug) &&
-					!orderTracker.onCooldown() &&
-					orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
-					successfulTradesThisTick < liveWindowLimit &&
-					!liveTracker.has(mkt.id, timing.startMs) &&
-					liveTracker.canTradeGlobally(liveWindowLimit);
-
-				if (!canPlace) continue;
-
-				const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
-				if (result?.success) {
-					orderTracker.record(mkt.id, slug);
-					liveTracker.record(mkt.id, timing.startMs);
-					successfulTradesThisTick += 1;
-
-					// Wire order into OrderManager for status polling & lifecycle management
-					if (result.orderId) {
-						const tradeTokenId = sig.tokens
-							? sig.side === "UP"
-								? sig.tokens.upTokenId
-								: sig.tokens.downTokenId
-							: undefined;
-						orderManager.addOrderWithTracking(
-							{
-								orderId: result.orderId,
-								marketId: mkt.id,
-								windowSlug: slug,
-								side: sig.side ?? "UP",
-								tokenId: tradeTokenId,
-								price: result.tradePrice ?? 0,
-								size: Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0),
-								placedAt: Date.now(),
-							},
-							result.isGtdOrder ?? true,
-						);
-					}
 				} else {
-					log.warn(`Live trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
+					const liveWindowLimit = Math.min(maxGlobalTrades, CONFIG.liveRisk.maxTradesPerWindow);
+					const liveTradeSize = Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0);
+					const liveAffordCheck = liveAcc.canAffordTradeWithStopCheck(liveTradeSize);
+					const canPlace =
+						orderTracker &&
+						!orderTracker.hasOrder(mkt.id, slug) &&
+						!orderTracker.onCooldown() &&
+						orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
+						successfulTradesThisTick < liveWindowLimit &&
+						!liveTracker.has(mkt.id, timing.startMs) &&
+						liveTracker.canTradeGlobally(liveWindowLimit) &&
+						liveAffordCheck.canTrade;
+
+					if (canPlace) {
+						const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
+						if (result?.success) {
+							orderTracker.record(mkt.id, slug);
+							liveTracker.record(mkt.id, timing.startMs);
+							successfulTradesThisTick += 1;
+
+							if (result.orderId) {
+								const tradeTokenId = sig.tokens
+									? sig.side === "UP"
+										? sig.tokens.upTokenId
+										: sig.tokens.downTokenId
+									: undefined;
+								orderManager.addOrderWithTracking(
+									{
+										orderId: result.orderId,
+										marketId: mkt.id,
+										windowSlug: slug,
+										side: sig.side ?? "UP",
+										tokenId: tradeTokenId,
+										price: result.tradePrice ?? 0,
+										size: Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0),
+										placedAt: Date.now(),
+									},
+									result.isGtdOrder ?? true,
+								);
+							}
+						} else {
+							log.warn(`Live trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
+						}
+					}
 				}
 			}
 		}
@@ -471,9 +461,9 @@ async function main(): Promise<void> {
 			paperPendingStop: false,
 			livePendingStart: false,
 			livePendingStop: false,
-			paperStats: getPaperStats(),
-			liveStats: getLiveStats(),
-			liveTodayStats: getLiveTodayStats(),
+			paperStats: paperAccount.getStats(),
+			liveStats: liveAccount.getStats(),
+			liveTodayStats: liveAccount.getTodayStats(),
 		});
 
 		renderDashboard(results);

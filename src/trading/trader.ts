@@ -9,13 +9,11 @@ import { env } from "../core/env.ts";
 import { createLogger } from "../core/logger.ts";
 import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
 import { getCandleWindowTiming } from "../core/utils.ts";
-import type { DailyState, MarketConfig, RiskConfig, TradeResult, TradeSignal } from "../types.ts";
-import { addPaperTrade } from "./paperStats.ts";
+import type { MarketConfig, RiskConfig, TradeResult, TradeSignal } from "../types.ts";
+import { getAccount } from "./accountStats.ts";
 
 const log = createLogger("trader");
 
-const PAPER_DAILY_PATH = "./data/paper-daily-state.json";
-const LIVE_DAILY_PATH = "./data/live-daily-state.json";
 const CREDS_PATH = "./data/api-creds.json";
 
 const HOST = CONFIG.clobBaseUrl;
@@ -30,28 +28,6 @@ const RPC_URLS: string[] = [
 
 let wallet: Wallet | null = null;
 let client: ClobClient | null = null;
-let paperDailyState: DailyState = {
-	date: new Date().toDateString(),
-	pnl: 0,
-	trades: 0,
-};
-let liveDailyState: DailyState = {
-	date: new Date().toDateString(),
-	pnl: 0,
-	trades: 0,
-};
-
-// ============ Pending Live Trade Settlement ============
-interface PendingLiveTrade {
-	orderId: string;
-	marketId: string;
-	side: "UP" | "DOWN";
-	buyPrice: number;
-	size: number;
-	priceToBeat: number;
-	windowStartMs: number;
-}
-const pendingLiveTrades: PendingLiveTrade[] = [];
 
 // ============ Heartbeat & Open Order Management ============
 // Polymarket cancels all open orders if no heartbeat received within 10s (5s buffer).
@@ -195,73 +171,6 @@ function isApiCreds(value: unknown): value is ApiKeyCreds {
 	);
 }
 
-// Restore daily state from SQLite or JSON
-export function initTraderState(): void {
-	if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
-		try {
-			const today = new Date().toDateString();
-			const paperRow = statements.getDailyStats().get({ $date: today, $mode: "paper" }) as {
-				pnl?: number;
-				trades?: number;
-			} | null;
-			if (paperRow) {
-				paperDailyState = { date: today, pnl: Number(paperRow.pnl ?? 0), trades: Number(paperRow.trades ?? 0) };
-			}
-			const liveRow = statements.getDailyStats().get({ $date: today, $mode: "live" }) as {
-				pnl?: number;
-				trades?: number;
-			} | null;
-			if (liveRow) {
-				liveDailyState = { date: today, pnl: Number(liveRow.pnl ?? 0), trades: Number(liveRow.trades ?? 0) };
-			}
-		} catch (err) {
-			log.warn("Failed to load daily state from SQLite:", err);
-		}
-	} else {
-		try {
-			const saved: DailyState = JSON.parse(fs.readFileSync(PAPER_DAILY_PATH, "utf8"));
-			if (saved.date === new Date().toDateString()) paperDailyState = saved;
-		} catch (err) {
-			log.warn("Failed to load paper daily state from JSON:", err);
-		}
-		try {
-			const saved: DailyState = JSON.parse(fs.readFileSync(LIVE_DAILY_PATH, "utf8"));
-			if (saved.date === new Date().toDateString()) liveDailyState = saved;
-		} catch (err) {
-			log.warn("Failed to load live daily state from JSON:", err);
-		}
-	}
-}
-// Call at module scope for backward compat
-initTraderState();
-
-function saveDailyState(mode: "paper" | "live"): void {
-	const dirPath = mode === "paper" ? "./data/paper" : "./data/live";
-	const filePath = mode === "paper" ? PAPER_DAILY_PATH : LIVE_DAILY_PATH;
-	const state = mode === "paper" ? paperDailyState : liveDailyState;
-
-	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
-		fs.mkdirSync(dirPath, { recursive: true });
-		fs.writeFileSync(filePath, JSON.stringify(state, null, 2));
-	}
-
-	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-		const existing = statements.getDailyStats().get({
-			$date: state.date,
-			$mode: mode,
-		}) as { wins?: number | null; losses?: number | null } | null;
-
-		statements.upsertDailyStats().run({
-			$date: state.date,
-			$mode: mode,
-			$pnl: state.pnl,
-			$trades: state.trades,
-			$wins: Number(existing?.wins ?? 0),
-			$losses: Number(existing?.losses ?? 0),
-		});
-	}
-}
-
 async function createProvider(): Promise<providers.JsonRpcProvider | null> {
 	for (const url of RPC_URLS) {
 		try {
@@ -361,7 +270,7 @@ async function initClient(savedCreds: unknown): Promise<void> {
 	}
 }
 
-function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
+function canTrade(mode: "paper" | "live"): boolean {
 	if (mode === "live") {
 		if (!client) {
 			log.error("Client not initialized");
@@ -379,22 +288,12 @@ function canTrade(riskConfig: RiskConfig, mode: "paper" | "live"): boolean {
 		}
 	}
 
-	// Reset daily state before checking limits — otherwise yesterday's exceeded
-	// limit would block the first trade of a new day
-	const today = new Date().toDateString();
-	const daily = mode === "paper" ? paperDailyState : liveDailyState;
-	if (daily.date !== today) {
-		if (mode === "paper") {
-			paperDailyState = { date: today, pnl: 0, trades: 0 };
-		} else {
-			liveDailyState = { date: today, pnl: 0, trades: 0 };
-		}
-		saveDailyState(mode);
-	}
-
-	const currentDaily = mode === "paper" ? paperDailyState : liveDailyState;
-	if (currentDaily.pnl <= -Number(riskConfig.dailyMaxLossUsdc || 0)) {
-		log.error(`${mode} daily ${mode === "live" ? "spending cap" : "loss limit"} reached`);
+	const account = getAccount(mode);
+	const riskConfig = mode === "paper" ? CONFIG.paperRisk : CONFIG.liveRisk;
+	const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+	const affordCheck = account.canAffordTradeWithStopCheck(tradeSize);
+	if (!affordCheck.canTrade) {
+		log.error(`${mode} trade blocked: ${affordCheck.reason}`);
 		return false;
 	}
 
@@ -470,10 +369,13 @@ export async function executeTrade(
 	const { marketConfig = null, riskConfig } = options;
 
 	if (mode === "paper") {
+		if (!canTrade("paper")) {
+			return { success: false, reason: "trading_disabled" };
+		}
+
 		const { side, marketUp, marketDown, marketSlug } = signal;
 		const isUp = side === "UP";
 		const marketPrice = isUp ? parseFloat(String(marketUp)) : parseFloat(String(marketDown));
-		// P0-1: Guard against NaN/Infinity propagation into trades
 		if (!Number.isFinite(marketPrice)) {
 			log.warn(`Non-finite market price for ${signal.marketId}, aborting paper trade`);
 			return { success: false, reason: "price_not_finite" };
@@ -487,8 +389,15 @@ export async function executeTrade(
 			return { success: false, reason: "price_out_of_range" };
 		}
 
+		const oppositePrice = isUp ? parseFloat(String(marketDown)) : parseFloat(String(marketUp));
+		if (price > 0.95 && oppositePrice < 0.05) {
+			log.info("Market too confident, skipping");
+			return { success: false, reason: "market_too_confident" };
+		}
+
 		const timing = getCandleWindowTiming(15);
-		const paperId = addPaperTrade({
+		const account = getAccount("paper");
+		const tradeId = account.addTrade({
 			marketId: signal.marketId,
 			windowStartMs: timing.startMs,
 			side: signal.side,
@@ -499,7 +408,7 @@ export async function executeTrade(
 			timestamp: new Date().toISOString(),
 		});
 
-		log.info(`Simulated fill: ${side} at ${price}¢ | ${marketSlug} (${paperId})`);
+		log.info(`Simulated fill: ${side} at ${price}¢ | ${marketSlug} (${tradeId})`);
 
 		const paperTradeTimestamp = new Date().toISOString();
 
@@ -509,7 +418,7 @@ export async function executeTrade(
 				side: `BUY_${side}`,
 				amount: Number(riskConfig.maxTradeSizeUsdc || 0),
 				price,
-				orderId: paperId,
+				orderId: tradeId,
 				status: "paper_filled",
 			},
 			signal.marketId || marketConfig?.id,
@@ -523,20 +432,17 @@ export async function executeTrade(
 			price,
 			size: Number(riskConfig.maxTradeSizeUsdc || 0),
 			timestamp: paperTradeTimestamp,
-			orderId: paperId,
+			orderId: tradeId,
 			status: "paper_filled",
 		});
 
-		paperDailyState.trades++;
-		saveDailyState("paper");
-
 		return {
 			success: true,
-			order: { orderID: paperId, status: "paper_filled" },
+			order: { orderID: tradeId, status: "paper_filled" },
 		};
 	}
 
-	if (!canTrade(riskConfig, "live")) {
+	if (!canTrade("live")) {
 		return { success: false, reason: "trading_disabled" };
 	}
 
@@ -671,8 +577,18 @@ export async function executeTrade(
 				orderId: finalOrderId,
 				status: resultStatus || "placed",
 			});
-			liveDailyState.trades++;
-			saveDailyState("live");
+
+			const liveAccount = getAccount("live");
+			liveAccount.addTrade({
+				marketId: signal.marketId ?? "",
+				windowStartMs: getCandleWindowTiming(15).startMs,
+				side,
+				price,
+				size: Number(riskConfig.maxTradeSizeUsdc || 0),
+				priceToBeat: signal.priceToBeat ?? 0,
+				currentPriceAtEntry: signal.currentPrice,
+				timestamp: liveTradeTimestamp,
+			});
 
 			if (tokenId && tokenId.length > 0) {
 				try {
@@ -693,25 +609,6 @@ export async function executeTrade(
 			if (!isLatePhase || !isHighConfidence) {
 				registerOpenGtdOrder(finalOrderId);
 				startHeartbeat();
-			}
-
-			// Conservative PnL: debit full trade cost as worst-case loss.
-			// Daily loss limit in canTrade() now acts as a spending cap for live mode.
-			const liveTradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
-			updatePnl(-liveTradeSize * price, "live");
-
-			// Track for settlement at window boundary
-			if (signal.priceToBeat && signal.priceToBeat > 0) {
-				const liveTiming = getCandleWindowTiming(15);
-				pendingLiveTrades.push({
-					orderId: finalOrderId,
-					marketId: signal.marketId ?? "",
-					side,
-					buyPrice: price,
-					size: liveTradeSize,
-					priceToBeat: signal.priceToBeat,
-					windowStartMs: liveTiming.startMs,
-				});
 			}
 		}
 
@@ -776,126 +673,5 @@ export function getConfig(): {
 		paperRisk: CONFIG.paperRisk,
 		liveRisk: CONFIG.liveRisk,
 		strategy: CONFIG.strategy,
-	};
-}
-
-export function getDailyState(): DailyState {
-	return { ...paperDailyState };
-}
-
-export function getPaperDailyState(): DailyState {
-	return { ...paperDailyState };
-}
-
-export function getLiveDailyState(): DailyState {
-	return { ...liveDailyState };
-}
-
-export function updatePnl(amount: number, mode: "paper" | "live"): void {
-	if (mode === "paper") {
-		paperDailyState.pnl += amount;
-	} else {
-		liveDailyState.pnl += amount;
-	}
-	saveDailyState(mode);
-}
-
-/**
- * Resolve pending live trades for a completed window.
- * Mirrors paper trade settlement logic: compare finalPrice vs priceToBeat,
- * determine win/loss, calculate PnL, and update the DB.
- * Returns the number of trades resolved.
- */
-export function resolveLiveTrades(windowStartMs: number, finalPrices: Map<string, number>): number {
-	let resolved = 0;
-	const remaining: PendingLiveTrade[] = [];
-
-	for (const trade of pendingLiveTrades) {
-		if (trade.windowStartMs !== windowStartMs) {
-			remaining.push(trade);
-			continue;
-		}
-
-		const finalPrice = finalPrices.get(trade.marketId);
-		if (finalPrice === undefined || trade.priceToBeat <= 0) {
-			remaining.push(trade);
-			continue;
-		}
-
-		// Polymarket rule: price === PTB → DOWN wins
-		const upWon = finalPrice > trade.priceToBeat;
-		const downWon = finalPrice <= trade.priceToBeat;
-		const won = trade.side === "UP" ? upWon : downWon;
-		const pnl = won ? trade.size * (1 - trade.buyPrice) : -(trade.size * trade.buyPrice);
-
-		try {
-			statements.updateTradeOutcome().run({
-				$pnl: pnl,
-				$won: won ? 1 : 0,
-				$orderId: trade.orderId,
-				$mode: "live",
-				$status: won ? "won" : "lost",
-			});
-		} catch (err) {
-			log.warn(`Failed to update trade outcome for ${trade.orderId}:`, err);
-		}
-
-		// Correct daily PnL: at trade time we debited worst-case (-size*price).
-		// If won, actual PnL is +size*(1-price). Correction = actual - worstCase = size.
-		if (won) {
-			updatePnl(trade.size, "live");
-		}
-
-		log.info(
-			`Live settle: ${trade.marketId} ${trade.side} ${won ? "WON" : "LOST"} | PnL: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(4)} | final=${finalPrice.toFixed(2)} ptb=${trade.priceToBeat.toFixed(2)}`,
-		);
-		resolved++;
-	}
-
-	pendingLiveTrades.length = 0;
-	pendingLiveTrades.push(...remaining);
-	return resolved;
-}
-
-export function getLiveStats(): {
-	totalTrades: number;
-	wins: number;
-	losses: number;
-	pending: number;
-	winRate: number;
-	totalPnl: number;
-} {
-	try {
-		const row = statements.getTradeStatsByMode().get({ $mode: "live" }) as {
-			total_trades?: number;
-			wins?: number;
-			losses?: number;
-			pending?: number;
-			total_pnl?: number;
-		} | null;
-		const totalTrades = Number(row?.total_trades ?? 0);
-		const wins = Number(row?.wins ?? 0);
-		const losses = Number(row?.losses ?? 0);
-		const pending = Number(row?.pending ?? 0);
-		const resolved = wins + losses;
-		return {
-			totalTrades,
-			wins,
-			losses,
-			pending,
-			winRate: resolved > 0 ? wins / resolved : 0,
-			totalPnl: Number((row?.total_pnl ?? 0).toFixed(2)),
-		};
-	} catch (err) {
-		log.warn("Failed to get live stats:", err);
-		return { totalTrades: 0, wins: 0, losses: 0, pending: 0, winRate: 0, totalPnl: 0 };
-	}
-}
-
-export function getLiveTodayStats(): { pnl: number; trades: number; limit: number } {
-	return {
-		pnl: liveDailyState.pnl,
-		trades: liveDailyState.trades,
-		limit: CONFIG.liveRisk.dailyMaxLossUsdc,
 	};
 }

@@ -3,7 +3,7 @@ import { USDC_E_DECIMALS } from "./contracts.ts";
 
 // --- Local row types for type guards ---
 
-interface TradeRow {
+export interface TradeRow {
 	order_id: string;
 	market: string;
 	side: string;
@@ -14,7 +14,7 @@ interface TradeRow {
 	recon_status: string | null;
 }
 
-interface EventRow {
+export interface EventRow {
 	tx_hash: string;
 	log_index: number;
 	block_number: number;

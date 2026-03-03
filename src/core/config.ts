@@ -127,6 +127,7 @@ const ConfigFileSchema = z
 		live: z
 			.object({
 				risk: RiskConfigSchema.optional(),
+				initialBalance: z.coerce.number().optional(),
 			})
 			.partial()
 			.optional(),
@@ -140,6 +141,7 @@ const ConfigFileSchema = z
 		},
 		live: {
 			risk: RiskConfigSchema.parse(value.live?.risk ?? {}),
+			initialBalance: value.live?.initialBalance ?? 1000,
 		},
 		strategy: StrategyConfigSchema.parse(value.strategy ?? {}),
 		risk: value.risk,
@@ -281,6 +283,7 @@ export const CONFIG: AppConfig = {
 };
 
 export const PAPER_INITIAL_BALANCE: number = FILE_CONFIG.paper.initialBalance;
+export const LIVE_INITIAL_BALANCE: number = FILE_CONFIG.live.initialBalance;
 
 export function reloadConfig(): AppConfig {
 	const fileConfig = readJsonConfig();

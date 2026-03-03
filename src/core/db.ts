@@ -335,6 +335,47 @@ function runMigrations(db: Database): void {
 			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (3, strftime('%s', 'now'))");
 		})();
 	}
+
+	if (currentVersion < 4) {
+		db.transaction(() => {
+			db.run(`
+				CREATE TABLE IF NOT EXISTS live_state (
+					id INTEGER PRIMARY KEY CHECK (id = 1),
+					initial_balance REAL NOT NULL DEFAULT 1000,
+					current_balance REAL NOT NULL DEFAULT 1000,
+					max_drawdown REAL NOT NULL DEFAULT 0,
+					wins INTEGER NOT NULL DEFAULT 0,
+					losses INTEGER NOT NULL DEFAULT 0,
+					total_pnl REAL NOT NULL DEFAULT 0,
+					stopped_at TEXT,
+					stop_reason TEXT,
+					daily_pnl TEXT NOT NULL DEFAULT '[]',
+					daily_counted_trade_ids TEXT NOT NULL DEFAULT '[]'
+				)
+			`);
+
+			db.run(`
+				CREATE TABLE IF NOT EXISTS live_trades (
+					id TEXT PRIMARY KEY,
+					market_id TEXT NOT NULL,
+					window_start_ms INTEGER NOT NULL,
+					side TEXT NOT NULL,
+					price REAL NOT NULL,
+					size REAL NOT NULL,
+					price_to_beat REAL NOT NULL,
+					current_price_at_entry REAL,
+					timestamp TEXT NOT NULL,
+					resolved INTEGER DEFAULT 0,
+					won INTEGER,
+					pnl REAL,
+					settle_price REAL
+				)
+			`);
+			db.run("CREATE INDEX IF NOT EXISTS idx_live_trades_resolved ON live_trades(resolved, timestamp DESC)");
+
+			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (4, strftime('%s', 'now'))");
+		})();
+	}
 }
 
 // P2-3: Cache prepared statements — prepare once per SQL string, clear on DB reinit
@@ -547,20 +588,68 @@ export const statements = {
       INSERT INTO kv_store (key, value) VALUES ($key, $value)
       ON CONFLICT(key) DO UPDATE SET value = $value
     `),
-	getTradeStatsByMode: () =>
+
+	updateTradeSettlement: () =>
+		cachedPrepare(`
+			UPDATE trades SET pnl = $pnl, won = $won, status = $status
+			WHERE order_id = $orderId AND mode = $mode
+		`),
+	// === Live Account State Statements (mirrors paper) ===
+
+	getLiveState: () =>
 		cachedQuery(`
-			SELECT
-				COUNT(*) as total_trades,
-				SUM(CASE WHEN won = 1 THEN 1 ELSE 0 END) as wins,
-				SUM(CASE WHEN won = 0 THEN 1 ELSE 0 END) as losses,
-				SUM(CASE WHEN won IS NULL THEN 1 ELSE 0 END) as pending,
-				COALESCE(SUM(CASE WHEN pnl IS NOT NULL THEN pnl ELSE 0 END), 0) as total_pnl
-			FROM trades WHERE mode = $mode
+			SELECT * FROM live_state WHERE id = 1
 		`),
 
-	updateTradeOutcome: () =>
+	upsertLiveState: () =>
 		cachedPrepare(`
-			UPDATE trades SET pnl = $pnl, won = $won, status = $status WHERE orderId = $orderId AND mode = $mode
+			INSERT INTO live_state (
+				id, initial_balance, current_balance, max_drawdown,
+				wins, losses, total_pnl,
+				stopped_at, stop_reason,
+				daily_pnl, daily_counted_trade_ids
+			)
+			VALUES (
+				1, $initialBalance, $currentBalance, $maxDrawdown,
+				$wins, $losses, $totalPnl,
+				$stoppedAt, $stopReason,
+				$dailyPnl, $dailyCountedTradeIds
+			)
+			ON CONFLICT(id) DO UPDATE SET
+				initial_balance = $initialBalance,
+				current_balance = $currentBalance,
+				max_drawdown = $maxDrawdown,
+				wins = $wins,
+				losses = $losses,
+				total_pnl = $totalPnl,
+				stopped_at = $stoppedAt,
+				stop_reason = $stopReason,
+				daily_pnl = $dailyPnl,
+				daily_counted_trade_ids = $dailyCountedTradeIds
+		`),
+
+	insertLiveTrade: () =>
+		cachedPrepare(`
+			INSERT INTO live_trades (
+				id, market_id, window_start_ms, side, price, size,
+				price_to_beat, current_price_at_entry, timestamp,
+				resolved, won, pnl, settle_price
+			)
+			VALUES (
+				$id, $marketId, $windowStartMs, $side, $price, $size,
+				$priceToBeat, $currentPriceAtEntry, $timestamp,
+				$resolved, $won, $pnl, $settlePrice
+			)
+			ON CONFLICT(id) DO UPDATE SET
+				resolved = $resolved,
+				won = $won,
+				pnl = $pnl,
+				settle_price = $settlePrice
+		`),
+
+	getAllLiveTrades: () =>
+		cachedQuery(`
+			SELECT * FROM live_trades ORDER BY timestamp ASC
 		`),
 };
 
@@ -660,6 +749,8 @@ export function resetPaperDbData(): void {
 export function resetLiveDbData(): void {
 	const db = getDb();
 	db.transaction(() => {
+		db.run("DELETE FROM live_trades");
+		db.run("DELETE FROM live_state");
 		db.run("DELETE FROM trades WHERE mode = 'live'");
 		db.run("DELETE FROM daily_stats WHERE mode = 'live'");
 		db.run("DELETE FROM onchain_events");

@@ -1,6 +1,8 @@
 import { onchainStatements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
 import type { ReconResult, ReconStatus } from "../types.ts";
+import { USDC_E_DECIMALS } from "./contracts.ts";
+import type { EventRow, TradeRow } from "./reconciler-utils.ts";
 import { isEventRow, isKnownTokenRow, isTradeRow, rawToUsdc, statusFromConfidence } from "./reconciler-utils.ts";
 
 const log = createLogger("reconciler");
@@ -74,7 +76,7 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 				let confidence = 0.3;
 
 				if (rawEvent.event_type === "usdc_transfer") {
-					const usdcValue = rawToUsdc(rawEvent.value);
+					const usdcValue = rawToUsdc(BigInt(rawEvent.value), USDC_E_DECIMALS);
 					const delta = Math.abs(usdcValue - expectedUsdcDelta);
 					const tolerance = expectedUsdcDelta * USDC_TOLERANCE;
 					if (delta <= tolerance) {
@@ -103,7 +105,7 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 					bestMatch = {
 						event: rawEvent,
 						confidence,
-						usdcDelta: rawEvent.event_type === "usdc_transfer" ? rawToUsdc(rawEvent.value) : 0,
+						usdcDelta: rawEvent.event_type === "usdc_transfer" ? rawToUsdc(BigInt(rawEvent.value), USDC_E_DECIMALS) : 0,
 						tokenId: token.token_id,
 					};
 				}
