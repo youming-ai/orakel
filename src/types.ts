@@ -407,6 +407,10 @@ export interface PaperStats {
 	totalPnl: number;
 }
 
+/** Generalized aliases — prefer these in new code */
+export type TradeEntry = PaperTradeEntry;
+export type AccountStatsResult = PaperStats;
+
 export type WsEventType = "state:snapshot" | "signal:new" | "trade:executed" | "balance:snapshot";
 
 export interface WsMessage<T = unknown> {

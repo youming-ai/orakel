@@ -78,18 +78,13 @@ cd web && bun run dev
 
 ## 文档
 
-完整文档见 [`docs/`](./docs/README.md)：
-
 | 文档 | 说明 |
 |------|------|
-| [系统架构](./docs/architecture.md) | 整体架构、模块关系、数据流 |
-| [交易策略](./docs/trading-strategy.md) | 概率模型、边缘计算、决策逻辑 |
-| [后端](./docs/backend.md) | API 接口、数据库、配置系统 |
-| [前端](./docs/frontend.md) | 组件架构、状态管理、WebSocket |
-| [数据源](./docs/data-sources.md) | Binance、Polymarket、Chainlink |
-| [技术指标](./docs/indicators.md) | RSI、MACD、VWAP、Heiken Ashi |
-| [部署指南](./docs/deployment.md) | Docker、CI/CD、环境配置 |
-| [Polymarket 参考](./docs/polymarket-reference.md) | API 笔记 |
+| [系统架构](./docs/architecture.md) | 整体架构、模块关系、数据流、设计决策 |
+| [交易策略](./docs/trading-strategy.md) | 概率模型、边缘计算、信心评分、决策逻辑 |
+| [部署指南](./docs/deployment.md) | Docker、CI/CD、环境配置、VPS 自动部署 |
+| [Cloudflare Pages 部署](./docs/cloudflare-pages-deployment.md) | 前端部署到 Cloudflare Pages 详细指南 |
+| [测试文档](./docs/testing.md) | 测试覆盖范围、测试文件组织、运行测试 |
 
 ## 免责声明
 

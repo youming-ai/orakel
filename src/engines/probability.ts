@@ -1,5 +1,5 @@
+import { clamp, normalCDF } from "../core/utils.ts";
 import type { BlendResult, MacdResult, ScoreResult } from "../types.ts";
-import { clamp, normalCDF } from "../utils.ts";
 
 interface ScoreDirectionInput {
 	price: number | null;

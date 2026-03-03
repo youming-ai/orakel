@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Toaster } from "@/components/ui/toaster";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import type { DashboardState, PaperTradeEntry, TradeRecord } from "@/lib/api";
+import type { PaperTradeEntry, TradeRecord } from "@/lib/api";
 import {
 	useDashboardStateWithWs,
 	useLiveCancel,
@@ -28,34 +28,6 @@ import { AnalyticsTabs } from "./AnalyticsTabs";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 import { Header } from "./Header";
 
-const DEFAULT_CONFIG: DashboardState["config"] = {
-	strategy: {
-		edgeThresholdEarly: 0.06,
-		edgeThresholdMid: 0.08,
-		edgeThresholdLate: 0.1,
-		minProbEarly: 0.52,
-		minProbMid: 0.55,
-		minProbLate: 0.6,
-		blendWeights: { vol: 0.5, ta: 0.5 },
-		regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 },
-	},
-	paperRisk: {
-		maxTradeSizeUsdc: 1,
-		limitDiscount: 0.05,
-		dailyMaxLossUsdc: 10,
-		maxOpenPositions: 2,
-		minLiquidity: 15000,
-		maxTradesPerWindow: 1,
-	},
-	liveRisk: {
-		maxTradeSizeUsdc: 1,
-		limitDiscount: 0.05,
-		dailyMaxLossUsdc: 10,
-		maxOpenPositions: 2,
-		minLiquidity: 15000,
-		maxTradesPerWindow: 1,
-	},
-};
 
 function DashboardContent() {
 	const prefersReducedMotion = useReducedMotion();
@@ -89,7 +61,8 @@ function DashboardContent() {
 			priceToBeat: 0,
 			currentPriceAtEntry: null,
 			timestamp: t.timestamp,
-			resolved: t.status === "settled" || t.status === "won" || t.status === "lost",
+			// Consider trade resolved if status indicates settlement OR if won/pnl are set
+			resolved: t.status === "settled" || t.status === "won" || t.status === "lost" || t.won !== null,
 			won: t.won === null ? null : Boolean(t.won),
 			pnl: t.pnl,
 			settlePrice: null,
@@ -120,7 +93,6 @@ function DashboardContent() {
 			toast({ type: "info", description: "Live bot start/stop cancelled" });
 			return;
 		}
-		if (!state.liveRunning && !state.liveWallet?.clientReady) return;
 		setConfirmAction(state.liveRunning ? "stop" : "start");
 	}, [state, liveCancel, setConfirmAction]);
 
@@ -176,7 +148,6 @@ function DashboardContent() {
 				viewMode={viewMode}
 				paperRunning={state.paperRunning}
 				liveRunning={state.liveRunning}
-				liveWalletReady={state.liveWallet?.clientReady ?? false}
 				paperPendingStart={state.paperPendingStart ?? false}
 				paperPendingStop={state.paperPendingStop ?? false}
 				livePendingStart={state.livePendingStart ?? false}
@@ -190,10 +161,8 @@ function DashboardContent() {
 			<AppErrorBoundary>
 				<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
 					<AnalyticsTabs
-						stats={viewMode === "paper" ? state.paperStats : state.liveStats}
 						trades={viewMode === "paper" ? paperTrades : liveTradesAsPaper}
 						byMarket={viewMode === "paper" ? paperByMarket : undefined}
-						config={state.config ?? DEFAULT_CONFIG}
 						markets={state.markets ?? []}
 						liveTrades={trades}
 						viewMode={viewMode}

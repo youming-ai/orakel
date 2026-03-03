@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { createLogger } from "../logger.ts";
+import { createLogger } from "../core/logger.ts";
 
 const log = createLogger("clob-ws");
 

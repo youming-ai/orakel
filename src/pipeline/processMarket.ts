@@ -1,5 +1,5 @@
-import { CONFIG } from "../config.ts";
-import { persistSignal } from "../persistence.ts";
+import { CONFIG } from "../core/config.ts";
+import { persistSignal } from "../trading/persistence.ts";
 import type {
 	CandleWindowTiming,
 	MacdResult,

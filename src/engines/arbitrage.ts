@@ -1,4 +1,4 @@
-import { clamp } from "../utils.ts";
+import { clamp } from "../core/utils.ts";
 
 export interface ArbitrageOpportunity {
 	marketId: string;

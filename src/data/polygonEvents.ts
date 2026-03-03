@@ -1,6 +1,5 @@
 import { ethers } from "ethers";
 import WebSocket from "ws";
-import { CONFIG } from "../config.ts";
 import {
 	CTF_ADDRESS,
 	ctfIface,
@@ -10,8 +9,9 @@ import {
 	USDC_E_ADDRESS,
 	USDC_E_DECIMALS,
 	usdcIface,
-} from "../contracts.ts";
-import { createLogger } from "../logger.ts";
+} from "../blockchain/contracts.ts";
+import { CONFIG } from "../core/config.ts";
+import { createLogger } from "../core/logger.ts";
 import type { OnChainEvent } from "../types.ts";
 
 const log = createLogger("polygon-events");

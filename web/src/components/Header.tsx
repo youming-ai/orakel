@@ -1,4 +1,4 @@
-import { Activity, Clock, Loader2, Play, Wallet, Zap } from "lucide-react";
+import { Activity, Clock, Loader2, Play, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -6,7 +6,6 @@ interface HeaderProps {
 	viewMode: "paper" | "live";
 	paperRunning: boolean;
 	liveRunning: boolean;
-	liveWalletReady: boolean;
 	paperPendingStart: boolean;
 	paperPendingStop: boolean;
 	livePendingStart: boolean;
@@ -87,7 +86,6 @@ export function Header({
 	viewMode,
 	paperRunning,
 	liveRunning,
-	liveWalletReady,
 	paperPendingStart,
 	paperPendingStop,
 	livePendingStart,
@@ -107,9 +105,7 @@ export function Header({
 	const timeLeft = useCycleCountdown();
 
 	const handleToggle = viewMode === "paper" ? onPaperToggle : onLiveToggle;
-	const canToggle = viewMode === "paper" || liveRunning || liveWalletReady || isPending;
-
-	const cfg = statusConfig[canToggle ? status : "stopped"];
+	const cfg = statusConfig[status];
 
 	return (
 		<div className="sticky top-3 z-50 flex justify-center px-3 pointer-events-none">
@@ -119,7 +115,7 @@ export function Header({
 					<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20">
 						<Zap className="size-3.5" />
 					</div>
-					<span className="text-sm font-bold tracking-tight text-foreground hidden sm:block">Orakel</span>
+					<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
 				</div>
 
 				{/* Right: Countdown + Status + Wallet + Mode + Theme */}
@@ -133,19 +129,17 @@ export function Header({
 
 					<button
 						type="button"
-						onClick={canToggle ? handleToggle : undefined}
-						disabled={!canToggle || mutationPending}
+						onClick={handleToggle}
+						disabled={mutationPending}
 						className={cn(
 							"flex items-center gap-1.5 h-7 px-2 sm:px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-lg transition-all shrink-0 border outline-none",
-							!canToggle
-								? "bg-muted text-muted-foreground border-transparent cursor-not-allowed opacity-50"
-								: cfg.className,
+							cfg.className,
 							isPending && "animate-pulse",
 						)}
-						title={!canToggle ? "Connect wallet first" : isPending ? "Click to cancel" : undefined}
+						title={isPending ? "Click to cancel" : undefined}
 					>
-						{!canToggle ? <Wallet className="size-3" /> : <StatusIcon status={status} />}
-						<span>{!canToggle ? "No Wallet" : cfg.label}</span>
+						<StatusIcon status={status} />
+						<span>{cfg.label}</span>
 					</button>
 
 					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />

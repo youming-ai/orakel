@@ -1,4 +1,4 @@
-import { clamp } from "../utils.ts";
+import { clamp } from "../core/utils.ts";
 
 export function computeRsi(closes: (number | null)[], period: number): number | null {
 	if (!Array.isArray(closes) || closes.length < period + 1) return null;

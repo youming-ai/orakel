@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
-    "format": "biome format --write src/"
+    "format": "biome format --write src/",
+    "migrate:live-pnl": "bun run src/scripts/migrate-live-trade-pnl.ts"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.6",

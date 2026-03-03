@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { CONFIG } from "../config.ts";
+import { CONFIG } from "../core/config.ts";
 import type { PriceTick, WsStreamHandle } from "../types.ts";
 
 type JsonRecord = Record<string, unknown>;

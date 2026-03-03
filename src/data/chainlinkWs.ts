@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import WebSocket from "ws";
-import { CONFIG } from "../config.ts";
+import { CONFIG } from "../core/config.ts";
 import type { PriceTick, WsStreamHandle } from "../types.ts";
 
 const ANSWER_UPDATED_TOPIC0 = "0x0559884fd3a460f71df1384d438bdf1a5ceef8bd81c4d9c4f0a40c5d4b1f0f0a";
