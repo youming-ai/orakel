@@ -31,8 +31,6 @@ const envSchema = z.object({
 			const cleaned = v.trim().replace(/^0x/i, "");
 			return cleaned.length === 64 ? cleaned : undefined;
 		}),
-	// CORS (optional — restrict to frontend domain in production, default: *)
-	CORS_ORIGIN: z.string().default("*"),
 
 	// Storage backends
 	PERSIST_BACKEND: z

@@ -680,11 +680,11 @@ setInterval(() => {
 
 const app = new Hono();
 
-// Parse CORS_ORIGIN: support comma-separated list or single domain
-const corsOrigins = env.CORS_ORIGIN === "*" ? "*" : env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
-
+// CORS disabled - frontend is served from the same origin
+// Enable if you need to access API from external domains
+// const corsOrigins = env.CORS_ORIGIN === "*" ? "*" : env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
 app.use("/api/*", rateLimit);
-app.use("/api/*", cors({ origin: corsOrigins }));
+// app.use("/api/*", cors({ origin: corsOrigins }));
 app.use("/api/paper/*", requireAuth);
 app.use("/api/live/*", requireAuth);
 app.use("/api/config", requireAuth);
