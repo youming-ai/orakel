@@ -40,7 +40,7 @@
 
 | 变量名 | 值 | 说明 |
 |--------|-----|------|
-| `VITE_API_BASE` | `https://your-api-domain.com` | 后端 API 地址 |
+| `VITE_API_BASE` | `https://orakel.um1ng.me/api` | 后端 API 地址 |
 
 **路径：** Settings → Environment variables → Production
 
@@ -110,7 +110,7 @@ web/dist
 
 **Production 环境：**
 ```bash
-VITE_API_BASE=https://your-api-domain.com
+VITE_API_BASE=https://orakel.um1ng.me/api
 ```
 
 **Preview 环境（可选）：**
@@ -134,7 +134,7 @@ VITE_API_BASE=http://localhost:9999
 
 环境变量：
 ```bash
-VITE_API_BASE=https://api.orakel.com
+VITE_API_BASE=https://orakel.um1ng.me/api
 ```
 
 **VPS 后端配置：**
@@ -307,7 +307,7 @@ Cloudflare Pages 自动提供：
 ```bash
 cd web
 bun install
-VITE_API_BASE=https://your-api.com bun run build
+VITE_API_BASE=https://orakel.um1ng.me/api bun run build
 bun run preview
 ```
 

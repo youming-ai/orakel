@@ -26,10 +26,10 @@ describe("computeMacd", () => {
 		const closes = Array.from({ length: 60 }, (_, i) => 100 + i * 0.5);
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
-		expect(result!.macd).toBeGreaterThan(0);
-		expect(result!.signal).toBeDefined();
-		expect(result!.hist).toBeDefined();
-		expect(result!.histDelta).toBeDefined();
+		expect(result?.macd).toBeGreaterThan(0);
+		expect(result?.signal).toBeDefined();
+		expect(result?.hist).toBeDefined();
+		expect(result?.histDelta).toBeDefined();
 	});
 
 	// Bullish crossover: hist > 0
@@ -37,7 +37,7 @@ describe("computeMacd", () => {
 		const closes = Array.from({ length: 60 }, (_, i) => 100 + i * 0.3);
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
-		expect(result!.hist).toBeGreaterThan(0);
+		expect(result?.hist).toBeGreaterThan(0);
 	});
 
 	// Bearish crossover: hist < 0
@@ -45,7 +45,7 @@ describe("computeMacd", () => {
 		const closes = Array.from({ length: 60 }, (_, i) => 100 - i * 0.3);
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
-		expect(result!.hist).toBeLessThan(0);
+		expect(result?.hist).toBeLessThan(0);
 	});
 
 	// Expanding green histogram: hist > 0
@@ -53,8 +53,8 @@ describe("computeMacd", () => {
 		const closes = Array.from({ length: 70 }, (_, i) => 100 + i * 0.5);
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
-		expect(result!.hist).toBeGreaterThan(0);
-		expect(result!.histDelta).toBeDefined();
+		expect(result?.hist).toBeGreaterThan(0);
+		expect(result?.histDelta).toBeDefined();
 	});
 
 	// Expanding red histogram: hist < 0
@@ -62,8 +62,8 @@ describe("computeMacd", () => {
 		const closes = Array.from({ length: 70 }, (_, i) => 100 - i * 0.5);
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
-		expect(result!.hist).toBeLessThan(0);
-		expect(result!.histDelta).toBeDefined();
+		expect(result?.hist).toBeLessThan(0);
+		expect(result?.histDelta).toBeDefined();
 	});
 
 	// Contracting histogram: histDelta opposite sign to hist
@@ -104,9 +104,9 @@ describe("computeMacd", () => {
 		const closes = Array.from({ length: 30 }, (_, i) => 100 + i * 0.5);
 		const result = computeMacd(closes, 5, 13, 5);
 		expect(result).not.toBeNull();
-		expect(result!.macd).toBeDefined();
-		expect(result!.signal).toBeDefined();
-		expect(result!.hist).toBeDefined();
+		expect(result?.macd).toBeDefined();
+		expect(result?.signal).toBeDefined();
+		expect(result?.hist).toBeDefined();
 	});
 
 	// Minimum valid length: exactly slow + signal
@@ -114,6 +114,6 @@ describe("computeMacd", () => {
 		const closes = Array.from({ length: 35 }, (_, i) => 100 + i * 0.5);
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
-		expect(result!.macd).toBeDefined();
+		expect(result?.macd).toBeDefined();
 	});
 });

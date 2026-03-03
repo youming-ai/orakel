@@ -1,0 +1,15 @@
+# Cloudflare Pages Security Headers
+# https://developers.cloudflare.com/pages/configuration/headers/
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+
+  # Content Security Policy - allow API and WebSocket connections
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos; font-src 'self' data:; connect-src 'self' https://orakel.um1ng.me wss://orakel.um1ng.me; base-uri 'self'; form-action 'self'
+
+  # Strict-Transport-Security (only enable if you have SSL enabled)
+  Strict-Transport-Security: max-age=31536000; includeSubDomains

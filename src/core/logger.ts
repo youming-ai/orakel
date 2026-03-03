@@ -26,19 +26,19 @@ const threshold = LEVEL_PRIORITY[env.LOG_LEVEL];
 // ── factory ──────────────────────────────────────────────
 
 function createLogger(tag: string): Logger {
-	const prefix = `[${tag}]`;
+	const _prefix = `[${tag}]`;
 	return {
 		debug: (...args: unknown[]) => {
-			if (threshold <= LEVEL_PRIORITY.debug) console.debug(prefix, ...args);
+			if (threshold <= LEVEL_PRIORITY.debug) console.debug(_prefix, ...args);
 		},
 		info: (...args: unknown[]) => {
-			if (threshold <= LEVEL_PRIORITY.info) console.log(prefix, ...args);
+			if (threshold <= LEVEL_PRIORITY.info) console.info(_prefix, ...args);
 		},
 		warn: (...args: unknown[]) => {
-			if (threshold <= LEVEL_PRIORITY.warn) console.warn(prefix, ...args);
+			if (threshold <= LEVEL_PRIORITY.warn) console.warn(_prefix, ...args);
 		},
 		error: (...args: unknown[]) => {
-			if (threshold <= LEVEL_PRIORITY.error) console.error(prefix, ...args);
+			if (threshold <= LEVEL_PRIORITY.error) console.error(_prefix, ...args);
 		},
 	};
 }

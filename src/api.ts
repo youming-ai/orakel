@@ -5,8 +5,8 @@ import { createBunWebSocket, serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { getAccountSummary, getAllPositions } from "./blockchain/accountState.ts";
-import { fetchRedeemablePositions, redeemAll } from "./blockchain/redeemer.ts";
 import { getReconStatus } from "./blockchain/reconciler.ts";
+import { fetchRedeemablePositions, redeemAll } from "./blockchain/redeemer.ts";
 import { atomicWriteConfig, CONFIG, reloadConfig } from "./core/config.ts";
 import { getDbDiagnostics, READ_BACKEND, statements } from "./core/db.ts";
 import { env } from "./core/env.ts";
@@ -680,8 +680,11 @@ setInterval(() => {
 
 const app = new Hono();
 
+// Parse CORS_ORIGIN: support comma-separated list or single domain
+const corsOrigins = env.CORS_ORIGIN === "*" ? "*" : env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
+
 app.use("/api/*", rateLimit);
-app.use("/api/*", cors({ origin: env.CORS_ORIGIN }));
+app.use("/api/*", cors({ origin: corsOrigins }));
 app.use("/api/paper/*", requireAuth);
 app.use("/api/live/*", requireAuth);
 app.use("/api/config", requireAuth);

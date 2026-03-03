@@ -1,6 +1,6 @@
 import { onchainStatements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
-import type { ReconResult, ReconStatus } from "../types.ts";
+import type { ReconResult } from "../types.ts";
 import { USDC_E_DECIMALS } from "./contracts.ts";
 import type { EventRow, TradeRow } from "./reconciler-utils.ts";
 import { isEventRow, isKnownTokenRow, isTradeRow, rawToUsdc, statusFromConfidence } from "./reconciler-utils.ts";
