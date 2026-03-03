@@ -1,8 +1,0 @@
-# Cloudflare Pages Configuration
-# https://developers.cloudflare.com/pages/functions/wrangler-configuration/
-
-name = "orakel"
-compatibility_date = "2024-01-01"
-
-# Disable Workers deployment for static site
-pages_build_output_dir = "web/dist"

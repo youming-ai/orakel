@@ -31,6 +31,9 @@
 | **Framework preset** | `Vite` |
 | **Build command** | `cd web && bun install && bun run build` |
 | **Build output directory** | `web/dist` |
+| **Deploy command** | *(留空)* - Pages 自动部署构建输出 |
+
+**重要：** 不要设置 Deploy command（部署命令）。Cloudflare Pages 会自动将 Build output directory 的内容部署到 CDN。
 
 5. 点击 **Save and Deploy**
 
@@ -290,6 +293,7 @@ Cloudflare Pages 自动提供：
 
 | 问题 | 解决方案 |
 |------|----------|
+| **部署失败：Missing entry-point** | 移除 Settings → Builds & deployments 中的 Deploy command（应留空） |
 | **API 请求被 CORS 阻止** | 检查后端 `CORS_ORIGIN` 包含前端域名 |
 | **WebSocket 连接失败** | 确认后端 `/ws` 路径可用，检查防火墙 |
 | **构建失败** | 查看部署日志，确认构建命令正确 |
@@ -326,6 +330,7 @@ bun run preview
 - [ ] 连接 GitHub 仓库到 Cloudflare Pages
 - [ ] 配置构建命令：`cd web && bun install && bun run build`
 - [ ] 设置输出目录：`web/dist`
+- [ ] **确认 Deploy command 为空**（Pages 自动部署）
 - [ ] 添加环境变量：`VITE_API_BASE`
 - [ ] 配置后端 CORS：`CORS_ORIGIN`
 - [ ] （可选）添加自定义域名
@@ -344,8 +349,10 @@ git push origin main
 
 | 文件 | 说明 |
 |------|------|
-| [`web/public/_headers`](../web/public/_headers) | HTTP 响应头 |
-| [`web/public/_redirects`](../web/public/_redirects) | URL 重定向规则 |
+| [`web/public/_headers`](../web/public/_headers) | HTTP 响应头（CSP、安全头等） |
+| [`web/public/_redirects`](../web/public/_redirects) | URL 重定向规则（SPA 路由） |
+
+**注意：** Cloudflare Pages 不需要 `wrangler.toml` 配置文件。如需使用 Pages Functions（服务端函数），才需要该文件。
 
 ---
 
