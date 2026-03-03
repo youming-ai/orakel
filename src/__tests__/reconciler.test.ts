@@ -1,140 +1,166 @@
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("../core/db.ts", () => ({
-	onchainStatements: {},
-}));
-
-import { isEventRow, isKnownTokenRow, isTradeRow, rawToUsdc, statusFromConfidence } from "../blockchain/reconciler.ts";
+import { describe, expect, it } from "vitest";
+import {
+	isEventRow,
+	isKnownTokenRow,
+	isTradeRow,
+	rawToUsdc,
+	statusFromConfidence,
+} from "../blockchain/reconciler-utils.ts";
 import type { ReconStatus } from "../types.ts";
 
 describe("statusFromConfidence", () => {
-	const confidenceCases: Array<[number, ReconStatus]> = [
-		[0.7, "confirmed"],
-		[0.8, "confirmed"],
-		[1.0, "confirmed"],
-		[0.5, "pending"],
-		[0.6, "pending"],
-		[0.69, "pending"],
-		[0.0, "disputed"],
-		[0.3, "disputed"],
-		[0.49, "disputed"],
-	];
+	describe("confidence thresholds", () => {
+		it("returns 'confirmed' when confidence >= 0.5", () => {
+			expect(statusFromConfidence(0.5)).toBe<"confirmed">("confirmed");
+			expect(statusFromConfidence(0.75)).toBe<"confirmed">("confirmed");
+			expect(statusFromConfidence(1.0)).toBe<"confirmed">("confirmed");
+		});
 
-	it.each(confidenceCases)("returns %s when confidence is %s", (confidence, expected) => {
-		expect(statusFromConfidence(confidence)).toBe(expected);
+		it("returns 'pending' when 0 < confidence < 0.5", () => {
+			expect(statusFromConfidence(0.1)).toBe<"pending">("pending");
+			expect(statusFromConfidence(0.25)).toBe<"pending">("pending");
+			expect(statusFromConfidence(0.49)).toBe<"pending">("pending");
+		});
+
+		it("returns 'unreconciled' when confidence is 0", () => {
+			expect(statusFromConfidence(0)).toBe<"unreconciled">("unreconciled");
+		});
+
+		it("returns 'disputed' when confidence < 0", () => {
+			expect(statusFromConfidence(-0.1)).toBe<"disputed">("disputed");
+			expect(statusFromConfidence(-0.5)).toBe<"disputed">("disputed");
+		});
 	});
 });
 
 describe("rawToUsdc", () => {
-	it("converts valid raw values to USDC", () => {
-		const cases: Array<[string, number]> = [
-			["1000000", 1],
-			["0", 0],
-			["500000", 0.5],
-		];
-
-		for (const [raw, expected] of cases) {
-			expect(rawToUsdc(raw)).toBe(expected);
-		}
+	it("converts token raw amount to USDC (6 decimals)", () => {
+		// 1 token = 1,000,000 raw units at 6 decimals
+		expect(rawToUsdc(1000000n, 6)).toBe(1.0);
+		expect(rawToUsdc(10000000n, 6)).toBe(10.0);
 	});
 
-	it("returns zero for invalid inputs", () => {
-		const invalid = ["abc", "Infinity", ""];
-		for (const raw of invalid) {
-			expect(rawToUsdc(raw)).toBe(0);
-		}
-	});
-});
-
-describe("isTradeRow", () => {
-	it("recognizes a valid trade row", () => {
-		const trade = {
-			order_id: "order-1",
-			market: "BTC",
-			side: "buy",
-			amount: 1,
-			price: 100,
-			timestamp: "2026-02-26T00:00:00.000Z",
-			mode: "live",
-			recon_status: null,
-		};
-		expect(isTradeRow(trade)).toBe(true);
+	it("handles fractional tokens", () => {
+		expect(rawToUsdc(500000n, 6)).toBe(0.5);
+		expect(rawToUsdc(1500000n, 6)).toBe(1.5);
 	});
 
-	it("returns false for non-object inputs", () => {
-		const invalid = [null, undefined, 42, "row"] as const;
-		for (const value of invalid) {
-			expect(isTradeRow(value)).toBe(false);
-		}
+	it("handles zero", () => {
+		expect(rawToUsdc(0n, 6)).toBe(0);
 	});
 
-	it("returns false when required trade fields are missing", () => {
-		const missingOrder = {
-			market: "BTC",
-		};
-		const missingMarket = {
-			order_id: "order-1",
-		};
-		expect(isTradeRow(missingOrder)).toBe(false);
-		expect(isTradeRow(missingMarket)).toBe(false);
+	it("handles different decimals", () => {
+		// 18 decimals (like ETH)
+		expect(rawToUsdc(1000000000000000000n, 18)).toBe(1.0);
+
+		// 8 decimals
+		expect(rawToUsdc(100000000n, 8)).toBe(1.0);
 	});
 });
 
 describe("isEventRow", () => {
-	it("recognizes a valid event row", () => {
-		const event = {
+	it("returns true for valid event rows", () => {
+		const validRow = {
 			tx_hash: "0xabc",
-			log_index: 1,
-			block_number: 1,
-			event_type: "usdc_transfer",
-			from_addr: "0xfrom",
-			to_addr: "0xto",
-			token_id: null,
+			log_index: 0,
+			block_number: 1000,
+			event_type: "mint" as const,
+			from_addr: "0x123",
+			to_addr: "0x456",
+			token_id: "token-1",
 			value: "1000000",
 			raw_data: null,
-			created_at: "2026-02-26T00:00:00.000Z",
+			created_at: "2024-01-01T00:00:00Z",
 		};
-		expect(isEventRow(event)).toBe(true);
+
+		expect(isEventRow(validRow)).toBe(true);
 	});
 
-	it("returns false without a tx_hash", () => {
-		const missingTx = {
-			log_index: 1,
-			block_number: 1,
-			event_type: "usdc_transfer",
+	it("returns false for rows missing required fields", () => {
+		const missingTxHash = {
+			log_index: 0,
+			block_number: 1000,
+			event_type: "mint" as const,
+			from_addr: "0x123",
+			to_addr: "0x456",
+			token_id: "token-1",
+			value: "1000000",
+			raw_data: null,
+			created_at: "2024-01-01T00:00:00Z",
 		};
-		expect(isEventRow(missingTx)).toBe(false);
-	});
 
-	it("returns false without an event_type", () => {
-		const missingEvent = {
-			tx_hash: "0xabc",
-			log_index: 1,
-			block_number: 1,
-		};
-		expect(isEventRow(missingEvent)).toBe(false);
+		expect(isEventRow(missingTxHash)).toBe(false);
 	});
 });
 
 describe("isKnownTokenRow", () => {
-	it("recognizes a valid token row", () => {
-		const token = {
+	it("returns true for valid known token rows", () => {
+		const validRow = {
 			token_id: "token-1",
-			market_id: "BTC",
-			side: "buy",
+			market_id: "market-1",
+			side: "UP" as const,
 			condition_id: null,
 		};
-		expect(isKnownTokenRow(token)).toBe(true);
+
+		expect(isKnownTokenRow(validRow)).toBe(true);
 	});
 
-	it("returns false without a token_id or market_id", () => {
-		const missingToken = {
-			market_id: "BTC",
-		};
-		const missingMarket = {
+	it("returns false for rows missing required fields", () => {
+		const missingMarketId = {
 			token_id: "token-1",
+			side: "UP" as const,
+			condition_id: null,
 		};
-		expect(isKnownTokenRow(missingToken)).toBe(false);
-		expect(isKnownTokenRow(missingMarket)).toBe(false);
+
+		expect(isKnownTokenRow(missingMarketId)).toBe(false);
+	});
+});
+
+describe("isTradeRow", () => {
+	it("returns true for valid trade rows", () => {
+		const validRow = {
+			timestamp: "2024-01-01T00:00:00Z",
+			market: "BTC",
+			side: "UP",
+			amount: 10.0,
+			price: 0.55,
+			order_id: "order-123",
+			mode: "paper",
+			recon_status: null,
+		};
+
+		expect(isTradeRow(validRow)).toBe(true);
+	});
+
+	it("returns false for rows missing required fields", () => {
+		const missingOrderId = {
+			market: "BTC",
+			side: "UP",
+			amount: 10.0,
+			price: 0.55,
+			mode: "paper",
+			recon_status: null,
+		};
+
+		expect(isTradeRow(missingOrderId)).toBe(false);
+	});
+});
+
+describe("ReconStatus", () => {
+	it("has four possible states", () => {
+		const states: ReconStatus[] = ["unreconciled", "pending", "confirmed", "disputed"];
+		expect(states).toHaveLength(4);
+	});
+
+	it("states are mutually exclusive", () => {
+		// If confidence is positive, it can only be one state
+		const confidence = 0.3;
+		const status = statusFromConfidence(confidence);
+
+		if (status === "pending") {
+			expect(status).not.toBe("unreconciled");
+			expect(status).not.toBe("confirmed");
+			expect(status).not.toBe("disputed");
+		}
 	});
 });

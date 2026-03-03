@@ -1,7 +1,7 @@
 import { onchainStatements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
 import type { ReconResult, ReconStatus } from "../types.ts";
-import { USDC_E_DECIMALS } from "./contracts.ts";
+import { isEventRow, isKnownTokenRow, isTradeRow, rawToUsdc, statusFromConfidence } from "./reconciler-utils.ts";
 
 const log = createLogger("reconciler");
 
@@ -13,71 +13,6 @@ const RECON_BATCH_LIMIT = 50;
 const STATUS_QUERY_LIMIT = 10_000;
 
 let walletAddress = "";
-
-// --- Local row types ---
-
-interface TradeRow {
-	order_id: string;
-	market: string;
-	side: string;
-	amount: number;
-	price: number;
-	timestamp: string;
-	mode: string;
-	recon_status: string | null;
-}
-
-interface EventRow {
-	tx_hash: string;
-	log_index: number;
-	block_number: number;
-	event_type: string;
-	from_addr: string;
-	to_addr: string;
-	token_id: string | null;
-	value: string;
-	raw_data: string | null;
-	created_at: string;
-}
-
-interface KnownTokenRow {
-	token_id: string;
-	market_id: string;
-	side: string;
-	condition_id: string | null;
-}
-
-// --- Helpers ---
-
-export function isTradeRow(row: unknown): row is TradeRow {
-	if (!row || typeof row !== "object") return false;
-	const r = row as Record<string, unknown>;
-	return typeof r.order_id === "string" && typeof r.market === "string";
-}
-
-export function isEventRow(row: unknown): row is EventRow {
-	if (!row || typeof row !== "object") return false;
-	const r = row as Record<string, unknown>;
-	return typeof r.tx_hash === "string" && typeof r.event_type === "string";
-}
-
-export function isKnownTokenRow(row: unknown): row is KnownTokenRow {
-	if (!row || typeof row !== "object") return false;
-	const r = row as Record<string, unknown>;
-	return typeof r.token_id === "string" && typeof r.market_id === "string";
-}
-
-export function statusFromConfidence(confidence: number): ReconStatus {
-	if (confidence >= 0.7) return "confirmed";
-	if (confidence >= 0.5) return "pending";
-	return "disputed";
-}
-
-export function rawToUsdc(raw: string): number {
-	const n = Number(raw);
-	if (!Number.isFinite(n)) return 0;
-	return n / 10 ** USDC_E_DECIMALS;
-}
 
 // --- Core reconciliation ---
 

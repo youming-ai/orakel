@@ -10,6 +10,7 @@ import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ChartErrorBoundary } from "../ChartErrorBoundary";
 import { EmptyPlaceholder } from "../EmptyPlaceholder";
+import { OverviewSkeleton } from "../OverviewSkeleton";
 import { MarketCard } from "../MarketCard";
 import { StatCard } from "../StatCard";
 
@@ -57,6 +58,9 @@ export function OverviewTab({
 		});
 	}, [markets]);
 
+	if (mergedStats.totalTrades === 0 && markets.length === 0) {
+		return <OverviewSkeleton />;
+	}
 	return (
 		<div className="space-y-4">
 			{/* Stop Loss Warning */}

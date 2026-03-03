@@ -115,7 +115,7 @@ export function Header({
 					<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-lg border border-primary/20">
 						<Zap className="size-3.5" />
 					</div>
-					<span className="text-sm font-bold tracking-tight text-foreground hidden sm:block">Orakel</span>
+					<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
 				</div>
 
 				{/* Right: Countdown + Status + Wallet + Mode + Theme */}
