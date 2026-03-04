@@ -96,7 +96,7 @@ Pre-push check: `bun run lint && bun run typecheck && bun run test`
 | [Trading Strategy](./docs/trading-strategy.md) | Probability model, edge calculation, confidence scoring, decision logic |
 | [Deployment Guide](./docs/deployment.md) | Docker, CI/CD, environment setup, VPS auto-deployment |
 | [Testing Documentation](./docs/testing.md) | Test coverage, test file organization, running tests |
-| [Flowcharts](./docs/FLOWCHARTS.md) | Detailed system and decision flow diagrams |
+
 
 ## Disclaimer
 

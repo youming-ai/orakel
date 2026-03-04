@@ -284,13 +284,9 @@ REST API used for initial page load (fetching historical data, config, trade rec
 
 ---
 
-## 9. Architecture Diagrams
+## 9. Related Documentation
 
-For detailed flowcharts showing:
-- System data flow
-- Trading decision logic
-- Probability engine
-- Order execution
-- Market regime detection
-
-See [FLOWCHARTS.md](./FLOWCHARTS.md)
+- [Backend Documentation](./backend.md) — Detailed module-by-module backend reference
+- [Frontend Documentation](./frontend.md) — React component hierarchy, state management, styling
+- [Trading Strategy](./trading-strategy.md) — Probability model, edge calculation, decision logic
+- [Deployment Guide](./deployment.md) — Docker, CI/CD, environment setup
