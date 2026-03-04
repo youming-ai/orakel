@@ -12,6 +12,7 @@ import type {
 } from "@/lib/api";
 import { fmtTime } from "@/lib/format";
 import { usePaperClearStop } from "@/lib/queries";
+import { buildMarketFromTrades, buildPnlTimeline, buildStatsFromTrades } from "@/lib/stats";
 import type { MarketRow, ViewMode } from "@/lib/types";
 
 import { OverviewTab } from "./analytics/OverviewTab";
@@ -27,61 +28,6 @@ interface AnalyticsTabsProps {
 	todayStats?: TodayStats;
 }
 
-function buildStatsFromTrades(trades: PaperTradeEntry[]): PaperStats {
-	let wins = 0;
-	let losses = 0;
-	let pending = 0;
-	let totalPnl = 0;
-	for (const trade of trades) {
-		if (!trade.resolved) {
-			pending += 1;
-			continue;
-		}
-		if (trade.won) wins += 1;
-		else losses += 1;
-		totalPnl += trade.pnl ?? 0;
-	}
-	const resolved = wins + losses;
-	return {
-		totalTrades: trades.length,
-		wins,
-		losses,
-		pending,
-		winRate: resolved > 0 ? wins / resolved : 0,
-		totalPnl: Number(totalPnl.toFixed(2)),
-	};
-}
-
-function buildMarketFromTrades(trades: PaperTradeEntry[]): Record<string, MarketBreakdown> {
-	const marketMap = new Map<string, MarketBreakdown>();
-	for (const trade of trades) {
-		const current = marketMap.get(trade.marketId) ?? {
-			wins: 0,
-			losses: 0,
-			pending: 0,
-			winRate: 0,
-			totalPnl: 0,
-			tradeCount: 0,
-		};
-		current.tradeCount += 1;
-		if (!trade.resolved) current.pending += 1;
-		else if (trade.won) current.wins += 1;
-		else current.losses += 1;
-		current.totalPnl += trade.pnl ?? 0;
-		marketMap.set(trade.marketId, current);
-	}
-
-	const result: Record<string, MarketBreakdown> = {};
-	for (const [market, item] of marketMap.entries()) {
-		const resolved = item.wins + item.losses;
-		result[market] = {
-			...item,
-			winRate: resolved > 0 ? item.wins / resolved : 0,
-			totalPnl: Number(item.totalPnl.toFixed(2)),
-		};
-	}
-	return result;
-}
 
 export function AnalyticsTabs({
 	trades,
@@ -102,24 +48,7 @@ export function AnalyticsTabs({
 		return byMarket ?? {};
 	}, [byMarket, trades]);
 
-	const pnlTimeline = useMemo(() => {
-		const resolved = trades
-			.filter((t) => t.resolved && t.pnl !== null)
-			.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-
-		let running = 0;
-		return resolved.map((trade) => {
-			running += trade.pnl ?? 0;
-			return {
-				ts: trade.timestamp,
-				time: fmtTime(trade.timestamp),
-				market: trade.marketId,
-				side: trade.side,
-				pnl: trade.pnl ?? 0,
-				cumulative: Number(running.toFixed(2)),
-			};
-		});
-	}, [trades]);
+	const pnlTimeline = useMemo(() => buildPnlTimeline(trades), [trades]);
 
 	const timelinePositive = (pnlTimeline[pnlTimeline.length - 1]?.cumulative ?? 0) >= 0;
 

@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { Routes, Route, Navigate } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -13,11 +13,22 @@ import {
 import { Toaster } from "@/components/ui/toaster";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import type { PaperTradeEntry, TradeRecord } from "@/lib/api";
-import { useDashboardStateWithWs, useLiveCancel, useLiveReset, useLiveToggle, usePaperCancel, usePaperClearStop, usePaperReset, usePaperStats, usePaperToggle, useTrades } from "@/lib/queries";
+import {
+	useDashboardStateWithWs,
+	useLiveCancel,
+	useLiveReset,
+	useLiveToggle,
+	usePaperCancel,
+	usePaperClearStop,
+	usePaperReset,
+	usePaperStats,
+	usePaperToggle,
+	useTrades,
+} from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
-import { Dashboard } from "./components/Dashboard";
 import { Layout } from "./components/Layout";
+import { Dashboard } from "./pages/Dashboard";
 import { TradesPage } from "./pages/Trades";
 
 function AppContent() {
@@ -129,7 +140,10 @@ function AppContent() {
 		<Routes>
 			<Route path="/" element={<Layout {...layoutProps} />}>
 				<Route index element={<Dashboard />} />
-				<Route path="trades" element={<TradesPage viewMode={viewMode} liveTrades={trades} paperTrades={paperTrades} />} />
+				<Route
+					path="trades"
+					element={<TradesPage viewMode={viewMode} liveTrades={trades} paperTrades={paperTrades} />}
+				/>
 				<Route path="*" element={<Navigate to="/" replace />} />
 			</Route>
 		</Routes>

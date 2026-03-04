@@ -90,7 +90,7 @@ export function TradesPage({ viewMode, liveTrades, paperTrades }: TradesPageProp
 
 	return (
 		<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
-			<div className="rounded-2xl backdrop-blur-2xl backdrop-saturate-150 bg-white/[0.08] dark:bg-black/[0.5] border border-white/15 dark:border-white/5 shadow-2xl shadow-black/10 dark:shadow-black/40 p-4 sm:p-6">
+			<div className="rounded-xl border bg-card p-4 sm:p-6 shadow-sm">
 				<TradesTab
 					viewMode={viewMode}
 					liveTrades={liveTrades}
