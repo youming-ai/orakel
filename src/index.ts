@@ -102,7 +102,7 @@ let activeOnchainWallet: string | null = null;
 
 // Auto-redeem configuration
 const AUTO_REDEEM_ENABLED = env.AUTO_REDEEM_ENABLED;
-const AUTO_REDEEM_INTERVAL_MS = env.AUTO_REDEEM_INTERVAL_MS; // Default: 30 minutes (set in env.ts)
+const AUTO_REDEEM_INTERVAL_MS = env.AUTO_REDEEM_INTERVAL_MS;
 
 interface KnownTokenRow {
 	token_id?: string;
