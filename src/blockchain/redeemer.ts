@@ -95,3 +95,52 @@ export async function redeemAll(wallet: Wallet): Promise<RedeemResult[]> {
 
 	return results;
 }
+
+export interface RedeemOneResult {
+	success: boolean;
+	txHash: string | null;
+	error?: string;
+}
+
+export async function redeemByConditionId(wallet: Wallet | null, conditionId: string): Promise<RedeemOneResult> {
+	if (!wallet) {
+		return { success: false, txHash: null, error: "no_wallet" };
+	}
+	if (!conditionId || conditionId.length === 0) {
+		return { success: false, txHash: null, error: "empty_condition_id" };
+	}
+
+	const key = conditionId.toLowerCase();
+	if (redeemed.has(key)) {
+		return { success: true, txHash: null };
+	}
+
+	try {
+		const ctf = new Contract(CTF_ADDRESS, CTF_ABI, wallet);
+
+		const denominator = await ctf.payoutDenominator(conditionId);
+		if (denominator.isZero()) {
+			return { success: false, txHash: null, error: "not_resolved" };
+		}
+
+		const tx = await ctf.redeemPositions(USDC_E_ADDRESS, constants.HashZero, conditionId, [1, 2], GAS_OVERRIDES);
+		log.info(`Redeem tx sent: ${tx.hash} (condition: ${conditionId.slice(0, 10)}...)`);
+
+		const receipt = await Promise.race([
+			tx.wait(),
+			new Promise((_, reject) => setTimeout(() => reject(new Error("tx.wait timeout 60s")), 60_000)),
+		]);
+
+		if (receipt.status !== 1) {
+			return { success: false, txHash: tx.hash, error: "tx_reverted" };
+		}
+
+		redeemed.add(key);
+		log.info(`Redeemed condition: ${conditionId.slice(0, 10)}... tx: ${tx.hash}`);
+		return { success: true, txHash: tx.hash };
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		log.error(`redeemByConditionId failed (${conditionId.slice(0, 10)}...):`, msg);
+		return { success: false, txHash: null, error: msg };
+	}
+}
