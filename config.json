@@ -1,23 +1,23 @@
 {
   "paper": {
     "risk": {
-      "maxTradeSizeUsdc": 10,
+      "maxTradeSizeUsdc": 5,
       "limitDiscount": 0.04,
-      "dailyMaxLossUsdc": 50,
-      "maxOpenPositions": 2,
+      "dailyMaxLossUsdc": 100,
+      "maxOpenPositions": 4,
       "minLiquidity": 15000,
-      "maxTradesPerWindow": 1
+      "maxTradesPerWindow": 5
     },
     "initialBalance": 1000
   },
   "live": {
     "risk": {
-      "maxTradeSizeUsdc": 10,
+      "maxTradeSizeUsdc": 5,
       "limitDiscount": 0.04,
-      "dailyMaxLossUsdc": 50,
-      "maxOpenPositions": 2,
+      "dailyMaxLossUsdc": 100,
+      "maxOpenPositions": 4,
       "minLiquidity": 15000,
-      "maxTradesPerWindow": 1
+      "maxTradesPerWindow": 5
     }
   },
   "strategy": {
