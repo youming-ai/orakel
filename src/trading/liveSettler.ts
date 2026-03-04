@@ -20,6 +20,8 @@ export interface LiveSettlerDeps {
 	lookupConditionId: (tokenId: string) => string | null;
 	redeemFn: (wallet: Wallet, conditionId: string) => Promise<RedeemOneResult>;
 	candleWindowMs: number;
+	/** Callback to get latest spot prices for fallback settlement */
+	getLatestPrices: () => Map<string, number>;
 }
 
 export class LiveSettler {
@@ -86,18 +88,46 @@ export class LiveSettler {
 					settled++;
 				}
 			}
-			// Fallback: warn about stale unresolved trades (window ended + grace period elapsed)
+			// Fallback: settle stale trades using spot prices when WS resolution is missed.
+			// This handles the case where market_resolved WS events are lost due to
+			// disconnection/reconnection and Polymarket does not re-emit them.
 			const now = Date.now();
 			const staleThreshold = this.deps.candleWindowMs + FALLBACK_STALE_MS;
+			const latestPrices = this.deps.getLatestPrices();
+
 			for (const trade of pending) {
 				if (trade.resolved) continue;
 				const tokenId = this.deps.lookupTokenId(trade.marketId, trade.side);
 				if (tokenId && this.deps.clobWs.isResolved(tokenId)) continue;
 				const elapsed = now - trade.windowStartMs;
-				if (elapsed > staleThreshold) {
+				if (elapsed <= staleThreshold) continue;
+
+				const finalPrice = latestPrices.get(trade.marketId);
+				if (finalPrice === undefined || trade.priceToBeat <= 0) {
 					log.warn(
-						`Stale unresolved trade: ${trade.id} ${trade.marketId} ${trade.side} ` +
-							`(window started ${Math.round(elapsed / 60_000)}m ago, no WS resolution yet)`,
+						`Stale unresolved trade ${trade.id.slice(0, 16)}... ${trade.marketId} ${trade.side} ` +
+							`(${Math.round(elapsed / 60_000)}m) — no spot price available for fallback`,
+					);
+					continue;
+				}
+
+				// Same settlement rule as paper: price > PTB → UP wins, price <= PTB → DOWN wins
+				const upWon = finalPrice > trade.priceToBeat;
+				const won = trade.side === "UP" ? upWon : !upWon;
+				const pnl = won ? trade.size * (1 - trade.price) : -(trade.size * trade.price);
+
+				try {
+					this.deps.liveAccount.resolveTradeOnchain(trade.id, won, pnl, null);
+					log.info(
+						`Fallback settled ${won ? "WON" : "LOST"}: ${trade.marketId} ${trade.side} ` +
+							`pnl=$${pnl.toFixed(2)} (spot=${finalPrice.toFixed(2)} vs PTB=${trade.priceToBeat.toFixed(2)}, ` +
+							`stale ${Math.round(elapsed / 60_000)}m, WS resolution missed)`,
+					);
+					settled++;
+				} catch (err) {
+					log.error(
+						`Fallback settle failed for ${trade.id.slice(0, 16)}...:`,
+						err instanceof Error ? err.message : String(err),
 					);
 				}
 			}

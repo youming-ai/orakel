@@ -85,6 +85,7 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => "cond-123",
 			redeemFn: vi.fn(),
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		const settled = await settler.settle();
@@ -106,6 +107,7 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => "cond-123",
 			redeemFn: vi.fn(),
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		const settled = await settler.settle();
@@ -129,6 +131,7 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => "cond-123",
 			redeemFn,
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		const settled = await settler.settle();
@@ -152,6 +155,7 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => "cond-123",
 			redeemFn,
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		const settled = await settler.settle();
@@ -170,6 +174,7 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => null,
 			redeemFn: vi.fn(),
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		const settled = await settler.settle();
@@ -190,6 +195,7 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => "cond-123",
 			redeemFn: vi.fn(),
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		const settled = await settler.settle();
@@ -219,6 +225,7 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => "cond-xxx",
 			redeemFn,
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		const settled = await settler.settle();
@@ -238,11 +245,12 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => null,
 			redeemFn: vi.fn(),
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		await settler.settle();
 
-		expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining("Stale unresolved trade: stale-1"));
+		expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining("Stale unresolved trade stale-1"));
 	});
 
 	it("should NOT log warning for trades within the fallback threshold", async () => {
@@ -257,10 +265,75 @@ describe("LiveSettler.settle", () => {
 			lookupConditionId: () => null,
 			redeemFn: vi.fn(),
 			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map(),
 		});
 
 		await settler.settle();
 
 		expect(mockLog.warn).not.toHaveBeenCalled();
+	});
+
+	it("should fallback settle stale trade using spot prices when WS resolution missed", async () => {
+		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
+		const staleWindowStart = Date.now() - CANDLE_WINDOW_MS - 11 * 60_000;
+		const account = makeFakeAccount([
+			makePendingTrade({
+				id: "stale-up",
+				marketId: "BTC",
+				side: "UP",
+				price: 0.4,
+				size: 10,
+				priceToBeat: 50000,
+				windowStartMs: staleWindowStart,
+			}),
+		]);
+		const settler = new LiveSettler({
+			clobWs,
+			liveAccount: account as unknown as AccountStatsManager,
+			wallet: null,
+			lookupTokenId: () => "token-up-123",
+			lookupConditionId: () => null,
+			redeemFn: vi.fn(),
+			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map([["BTC", 50100]]),
+		});
+
+		const settled = await settler.settle();
+		expect(settled).toBe(1);
+		// price 50100 > PTB 50000 → UP wins → won=true, pnl = 10 * (1 - 0.4) = 6.0
+		expect(account.resolveTradeOnchain).toHaveBeenCalledWith("stale-up", true, expect.closeTo(6.0, 2), null);
+		expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("Fallback settled WON"));
+	});
+
+	it("should fallback settle stale DOWN trade as lost when price went up", async () => {
+		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
+		const staleWindowStart = Date.now() - CANDLE_WINDOW_MS - 11 * 60_000;
+		const account = makeFakeAccount([
+			makePendingTrade({
+				id: "stale-down",
+				marketId: "ETH",
+				side: "DOWN",
+				price: 0.5,
+				size: 10,
+				priceToBeat: 2000,
+				windowStartMs: staleWindowStart,
+			}),
+		]);
+		const settler = new LiveSettler({
+			clobWs,
+			liveAccount: account as unknown as AccountStatsManager,
+			wallet: null,
+			lookupTokenId: () => "token-down-456",
+			lookupConditionId: () => null,
+			redeemFn: vi.fn(),
+			candleWindowMs: CANDLE_WINDOW_MS,
+			getLatestPrices: () => new Map([["ETH", 2050]]),
+		});
+
+		const settled = await settler.settle();
+		expect(settled).toBe(1);
+		// price 2050 > PTB 2000 → UP wins → DOWN lost → won=false, pnl = -(10 * 0.5) = -5.0
+		expect(account.resolveTradeOnchain).toHaveBeenCalledWith("stale-down", false, expect.closeTo(-5.0, 2), null);
+		expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("Fallback settled LOST"));
 	});
 });

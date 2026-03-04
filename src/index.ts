@@ -375,6 +375,7 @@ async function main(): Promise<void> {
 			lookupConditionId,
 			redeemFn: redeemByConditionId,
 			candleWindowMs: CONFIG.candleWindowMinutes * 60_000,
+			getLatestPrices: () => collectLatestPrices(markets, states),
 		});
 		liveSettlerInstance.start();
 	}
