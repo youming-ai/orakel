@@ -279,15 +279,24 @@ function runMigrations(db: Database): void {
 
 	if (currentVersion < 3) {
 		db.transaction(() => {
+			const tradesCols = new Set(
+				(db.query("PRAGMA table_info(trades)").all() as Array<{ name: string }>).map((c) => c.name),
+			);
+			const addTradesColumnIfMissing = (name: string, definition: string): void => {
+				if (tradesCols.has(name)) return;
+				db.run(`ALTER TABLE trades ADD COLUMN ${name} ${definition}`);
+				tradesCols.add(name);
+			};
+
 			// Extend trades table with on-chain reconciliation columns
-			db.run("ALTER TABLE trades ADD COLUMN tx_hash TEXT DEFAULT NULL");
-			db.run("ALTER TABLE trades ADD COLUMN block_number INTEGER DEFAULT NULL");
-			db.run("ALTER TABLE trades ADD COLUMN log_index INTEGER DEFAULT NULL");
-			db.run("ALTER TABLE trades ADD COLUMN onchain_usdc_delta REAL DEFAULT NULL");
-			db.run("ALTER TABLE trades ADD COLUMN onchain_token_id TEXT DEFAULT NULL");
-			db.run("ALTER TABLE trades ADD COLUMN onchain_token_delta REAL DEFAULT NULL");
-			db.run("ALTER TABLE trades ADD COLUMN recon_status TEXT DEFAULT 'unreconciled'");
-			db.run("ALTER TABLE trades ADD COLUMN recon_confidence REAL DEFAULT NULL");
+			addTradesColumnIfMissing("tx_hash", "TEXT DEFAULT NULL");
+			addTradesColumnIfMissing("block_number", "INTEGER DEFAULT NULL");
+			addTradesColumnIfMissing("log_index", "INTEGER DEFAULT NULL");
+			addTradesColumnIfMissing("onchain_usdc_delta", "REAL DEFAULT NULL");
+			addTradesColumnIfMissing("onchain_token_id", "TEXT DEFAULT NULL");
+			addTradesColumnIfMissing("onchain_token_delta", "REAL DEFAULT NULL");
+			addTradesColumnIfMissing("recon_status", "TEXT DEFAULT 'unreconciled'");
+			addTradesColumnIfMissing("recon_confidence", "REAL DEFAULT NULL");
 
 			db.run(`
 				CREATE TABLE IF NOT EXISTS onchain_events (
@@ -377,10 +386,64 @@ function runMigrations(db: Database): void {
 
 	if (currentVersion < 5) {
 		db.transaction(() => {
+			const tradesCols = new Set(
+				(db.query("PRAGMA table_info(trades)").all() as Array<{ name: string }>).map((c) => c.name),
+			);
 			// Add current_price_at_entry column to trades table
-			db.run("ALTER TABLE trades ADD COLUMN current_price_at_entry REAL DEFAULT NULL");
+			if (!tradesCols.has("current_price_at_entry")) {
+				db.run("ALTER TABLE trades ADD COLUMN current_price_at_entry REAL DEFAULT NULL");
+			}
 			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (5, strftime('%s', 'now'))");
 		})();
+	}
+
+	if (currentVersion < 6) {
+		db.transaction(() => {
+			db.run(`
+				CREATE TABLE IF NOT EXISTS live_pending_orders (
+					order_id TEXT PRIMARY KEY,
+					market_id TEXT NOT NULL,
+					window_start_ms INTEGER NOT NULL,
+					side TEXT NOT NULL,
+					price REAL NOT NULL,
+					size REAL NOT NULL,
+					price_to_beat REAL,
+					current_price_at_entry REAL,
+					token_id TEXT,
+					placed_at INTEGER NOT NULL,
+					status TEXT NOT NULL DEFAULT 'placed',
+					created_at INTEGER DEFAULT (strftime('%s', 'now'))
+				)
+			`);
+			db.run("CREATE INDEX IF NOT EXISTS idx_live_pending_orders_placed ON live_pending_orders(placed_at DESC)");
+			db.run("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (6, strftime('%s', 'now'))");
+		})();
+	}
+
+	// Repair: ensure all expected ALTER TABLE columns exist on the trades table.
+	// Handles cases where migration version was recorded but ALTER TABLE didn't actually apply
+	// (e.g. partial transaction, restored backup, or manual schema_migrations insert).
+	const tradesRepairColumns: Array<{ name: string; definition: string }> = [
+		// Migration 3 columns
+		{ name: "tx_hash", definition: "TEXT DEFAULT NULL" },
+		{ name: "block_number", definition: "INTEGER DEFAULT NULL" },
+		{ name: "log_index", definition: "INTEGER DEFAULT NULL" },
+		{ name: "onchain_usdc_delta", definition: "REAL DEFAULT NULL" },
+		{ name: "onchain_token_id", definition: "TEXT DEFAULT NULL" },
+		{ name: "onchain_token_delta", definition: "REAL DEFAULT NULL" },
+		{ name: "recon_status", definition: "TEXT DEFAULT 'unreconciled'" },
+		{ name: "recon_confidence", definition: "REAL DEFAULT NULL" },
+		// Migration 5 column
+		{ name: "current_price_at_entry", definition: "REAL DEFAULT NULL" },
+	];
+	const existingCols = new Set(
+		(db.query("PRAGMA table_info(trades)").all() as Array<{ name: string }>).map((c) => c.name),
+	);
+	for (const col of tradesRepairColumns) {
+		if (!existingCols.has(col.name)) {
+			log.warn(`trades table missing column "${col.name}" — adding`);
+			db.run(`ALTER TABLE trades ADD COLUMN ${col.name} ${col.definition}`);
+		}
 	}
 
 	// Repair: live_trades / live_state may be missing if migration 4 recorded but tables were dropped.
@@ -429,6 +492,25 @@ function runMigrations(db: Database): void {
 			db.run("CREATE INDEX IF NOT EXISTS idx_live_trades_resolved ON live_trades(resolved, timestamp DESC)");
 		})();
 	}
+
+	// Repair: live_pending_orders may be missing if migration 6 was skipped or partially applied.
+	db.run(`
+		CREATE TABLE IF NOT EXISTS live_pending_orders (
+			order_id TEXT PRIMARY KEY,
+			market_id TEXT NOT NULL,
+			window_start_ms INTEGER NOT NULL,
+			side TEXT NOT NULL,
+			price REAL NOT NULL,
+			size REAL NOT NULL,
+			price_to_beat REAL,
+			current_price_at_entry REAL,
+			token_id TEXT,
+			placed_at INTEGER NOT NULL,
+			status TEXT NOT NULL DEFAULT 'placed',
+			created_at INTEGER DEFAULT (strftime('%s', 'now'))
+		)
+	`);
+	db.run("CREATE INDEX IF NOT EXISTS idx_live_pending_orders_placed ON live_pending_orders(placed_at DESC)");
 }
 
 // P2-3: Cache prepared statements — prepare once per SQL string, clear on DB reinit
@@ -644,9 +726,15 @@ export const statements = {
 
 	updateTradeSettlement: () =>
 		cachedPrepare(`
-			UPDATE trades SET pnl = $pnl, won = $won, status = $status
-			WHERE order_id = $orderId AND mode = $mode
-		`),
+				UPDATE trades SET pnl = $pnl, won = $won, status = $status
+				WHERE order_id = $orderId AND mode = $mode
+			`),
+
+	updateTradeStatus: () =>
+		cachedPrepare(`
+				UPDATE trades SET status = $status
+				WHERE order_id = $orderId AND mode = $mode
+			`),
 	// === Live Account State Statements (mirrors paper) ===
 
 	getLiveState: () =>
@@ -702,8 +790,66 @@ export const statements = {
 
 	getAllLiveTrades: () =>
 		cachedQuery(`
-			SELECT * FROM live_trades ORDER BY timestamp ASC
-		`),
+				SELECT * FROM live_trades ORDER BY timestamp ASC
+			`),
+
+	upsertLivePendingOrder: () =>
+		cachedPrepare(`
+				INSERT INTO live_pending_orders (
+					order_id,
+					market_id,
+					window_start_ms,
+					side,
+					price,
+					size,
+					price_to_beat,
+					current_price_at_entry,
+					token_id,
+					placed_at,
+					status
+				)
+				VALUES (
+					$orderId,
+					$marketId,
+					$windowStartMs,
+					$side,
+					$price,
+					$size,
+					$priceToBeat,
+					$currentPriceAtEntry,
+					$tokenId,
+					$placedAt,
+					$status
+				)
+				ON CONFLICT(order_id) DO UPDATE SET
+					market_id = $marketId,
+					window_start_ms = $windowStartMs,
+					side = $side,
+					price = $price,
+					size = $size,
+					price_to_beat = $priceToBeat,
+					current_price_at_entry = $currentPriceAtEntry,
+					token_id = COALESCE($tokenId, live_pending_orders.token_id),
+					placed_at = $placedAt,
+					status = $status
+			`),
+
+	getAllLivePendingOrders: () =>
+		cachedQuery(`
+				SELECT * FROM live_pending_orders ORDER BY placed_at ASC
+			`),
+
+	updateLivePendingOrderStatus: () =>
+		cachedPrepare(`
+				UPDATE live_pending_orders
+				SET status = $status
+				WHERE order_id = $orderId
+			`),
+
+	deleteLivePendingOrder: () =>
+		cachedPrepare(`
+				DELETE FROM live_pending_orders WHERE order_id = $orderId
+			`),
 };
 
 // === On-Chain Data Statements ===
@@ -803,6 +949,7 @@ export function resetLiveDbData(): void {
 	const db = getDb();
 	db.transaction(() => {
 		db.run("DELETE FROM live_trades");
+		db.run("DELETE FROM live_pending_orders");
 		db.run("DELETE FROM live_state");
 		db.run("DELETE FROM trades WHERE mode = 'live'");
 		db.run("DELETE FROM daily_stats WHERE mode = 'live'");

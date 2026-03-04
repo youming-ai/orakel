@@ -72,6 +72,9 @@ const envSchema = z.object({
 		.int()
 		.min(60_000)
 		.default(30 * 60 * 1000), // 30 minutes
+
+	// CORS (optional — comma-separated list of allowed origins, * for wildcard)
+	CORS_ORIGIN: z.string().default("*"),
 });
 
 // ── validate & export ────────────────────────────────────

@@ -1,7 +1,7 @@
 {
   "paper": {
     "risk": {
-      "maxTradeSizeUsdc": 5,
+      "maxTradeSizeUsdc": 10,
       "limitDiscount": 0.04,
       "dailyMaxLossUsdc": 50,
       "maxOpenPositions": 2,
@@ -12,7 +12,7 @@
   },
   "live": {
     "risk": {
-      "maxTradeSizeUsdc": 5,
+      "maxTradeSizeUsdc": 10,
       "limitDiscount": 0.04,
       "dailyMaxLossUsdc": 50,
       "maxOpenPositions": 2,
