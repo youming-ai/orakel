@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../core/db.ts", () => ({
 	onchainStatements: {
@@ -10,9 +10,22 @@ vi.mock("../blockchain/redeemer.ts", () => ({
 	fetchRedeemablePositions: vi.fn().mockResolvedValue([]),
 }));
 
+const mockLog = vi.hoisted(() => ({
+	debug: vi.fn(),
+	info: vi.fn(),
+	warn: vi.fn(),
+	error: vi.fn(),
+}));
+
+vi.mock("../core/logger.ts", () => ({
+	createLogger: () => mockLog,
+}));
+
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
 import type { AccountStatsManager, TradeEntry } from "../trading/accountStats.ts";
 import { LiveSettler } from "../trading/liveSettler.ts";
+
+const CANDLE_WINDOW_MS = 15 * 60_000;
 
 function makeFakeClobWs(overrides: Partial<ClobWsHandle> = {}): ClobWsHandle {
 	return {
@@ -57,6 +70,10 @@ function makePendingTrade(overrides: Partial<TradeEntry> = {}): TradeEntry {
 }
 
 describe("LiveSettler.settle", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
 	it("should skip trades whose tokenId is not resolved", async () => {
 		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
 		const account = makeFakeAccount([makePendingTrade()]);
@@ -67,6 +84,7 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
 			redeemFn: vi.fn(),
+			candleWindowMs: CANDLE_WINDOW_MS,
 		});
 
 		const settled = await settler.settle();
@@ -87,6 +105,7 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
 			redeemFn: vi.fn(),
+			candleWindowMs: CANDLE_WINDOW_MS,
 		});
 
 		const settled = await settler.settle();
@@ -109,6 +128,7 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
 			redeemFn,
+			candleWindowMs: CANDLE_WINDOW_MS,
 		});
 
 		const settled = await settler.settle();
@@ -131,6 +151,7 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
 			redeemFn,
+			candleWindowMs: CANDLE_WINDOW_MS,
 		});
 
 		const settled = await settler.settle();
@@ -148,6 +169,7 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: () => null,
 			lookupConditionId: () => null,
 			redeemFn: vi.fn(),
+			candleWindowMs: CANDLE_WINDOW_MS,
 		});
 
 		const settled = await settler.settle();
@@ -167,6 +189,7 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
 			redeemFn: vi.fn(),
+			candleWindowMs: CANDLE_WINDOW_MS,
 		});
 
 		const settled = await settler.settle();
@@ -195,10 +218,49 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: (m, s) => tokenMap[`${m}-${s}`] ?? null,
 			lookupConditionId: () => "cond-xxx",
 			redeemFn,
+			candleWindowMs: CANDLE_WINDOW_MS,
 		});
 
 		const settled = await settler.settle();
 		expect(settled).toBe(2);
 		expect(account.resolveTradeOnchain).toHaveBeenCalledTimes(2);
+	});
+
+	it("should log warning for stale unresolved trades past fallback threshold", async () => {
+		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
+		const staleWindowStart = Date.now() - CANDLE_WINDOW_MS - 11 * 60_000;
+		const account = makeFakeAccount([makePendingTrade({ id: "stale-1", windowStartMs: staleWindowStart })]);
+		const settler = new LiveSettler({
+			clobWs,
+			liveAccount: account as unknown as AccountStatsManager,
+			wallet: null,
+			lookupTokenId: () => "token-up-123",
+			lookupConditionId: () => null,
+			redeemFn: vi.fn(),
+			candleWindowMs: CANDLE_WINDOW_MS,
+		});
+
+		await settler.settle();
+
+		expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining("Stale unresolved trade: stale-1"));
+	});
+
+	it("should NOT log warning for trades within the fallback threshold", async () => {
+		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
+		const recentWindowStart = Date.now() - CANDLE_WINDOW_MS - 5 * 60_000;
+		const account = makeFakeAccount([makePendingTrade({ id: "recent-1", windowStartMs: recentWindowStart })]);
+		const settler = new LiveSettler({
+			clobWs,
+			liveAccount: account as unknown as AccountStatsManager,
+			wallet: null,
+			lookupTokenId: () => "token-up-123",
+			lookupConditionId: () => null,
+			redeemFn: vi.fn(),
+			candleWindowMs: CANDLE_WINDOW_MS,
+		});
+
+		await settler.settle();
+
+		expect(mockLog.warn).not.toHaveBeenCalled();
 	});
 });

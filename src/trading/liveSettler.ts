@@ -10,6 +10,8 @@ const log = createLogger("live-settler");
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 
+const FALLBACK_STALE_MS = 10 * 60_000;
+
 export interface LiveSettlerDeps {
 	clobWs: ClobWsHandle;
 	liveAccount: AccountStatsManager;
@@ -17,6 +19,7 @@ export interface LiveSettlerDeps {
 	lookupTokenId: (marketId: string, side: string) => string | null;
 	lookupConditionId: (tokenId: string) => string | null;
 	redeemFn: (wallet: Wallet, conditionId: string) => Promise<RedeemOneResult>;
+	candleWindowMs: number;
 }
 
 export class LiveSettler {
@@ -81,6 +84,21 @@ export class LiveSettler {
 					this.deps.liveAccount.resolveTradeOnchain(trade.id, false, pnl, null);
 					log.info(`Settled LOST: ${trade.marketId} ${trade.side} pnl=$${pnl.toFixed(2)}`);
 					settled++;
+				}
+			}
+			// Fallback: warn about stale unresolved trades (window ended + grace period elapsed)
+			const now = Date.now();
+			const staleThreshold = this.deps.candleWindowMs + FALLBACK_STALE_MS;
+			for (const trade of pending) {
+				if (trade.resolved) continue;
+				const tokenId = this.deps.lookupTokenId(trade.marketId, trade.side);
+				if (tokenId && this.deps.clobWs.isResolved(tokenId)) continue;
+				const elapsed = now - trade.windowStartMs;
+				if (elapsed > staleThreshold) {
+					log.warn(
+						`Stale unresolved trade: ${trade.id} ${trade.marketId} ${trade.side} ` +
+							`(window started ${Math.round(elapsed / 60_000)}m ago, no WS resolution yet)`,
+					);
 				}
 			}
 		} catch (err: unknown) {

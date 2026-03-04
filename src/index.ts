@@ -374,6 +374,7 @@ async function main(): Promise<void> {
 			lookupTokenId,
 			lookupConditionId,
 			redeemFn: redeemByConditionId,
+			candleWindowMs: CONFIG.candleWindowMinutes * 60_000,
 		});
 		liveSettlerInstance.start();
 	}
