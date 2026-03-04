@@ -1,10 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ConfigPayload, DashboardState } from "./api";
+import type { DashboardState } from "./api";
 
 import { api } from "./api";
-import type { ViewMode } from "./types";
-import type { WsMessage } from "./ws";
-import { useWebSocket } from "./ws";
 import {
 	QUERY_REFETCH_PAPER_STATS_MS,
 	QUERY_REFETCH_STATE_MS,
@@ -13,6 +10,9 @@ import {
 	QUERY_STALE_STATE_WS_MS,
 	QUERY_STALE_TRADES_MS,
 } from "./constants";
+import type { ViewMode } from "./types";
+import type { WsMessage } from "./ws";
+import { useWebSocket } from "./ws";
 
 // ---------------------------------------------------------------------------
 // Query Options Factory
@@ -199,7 +199,6 @@ export function usePaperClearStop() {
 		},
 	});
 }
-
 
 export function usePaperReset() {
 	const qc = useQueryClient();

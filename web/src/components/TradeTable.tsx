@@ -1,8 +1,8 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { TradeRecord } from "@/lib/api";
 import { TRADE_TABLE_PAGE_SIZE } from "@/lib/constants";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
 import { TradeTableDesktop } from "./trades/TradeTableDesktop";
 import { TradeTableMobile } from "./trades/TradeTableMobile";
 
@@ -12,12 +12,10 @@ interface TradeTableProps {
 	viewMode?: "paper" | "live";
 }
 
-
-
-export function TradeTable({ trades, paperMode, viewMode }: TradeTableProps) {
+export function TradeTable({ trades, paperMode, viewMode: _viewMode }: TradeTableProps) {
 	const [page, setPage] = useState(1);
 
-	// Reset to first page when trades list changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset page when trade count changes
 	useEffect(() => {
 		setPage(1);
 	}, [trades.length]);

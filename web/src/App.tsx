@@ -12,13 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Toaster } from "@/components/ui/toaster";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import {
-	useDashboardStateWithWs,
-	useLiveCancel,
-	useLiveToggle,
-	usePaperCancel,
-	usePaperToggle,
-} from "@/lib/queries";
+import { useDashboardStateWithWs, useLiveCancel, useLiveToggle, usePaperCancel, usePaperToggle } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { Layout } from "./components/Layout";
@@ -29,7 +23,6 @@ function AppContent() {
 	const prefersReducedMotion = useReducedMotion();
 	const viewMode = useUIStore((s) => s.viewMode);
 	const setViewMode = useUIStore((s) => s.setViewMode);
-	const confirmAction = useUIStore((s) => s.confirmAction);
 	const setConfirmAction = useUIStore((s) => s.setConfirmAction);
 	const { data: state, error: stateError } = useDashboardStateWithWs();
 
@@ -63,19 +56,6 @@ function AppContent() {
 		}
 		setConfirmAction(state.liveRunning ? "stop" : "start");
 	}, [state, liveCancel, setConfirmAction]);
-
-	const handleConfirm = useCallback(() => {
-		if (!state || !confirmAction) return;
-		const actionStr = confirmAction === "start" ? "Starting" : "Stopping";
-		if (viewMode === "paper") {
-			paperToggle.mutate(confirmAction === "stop");
-			toast({ title: "Paper Bot", description: `${actionStr} paper trading...`, type: "info" });
-		} else {
-			liveToggle.mutate(confirmAction === "stop");
-			toast({ title: "Live Bot", description: `${actionStr} live trading...`, type: "info" });
-		}
-		setConfirmAction(null);
-	}, [state, confirmAction, viewMode, paperToggle, liveToggle, setConfirmAction]);
 
 	if (!state) {
 		return (

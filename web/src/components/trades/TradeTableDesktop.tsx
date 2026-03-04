@@ -31,10 +31,10 @@ export function TradeTableDesktop({ pageTrades, paperMode }: TradeTableDesktopPr
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{pageTrades.map((t, i) => {
+					{pageTrades.map((t) => {
 						const { text, isUp } = sideLabel(t.side);
 						return (
-							<TableRow key={`${t.orderId}-${i}`}>
+							<TableRow key={t.orderId || `trade-${t.timestamp}-${t.market}`}>
 								<TableCell className="font-mono text-xs text-muted-foreground hidden sm:table-cell">
 									{fmtDate(t.timestamp)}
 								</TableCell>

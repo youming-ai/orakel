@@ -71,8 +71,8 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					</div>
 					<div className="h-6 w-px bg-border/50" />
 					<div className="flex flex-col items-end gap-0.5 font-mono text-[11px] font-medium">
-						<span className="text-emerald-400/90 tracking-tight">UP {fmtCents(m.marketUp)}</span>
-						<span className="text-red-400/90 tracking-tight">DN {fmtCents(m.marketDown)}</span>
+						<span className="text-emerald-400 tracking-tight">UP {fmtCents(m.marketUp)}</span>
+						<span className="text-red-400 tracking-tight">DN {fmtCents(m.marketDown)}</span>
 					</div>
 				</div>
 
@@ -80,9 +80,8 @@ export function MarketCard({ market: m }: MarketCardProps) {
 				{confidence && <ConfidenceBar confidence={confidence} />}
 
 				{/* Technicals Area */}
-				<div
+				<section
 					id={`technicals-${m.id}`}
-					role="region"
 					aria-label={`${m.id} technical indicators`}
 					className="space-y-3 p-3 bg-muted/20 border border-border/50 rounded-lg"
 				>
@@ -158,7 +157,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 							</span>
 						</div>
 					</div>
-				</div>
+				</section>
 
 				<div
 					className={cn(

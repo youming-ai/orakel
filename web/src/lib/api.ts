@@ -30,7 +30,7 @@ async function post<T>(path: string): Promise<T> {
 	return res.json();
 }
 
-async function postJson<T>(path: string, data: unknown): Promise<T> {
+async function _postJson<T>(path: string, data: unknown): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json", ...authHeaders() },

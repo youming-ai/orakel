@@ -32,7 +32,7 @@ function DashboardContent() {
 	const clearStopMutation = usePaperClearStop();
 	const paperResetMutation = usePaperReset();
 	const liveResetMutation = useLiveReset();
-	const resetMutation = viewMode === "paper" ? paperResetMutation : liveResetMutation;
+	const _resetMutation = viewMode === "paper" ? paperResetMutation : liveResetMutation;
 
 	// stopLoss: paper from /paper-stats, live from WS/state snapshot
 	const stopLoss = viewMode === "paper" ? state?.stopLoss : state?.liveStopLoss;
