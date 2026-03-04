@@ -60,6 +60,7 @@ export const api = {
 	getState: () => get<DashboardState>("/state"),
 	getTrades: (mode: string) => get<TradeRecord[]>(`/logs?mode=${mode}`),
 	getPaperStats: () => get<PaperStatsResponse>("/paper-stats"),
+	getLiveStats: () => get<PaperStatsResponse>("/live-stats"),
 	saveConfig: (data: ConfigPayload) => put<{ ok: boolean }>("/config", data),
 	paperStart: () => post<{ ok: boolean }>("/paper/start"),
 	paperStop: () => post<{ ok: boolean }>("/paper/stop"),
@@ -91,12 +92,11 @@ export interface TodayStats {
 	limit: number;
 }
 
-interface PaperBalance {
+export interface PaperBalance {
 	initial: number;
 	current: number;
 	maxDrawdown: number;
 }
-
 // ============ Confidence Types ============
 
 interface ConfidenceFactors {
@@ -138,7 +138,9 @@ export interface DashboardState {
 		clientReady: boolean;
 	} | null;
 	stopLoss?: StopLossStatus;
+	liveStopLoss?: StopLossStatus;
 	balance?: PaperBalance;
+	liveBalance?: PaperBalance;
 	todayStats?: TodayStats;
 	liveTodayStats?: TodayStats;
 }
@@ -187,7 +189,7 @@ export interface PaperStats {
 	totalPnl: number;
 }
 
-interface PaperStatsResponse {
+export interface PaperStatsResponse {
 	stats: PaperStats;
 	trades: PaperTradeEntry[];
 	byMarket: Record<string, MarketBreakdown>;

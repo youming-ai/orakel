@@ -13,7 +13,7 @@ export function liveTradesAsPaper(trades: TradeRecord[]): PaperTradeEntry[] {
 		priceToBeat: 0,
 		currentPriceAtEntry: null,
 		timestamp: t.timestamp,
-		resolved: t.status === "settled" || t.status === "won" || t.status === "lost" || t.won !== null,
+		resolved: t.status === "settled_won" || t.status === "settled_lost" || t.won !== null,
 		won: t.won === null ? null : Boolean(t.won),
 		pnl: t.pnl,
 		settlePrice: null,

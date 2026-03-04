@@ -3,7 +3,7 @@ import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } f
 import { startReconciler } from "./blockchain/reconciler.ts";
 import { fetchRedeemablePositions, redeemAll, redeemByConditionId } from "./blockchain/redeemer.ts";
 import { CONFIG, startConfigWatcher } from "./core/config.ts";
-import { getDb, onchainStatements, statements } from "./core/db.ts";
+import { getDb, onchainStatements, pruneDatabase, statements } from "./core/db.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
@@ -11,7 +11,11 @@ import {
 	emitBalanceSnapshot,
 	emitStateSnapshot,
 	getUpdatedAt,
+	isLivePendingStart,
+	isLivePendingStop,
 	isLiveRunning,
+	isPaperPendingStart,
+	isPaperPendingStop,
 	isPaperRunning,
 	setLiveRunning,
 	setOnchainBalance,
@@ -676,6 +680,22 @@ async function main(): Promise<void> {
 
 	let consecutiveAllFails = 0;
 	const SAFE_MODE_THRESHOLD = 3;
+	const PRUNE_INTERVAL_MS = 3_600_000;
+	let lastPruneMs = 0;
+
+	// Periodic DB pruning (once per hour)
+	if (Date.now() - lastPruneMs >= PRUNE_INTERVAL_MS) {
+		try {
+			const result = pruneDatabase();
+			const total = Object.values(result.pruned).reduce((a, b) => a + b, 0);
+			if (total > 0) {
+				log.info("DB pruned", { ...result.pruned, vacuumed: result.vacuumed });
+			}
+		} catch (err) {
+			log.warn("DB prune failed", { error: err instanceof Error ? err.message : String(err) });
+		}
+		lastPruneMs = Date.now();
+	}
 
 	while (true) {
 		ensureOrderPolling();
@@ -748,6 +768,9 @@ async function main(): Promise<void> {
 		if (allFailed && results.length > 0) {
 			consecutiveAllFails++;
 			log.warn(`All markets failed (${consecutiveAllFails}/${SAFE_MODE_THRESHOLD})`);
+			for (const r of results) {
+				if (!r.ok) log.warn(`  ${r.market.id}: ${r.error}`);
+			}
 			if (consecutiveAllFails >= SAFE_MODE_THRESHOLD) {
 				log.error("Safe mode: all markets failed consecutively, skipping trade execution this tick");
 				await sleep(1000);
@@ -955,13 +978,18 @@ async function main(): Promise<void> {
 			updatedAt: getUpdatedAt(),
 			paperRunning: isPaperRunning(),
 			liveRunning: isLiveRunning(),
-			paperPendingStart: false,
-			paperPendingStop: false,
-			livePendingStart: false,
-			livePendingStop: false,
+			paperPendingStart: isPaperPendingStart(),
+			paperPendingStop: isPaperPendingStop(),
+			livePendingStart: isLivePendingStart(),
+			livePendingStop: isLivePendingStop(),
 			paperStats: paperAccount.getStats(),
 			liveStats: liveAccount.getStats(),
 			liveTodayStats: liveAccount.getTodayStats(),
+			paperBalance: paperAccount.getBalance(),
+			liveBalance: liveAccount.getBalance(),
+			todayStats: paperAccount.getTodayStats(),
+			stopLoss: paperAccount.isStopped() ? paperAccount.getStopReason() : null,
+			liveStopLoss: liveAccount.isStopped() ? liveAccount.getStopReason() : null,
 		});
 
 		renderDashboard(results);

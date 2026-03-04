@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import {
 	AlertDialog,
@@ -12,18 +12,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Toaster } from "@/components/ui/toaster";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import type { PaperTradeEntry, TradeRecord } from "@/lib/api";
 import {
 	useDashboardStateWithWs,
 	useLiveCancel,
-	useLiveReset,
 	useLiveToggle,
 	usePaperCancel,
-	usePaperClearStop,
-	usePaperReset,
-	usePaperStats,
 	usePaperToggle,
-	useTrades,
 } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
@@ -39,15 +33,10 @@ function AppContent() {
 	const setConfirmAction = useUIStore((s) => s.setConfirmAction);
 	const { data: state, error: stateError } = useDashboardStateWithWs();
 
-	const { data: trades = [] } = useTrades(viewMode);
-	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
 	const paperToggle = usePaperToggle();
 	const liveToggle = useLiveToggle();
 	const paperCancel = usePaperCancel();
 	const liveCancel = useLiveCancel();
-
-	const paperTrades = paperStatsData?.trades ?? [];
-
 	const handleViewModeChange = useCallback(
 		(mode: "paper" | "live") => {
 			setViewMode(mode);
@@ -140,7 +129,7 @@ function AppContent() {
 		<Routes>
 			<Route path="/" element={<Layout {...layoutProps} />}>
 				<Route index element={<Dashboard />} />
-				<Route path="logs" element={<TradesPage viewMode={viewMode} liveTrades={trades} paperTrades={paperTrades} />} />
+				<Route path="logs" element={<TradesPage />} />
 				<Route path="*" element={<Navigate to="/" replace />} />
 			</Route>
 		</Routes>
