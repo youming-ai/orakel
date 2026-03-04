@@ -1,16 +1,10 @@
 /**
- * Strategy Refinement based on Backtest Analysis
- *
- * Key findings from 383 resolved trades:
- * - Overall WR: 48.6%, PnL: $156.60, PF: 1.40
- * - Low edge (<10%): 57.9% WR (model underconfident - good!)
- * - High edge (>=20%): 43.6% WR (model overconfident - BAD!)
- * - CHOP regime: 38.9% WR (avoid or heavily filter)
- * - BTC: 42.1% WR (market-specific issues)
- * - XRP/SOL: 54%+ WR (best performers)
+ * Strategy configuration for market conditions and risk filters.
+ * All markets are treated equally by default.
+ * Per-market adjustments can be enabled via config.json.
  */
 
-// Market-specific adjustments based on backtest
+// Per-market regime filtering (all disabled by default)
 // NOTE: edgeMultiplier is authoritative in edge.ts (MARKET_PERFORMANCE).
 //       This table only drives skipChop for the shouldTakeTrade filter.
 export const MARKET_ADJUSTMENTS: Record<
@@ -25,7 +19,7 @@ export const MARKET_ADJUSTMENTS: Record<
 	XRP: { skipChop: false },
 };
 
-// Additional filtering rules learned from backtest
+// Volatility and regime filtering rules
 export const BACKTEST_INSIGHTS = {
 	// Volatility insights
 	maxVolatility15m: 0.02, // Skip if vol > 2% (increased from 0.4% - too restrictive for crypto)

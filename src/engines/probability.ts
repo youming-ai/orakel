@@ -171,7 +171,7 @@ export function blendProbabilities({
 	taRawUp,
 	binanceLeadSignal = null,
 	orderbookImbalance = null,
-	weights = { vol: 0.5, ta: 0.5 }, // Changed from 0.7/0.3 to 0.5/0.5 per backtest
+	weights = { vol: 0.5, ta: 0.5 }, // Equal weighting for volatility-implied and technical analysis
 }: {
 	volImpliedUp: number | null;
 	taRawUp: number;

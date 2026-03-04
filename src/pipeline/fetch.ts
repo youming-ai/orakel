@@ -5,7 +5,6 @@ import { fetchChainlinkPrice } from "../data/chainlink.ts";
 import {
 	fetchClobPrice,
 	fetchLiveEventsBySeriesId,
-	fetchMarketBySlug,
 	fetchOrderBook,
 	flattenEventMarkets,
 	parseGammaMarket,
@@ -79,11 +78,8 @@ function parseJsonArray(value: unknown): unknown[] {
 const polymarketMarketCache: Map<string, { market: GammaMarket; fetchedAtMs: number }> = new Map();
 
 async function resolveCurrent15mMarket(marketDef: MarketConfig): Promise<GammaMarket | null> {
-	const customSlug = marketDef.id === "BTC" ? CONFIG.polymarket.marketSlug : "";
-	if (customSlug) {
-		const bySlug = await fetchMarketBySlug(customSlug);
-		return bySlug;
-	}
+	// All markets use auto-selection by default (no special treatment for any coin)
+	if (!CONFIG.polymarket.autoSelectLatest) return null;
 
 	if (!CONFIG.polymarket.autoSelectLatest) return null;
 
