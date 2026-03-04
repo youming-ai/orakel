@@ -1,5 +1,7 @@
 import type { Wallet } from "ethers";
 import type { RedeemOneResult } from "../blockchain/redeemer.ts";
+import { fetchRedeemablePositions } from "../blockchain/redeemer.ts";
+import { onchainStatements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
 import type { AccountStatsManager } from "./accountStats.ts";
@@ -49,7 +51,10 @@ export class LiveSettler {
 				const won = tokenId === winningAssetId;
 
 				if (won) {
-					const conditionId = this.deps.lookupConditionId(tokenId);
+					let conditionId = this.deps.lookupConditionId(tokenId);
+					if (!conditionId) {
+						conditionId = await this.resolveConditionId(tokenId);
+					}
 					if (!conditionId) {
 						log.warn(`No conditionId for token ${tokenId.slice(0, 12)}..., skipping redeem`);
 						continue;
@@ -86,6 +91,28 @@ export class LiveSettler {
 		}
 
 		return settled;
+	}
+
+	private async resolveConditionId(tokenId: string): Promise<string | null> {
+		if (!this.deps.wallet) return null;
+		try {
+			const positions = await fetchRedeemablePositions(this.deps.wallet.address);
+			for (const pos of positions) {
+				if (pos.conditionId) {
+					try {
+						onchainStatements.upsertKnownCtfToken().run({
+							$tokenId: tokenId,
+							$marketId: null,
+							$side: null,
+							$conditionId: pos.conditionId,
+						});
+					} catch {}
+				}
+			}
+			return this.deps.lookupConditionId(tokenId);
+		} catch {
+			return null;
+		}
 	}
 
 	start(intervalMs?: number): void {

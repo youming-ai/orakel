@@ -1,4 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../core/db.ts", () => ({
+	onchainStatements: {
+		upsertKnownCtfToken: () => ({ run: vi.fn() }),
+	},
+}));
+
+vi.mock("../blockchain/redeemer.ts", () => ({
+	fetchRedeemablePositions: vi.fn().mockResolvedValue([]),
+}));
+
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
 import type { AccountStatsManager, TradeEntry } from "../trading/accountStats.ts";
 import { LiveSettler } from "../trading/liveSettler.ts";
