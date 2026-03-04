@@ -10,8 +10,12 @@ const log = createLogger("live-settler");
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 
-const FALLBACK_STALE_MS = 10 * 60_000;
-
+/**
+ * LiveSettler is now a pure redeemer.
+ * Settlement (won/lost determination) is handled by resolveTrades() in the main
+ * loop using the same spot-price logic as paper. This class only redeems
+ * on-chain winnings for already-settled won trades.
+ */
 export interface LiveSettlerDeps {
 	clobWs: ClobWsHandle;
 	liveAccount: AccountStatsManager;
@@ -19,117 +23,69 @@ export interface LiveSettlerDeps {
 	lookupTokenId: (marketId: string, side: string) => string | null;
 	lookupConditionId: (tokenId: string) => string | null;
 	redeemFn: (wallet: Wallet, conditionId: string) => Promise<RedeemOneResult>;
-	candleWindowMs: number;
-	/** Callback to get latest spot prices for fallback settlement */
-	getLatestPrices: () => Map<string, number>;
 }
 
 export class LiveSettler {
 	private deps: LiveSettlerDeps;
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private settling = false;
+	/** Track successfully redeemed trade IDs to avoid re-attempts */
+	private redeemedIds = new Set<string>();
 
 	constructor(deps: LiveSettlerDeps) {
 		this.deps = deps;
 	}
 
+	/**
+	 * Redeem on-chain winnings for already-settled (resolved + won) trades.
+	 * Returns the number of trades successfully redeemed this cycle.
+	 */
 	async settle(): Promise<number> {
 		if (this.settling) return 0;
 		this.settling = true;
 
-		let settled = 0;
+		let redeemed = 0;
 
 		try {
-			const pending = this.deps.liveAccount.getPendingTrades();
+			const wonTrades = this.deps.liveAccount.getWonTrades();
 
-			for (const trade of pending) {
+			for (const trade of wonTrades) {
+				if (this.redeemedIds.has(trade.id)) continue;
+
 				const tokenId = this.deps.lookupTokenId(trade.marketId, trade.side);
 				if (!tokenId) {
 					continue;
 				}
 
+				// Wait for Polymarket on-chain resolution before attempting redeem
 				if (!this.deps.clobWs.isResolved(tokenId)) {
 					continue;
 				}
 
-				const winningAssetId = this.deps.clobWs.getWinningAssetId(tokenId);
-				const won = tokenId === winningAssetId;
-
-				if (won) {
-					let conditionId = this.deps.lookupConditionId(tokenId);
-					if (!conditionId) {
-						conditionId = await this.resolveConditionId(tokenId);
-					}
-					if (!conditionId) {
-						log.warn(`No conditionId for token ${tokenId.slice(0, 12)}..., skipping redeem`);
-						continue;
-					}
-
-					if (!this.deps.wallet) {
-						log.warn("Cannot redeem: wallet not connected");
-						continue;
-					}
-
-					const result = await this.deps.redeemFn(this.deps.wallet, conditionId);
-
-					if (!result.success) {
-						log.warn(`Redeem failed for ${trade.id} (${conditionId.slice(0, 10)}...): ${result.error}`);
-						continue;
-					}
-
-					const pnl = trade.size * (1 - trade.price);
-					this.deps.liveAccount.resolveTradeOnchain(trade.id, true, pnl, result.txHash);
-					log.info(`Settled WON: ${trade.marketId} ${trade.side} pnl=$${pnl.toFixed(2)} tx=${result.txHash}`);
-					settled++;
-				} else {
-					const pnl = -(trade.size * trade.price);
-					this.deps.liveAccount.resolveTradeOnchain(trade.id, false, pnl, null);
-					log.info(`Settled LOST: ${trade.marketId} ${trade.side} pnl=$${pnl.toFixed(2)}`);
-					settled++;
+				let conditionId = this.deps.lookupConditionId(tokenId);
+				if (!conditionId) {
+					conditionId = await this.resolveConditionId(tokenId);
 				}
-			}
-			// Fallback: settle stale trades using spot prices when WS resolution is missed.
-			// This handles the case where market_resolved WS events are lost due to
-			// disconnection/reconnection and Polymarket does not re-emit them.
-			const now = Date.now();
-			const staleThreshold = this.deps.candleWindowMs + FALLBACK_STALE_MS;
-			const latestPrices = this.deps.getLatestPrices();
-
-			for (const trade of pending) {
-				if (trade.resolved) continue;
-				const tokenId = this.deps.lookupTokenId(trade.marketId, trade.side);
-				if (tokenId && this.deps.clobWs.isResolved(tokenId)) continue;
-				const elapsed = now - trade.windowStartMs;
-				if (elapsed <= staleThreshold) continue;
-
-				const finalPrice = latestPrices.get(trade.marketId);
-				if (finalPrice === undefined || trade.priceToBeat <= 0) {
-					log.warn(
-						`Stale unresolved trade ${trade.id.slice(0, 16)}... ${trade.marketId} ${trade.side} ` +
-							`(${Math.round(elapsed / 60_000)}m) — no spot price available for fallback`,
-					);
+				if (!conditionId) {
+					log.warn(`No conditionId for token ${tokenId.slice(0, 12)}..., skipping redeem`);
 					continue;
 				}
 
-				// Same settlement rule as paper: price > PTB → UP wins, price <= PTB → DOWN wins
-				const upWon = finalPrice > trade.priceToBeat;
-				const won = trade.side === "UP" ? upWon : !upWon;
-				const pnl = won ? trade.size * (1 - trade.price) : -(trade.size * trade.price);
-
-				try {
-					this.deps.liveAccount.resolveTradeOnchain(trade.id, won, pnl, null);
-					log.info(
-						`Fallback settled ${won ? "WON" : "LOST"}: ${trade.marketId} ${trade.side} ` +
-							`pnl=$${pnl.toFixed(2)} (spot=${finalPrice.toFixed(2)} vs PTB=${trade.priceToBeat.toFixed(2)}, ` +
-							`stale ${Math.round(elapsed / 60_000)}m, WS resolution missed)`,
-					);
-					settled++;
-				} catch (err) {
-					log.error(
-						`Fallback settle failed for ${trade.id.slice(0, 16)}...:`,
-						err instanceof Error ? err.message : String(err),
-					);
+				if (!this.deps.wallet) {
+					log.warn("Cannot redeem: wallet not connected");
+					continue;
 				}
+
+				const result = await this.deps.redeemFn(this.deps.wallet, conditionId);
+
+				if (!result.success) {
+					log.warn(`Redeem failed for ${trade.id} (${conditionId.slice(0, 10)}...): ${result.error}`);
+					continue;
+				}
+
+				this.redeemedIds.add(trade.id);
+				redeemed++;
+				log.info(`Redeemed: ${trade.marketId} ${trade.side} pnl=$${(trade.pnl ?? 0).toFixed(2)} tx=${result.txHash}`);
 			}
 		} catch (err: unknown) {
 			const msg = err instanceof Error ? err.message : String(err);
@@ -138,7 +94,7 @@ export class LiveSettler {
 			this.settling = false;
 		}
 
-		return settled;
+		return redeemed;
 	}
 
 	private async resolveConditionId(tokenId: string): Promise<string | null> {

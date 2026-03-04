@@ -590,6 +590,10 @@ export class AccountStatsManager {
 		return this.state.trades.filter((t) => !t.resolved);
 	}
 
+	getWonTrades(): TradeEntry[] {
+		return this.state.trades.filter((t) => t.resolved && t.won === true);
+	}
+
 	getRecentTrades(limit?: number): TradeEntry[] {
 		if (limit === undefined) return [...this.state.trades];
 		return this.state.trades.slice(-limit);

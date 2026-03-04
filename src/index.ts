@@ -374,8 +374,6 @@ async function main(): Promise<void> {
 			lookupTokenId,
 			lookupConditionId,
 			redeemFn: redeemByConditionId,
-			candleWindowMs: CONFIG.candleWindowMinutes * 60_000,
-			getLatestPrices: () => collectLatestPrices(markets, states),
 		});
 		liveSettlerInstance.start();
 	}
@@ -697,6 +695,12 @@ async function main(): Promise<void> {
 			if (paperRecovered > 0) {
 				log.info(`Recovered expired paper trades: ${paperRecovered}`);
 			}
+			if (isLiveRunning()) {
+				const liveRecovered = liveAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
+				if (liveRecovered > 0) {
+					log.info(`Recovered expired live trades: ${liveRecovered}`);
+				}
+			}
 		}
 
 		if (prevWindowStartMs !== null && prevWindowStartMs !== timing.startMs) {
@@ -704,6 +708,12 @@ async function main(): Promise<void> {
 				const paperResolved = paperAccount.resolveTrades(prevWindowStartMs, latestPrices);
 				if (paperResolved > 0) {
 					log.info(`Paper window settled: ${paperResolved}`);
+				}
+				if (isLiveRunning()) {
+					const liveResolved = liveAccount.resolveTrades(prevWindowStartMs, latestPrices);
+					if (liveResolved > 0) {
+						log.info(`Live window settled: ${liveResolved}`);
+					}
 				}
 			}
 		}

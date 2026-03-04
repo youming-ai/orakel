@@ -25,8 +25,6 @@ import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
 import type { AccountStatsManager, TradeEntry } from "../trading/accountStats.ts";
 import { LiveSettler } from "../trading/liveSettler.ts";
 
-const CANDLE_WINDOW_MS = 15 * 60_000;
-
 function makeFakeClobWs(overrides: Partial<ClobWsHandle> = {}): ClobWsHandle {
 	return {
 		subscribe: vi.fn(),
@@ -40,17 +38,16 @@ function makeFakeClobWs(overrides: Partial<ClobWsHandle> = {}): ClobWsHandle {
 	};
 }
 
-function makeFakeAccount(pending: TradeEntry[] = []): {
-	getPendingTrades: () => TradeEntry[];
-	resolveTradeOnchain: ReturnType<typeof vi.fn>;
+function makeFakeAccount(wonTrades: TradeEntry[] = []): {
+	getWonTrades: () => TradeEntry[];
 } {
 	return {
-		getPendingTrades: () => pending,
-		resolveTradeOnchain: vi.fn(),
+		getWonTrades: () => wonTrades,
 	};
 }
 
-function makePendingTrade(overrides: Partial<TradeEntry> = {}): TradeEntry {
+/** Create a resolved + won trade (the default state LiveSettler now expects) */
+function makeWonTrade(overrides: Partial<TradeEntry> = {}): TradeEntry {
 	return {
 		id: "trade-1",
 		marketId: "BTC",
@@ -61,66 +58,40 @@ function makePendingTrade(overrides: Partial<TradeEntry> = {}): TradeEntry {
 		priceToBeat: 50000,
 		currentPriceAtEntry: 50100,
 		timestamp: new Date().toISOString(),
-		resolved: false,
-		won: null,
-		pnl: null,
-		settlePrice: null,
+		resolved: true,
+		won: true,
+		pnl: 6.0, // 10 * (1 - 0.4)
+		settlePrice: 50100,
 		...overrides,
 	};
 }
 
-describe("LiveSettler.settle", () => {
+describe("LiveSettler.settle (redeemer-only)", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
 
-	it("should skip trades whose tokenId is not resolved", async () => {
+	it("should skip won trades whose tokenId is not yet resolved on-chain", async () => {
 		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
-		const account = makeFakeAccount([makePendingTrade()]);
+		const account = makeFakeAccount([makeWonTrade()]);
+		const redeemFn = vi.fn();
 		const settler = new LiveSettler({
 			clobWs,
 			liveAccount: account as unknown as AccountStatsManager,
 			wallet: null,
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
-			redeemFn: vi.fn(),
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
+			redeemFn,
 		});
 
-		const settled = await settler.settle();
-		expect(settled).toBe(0);
-		expect(account.resolveTradeOnchain).not.toHaveBeenCalled();
+		const redeemed = await settler.settle();
+		expect(redeemed).toBe(0);
+		expect(redeemFn).not.toHaveBeenCalled();
 	});
 
-	it("should resolve losing trade when tokenId !== winningAssetId", async () => {
-		const clobWs = makeFakeClobWs({
-			isResolved: vi.fn().mockReturnValue(true),
-			getWinningAssetId: vi.fn().mockReturnValue("token-down-456"),
-		});
-		const account = makeFakeAccount([makePendingTrade({ price: 0.4, size: 10 })]);
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: null,
-			lookupTokenId: () => "token-up-123",
-			lookupConditionId: () => "cond-123",
-			redeemFn: vi.fn(),
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
-		});
-
-		const settled = await settler.settle();
-		expect(settled).toBe(1);
-		expect(account.resolveTradeOnchain).toHaveBeenCalledWith("trade-1", false, expect.closeTo(-4.0, 2), null);
-	});
-
-	it("should redeem and resolve winning trade when redeem succeeds", async () => {
-		const clobWs = makeFakeClobWs({
-			isResolved: vi.fn().mockReturnValue(true),
-			getWinningAssetId: vi.fn().mockReturnValue("token-up-123"),
-		});
-		const account = makeFakeAccount([makePendingTrade({ price: 0.4, size: 10 })]);
+	it("should redeem won trade when on-chain resolution is available", async () => {
+		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
+		const account = makeFakeAccount([makeWonTrade({ price: 0.4, size: 10, pnl: 6.0 })]);
 		const redeemFn = vi.fn().mockResolvedValue({ success: true, txHash: "0xabc" });
 		const fakeWallet = {} as never;
 		const settler = new LiveSettler({
@@ -130,22 +101,17 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
 			redeemFn,
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
 		});
 
-		const settled = await settler.settle();
-		expect(settled).toBe(1);
+		const redeemed = await settler.settle();
+		expect(redeemed).toBe(1);
 		expect(redeemFn).toHaveBeenCalledWith(fakeWallet, "cond-123");
-		expect(account.resolveTradeOnchain).toHaveBeenCalledWith("trade-1", true, expect.closeTo(6.0, 2), "0xabc");
+		expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("Redeemed: BTC UP"));
 	});
 
-	it("should NOT resolve winning trade when redeem fails", async () => {
-		const clobWs = makeFakeClobWs({
-			isResolved: vi.fn().mockReturnValue(true),
-			getWinningAssetId: vi.fn().mockReturnValue("token-up-123"),
-		});
-		const account = makeFakeAccount([makePendingTrade()]);
+	it("should NOT redeem when redeem call fails", async () => {
+		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
+		const account = makeFakeAccount([makeWonTrade()]);
 		const redeemFn = vi.fn().mockResolvedValue({ success: false, txHash: null, error: "rpc_fail" });
 		const settler = new LiveSettler({
 			clobWs,
@@ -154,64 +120,58 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
 			redeemFn,
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
 		});
 
-		const settled = await settler.settle();
-		expect(settled).toBe(0);
-		expect(account.resolveTradeOnchain).not.toHaveBeenCalled();
+		const redeemed = await settler.settle();
+		expect(redeemed).toBe(0);
+		expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining("Redeem failed"));
 	});
 
 	it("should skip trades with no tokenId mapping", async () => {
 		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
-		const account = makeFakeAccount([makePendingTrade()]);
+		const account = makeFakeAccount([makeWonTrade()]);
+		const redeemFn = vi.fn();
 		const settler = new LiveSettler({
 			clobWs,
 			liveAccount: account as unknown as AccountStatsManager,
 			wallet: null,
 			lookupTokenId: () => null,
 			lookupConditionId: () => null,
-			redeemFn: vi.fn(),
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
+			redeemFn,
 		});
 
-		const settled = await settler.settle();
-		expect(settled).toBe(0);
+		const redeemed = await settler.settle();
+		expect(redeemed).toBe(0);
+		expect(redeemFn).not.toHaveBeenCalled();
 	});
 
-	it("should skip winning trade when wallet is null", async () => {
-		const clobWs = makeFakeClobWs({
-			isResolved: vi.fn().mockReturnValue(true),
-			getWinningAssetId: vi.fn().mockReturnValue("token-up-123"),
-		});
-		const account = makeFakeAccount([makePendingTrade()]);
+	it("should skip won trade when wallet is null", async () => {
+		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
+		const account = makeFakeAccount([makeWonTrade()]);
+		const redeemFn = vi.fn();
 		const settler = new LiveSettler({
 			clobWs,
 			liveAccount: account as unknown as AccountStatsManager,
 			wallet: null,
 			lookupTokenId: () => "token-up-123",
 			lookupConditionId: () => "cond-123",
-			redeemFn: vi.fn(),
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
+			redeemFn,
 		});
 
-		const settled = await settler.settle();
-		expect(settled).toBe(0);
-		expect(account.resolveTradeOnchain).not.toHaveBeenCalled();
+		const redeemed = await settler.settle();
+		expect(redeemed).toBe(0);
+		expect(redeemFn).not.toHaveBeenCalled();
+		expect(mockLog.warn).toHaveBeenCalledWith("Cannot redeem: wallet not connected");
 	});
 
-	it("should handle multiple trades in one settle call", async () => {
+	it("should handle multiple won trades in one settle call", async () => {
 		const resolvedTokens = new Set(["token-btc-up", "token-eth-down"]);
 		const clobWs = makeFakeClobWs({
 			isResolved: vi.fn().mockImplementation((tid: string) => resolvedTokens.has(tid)),
-			getWinningAssetId: vi.fn().mockReturnValue("token-btc-up"),
 		});
 		const trades = [
-			makePendingTrade({ id: "t1", marketId: "BTC", side: "UP", price: 0.3, size: 10 }),
-			makePendingTrade({ id: "t2", marketId: "ETH", side: "DOWN", price: 0.5, size: 10 }),
+			makeWonTrade({ id: "t1", marketId: "BTC", side: "UP", price: 0.3, size: 10, pnl: 7.0 }),
+			makeWonTrade({ id: "t2", marketId: "ETH", side: "DOWN", price: 0.5, size: 10, pnl: 5.0 }),
 		];
 		const account = makeFakeAccount(trades);
 		const redeemFn = vi.fn().mockResolvedValue({ success: true, txHash: "0x111" });
@@ -224,116 +184,52 @@ describe("LiveSettler.settle", () => {
 			lookupTokenId: (m, s) => tokenMap[`${m}-${s}`] ?? null,
 			lookupConditionId: () => "cond-xxx",
 			redeemFn,
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
 		});
 
-		const settled = await settler.settle();
-		expect(settled).toBe(2);
-		expect(account.resolveTradeOnchain).toHaveBeenCalledTimes(2);
+		const redeemed = await settler.settle();
+		expect(redeemed).toBe(2);
+		expect(redeemFn).toHaveBeenCalledTimes(2);
 	});
 
-	it("should log warning for stale unresolved trades past fallback threshold", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
-		const staleWindowStart = Date.now() - CANDLE_WINDOW_MS - 11 * 60_000;
-		const account = makeFakeAccount([makePendingTrade({ id: "stale-1", windowStartMs: staleWindowStart })]);
+	it("should not re-redeem already redeemed trades on subsequent calls", async () => {
+		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
+		const wonTrade = makeWonTrade();
+		const account = makeFakeAccount([wonTrade]);
+		const redeemFn = vi.fn().mockResolvedValue({ success: true, txHash: "0xdef" });
+
 		const settler = new LiveSettler({
 			clobWs,
 			liveAccount: account as unknown as AccountStatsManager,
-			wallet: null,
+			wallet: {} as never,
 			lookupTokenId: () => "token-up-123",
-			lookupConditionId: () => null,
-			redeemFn: vi.fn(),
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
+			lookupConditionId: () => "cond-123",
+			redeemFn,
 		});
 
-		await settler.settle();
+		// First call redeems
+		const first = await settler.settle();
+		expect(first).toBe(1);
+		expect(redeemFn).toHaveBeenCalledTimes(1);
 
-		expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining("Stale unresolved trade stale-1"));
+		// Second call skips (already redeemed)
+		const second = await settler.settle();
+		expect(second).toBe(0);
+		expect(redeemFn).toHaveBeenCalledTimes(1);
 	});
 
-	it("should NOT log warning for trades within the fallback threshold", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
-		const recentWindowStart = Date.now() - CANDLE_WINDOW_MS - 5 * 60_000;
-		const account = makeFakeAccount([makePendingTrade({ id: "recent-1", windowStartMs: recentWindowStart })]);
+	it("should return 0 when no won trades exist", async () => {
+		const clobWs = makeFakeClobWs();
+		const account = makeFakeAccount([]);
 		const settler = new LiveSettler({
 			clobWs,
 			liveAccount: account as unknown as AccountStatsManager,
 			wallet: null,
-			lookupTokenId: () => "token-up-123",
+			lookupTokenId: () => null,
 			lookupConditionId: () => null,
 			redeemFn: vi.fn(),
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map(),
 		});
 
-		await settler.settle();
-
-		expect(mockLog.warn).not.toHaveBeenCalled();
-	});
-
-	it("should fallback settle stale trade using spot prices when WS resolution missed", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
-		const staleWindowStart = Date.now() - CANDLE_WINDOW_MS - 11 * 60_000;
-		const account = makeFakeAccount([
-			makePendingTrade({
-				id: "stale-up",
-				marketId: "BTC",
-				side: "UP",
-				price: 0.4,
-				size: 10,
-				priceToBeat: 50000,
-				windowStartMs: staleWindowStart,
-			}),
-		]);
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: null,
-			lookupTokenId: () => "token-up-123",
-			lookupConditionId: () => null,
-			redeemFn: vi.fn(),
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map([["BTC", 50100]]),
-		});
-
-		const settled = await settler.settle();
-		expect(settled).toBe(1);
-		// price 50100 > PTB 50000 → UP wins → won=true, pnl = 10 * (1 - 0.4) = 6.0
-		expect(account.resolveTradeOnchain).toHaveBeenCalledWith("stale-up", true, expect.closeTo(6.0, 2), null);
-		expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("Fallback settled WON"));
-	});
-
-	it("should fallback settle stale DOWN trade as lost when price went up", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
-		const staleWindowStart = Date.now() - CANDLE_WINDOW_MS - 11 * 60_000;
-		const account = makeFakeAccount([
-			makePendingTrade({
-				id: "stale-down",
-				marketId: "ETH",
-				side: "DOWN",
-				price: 0.5,
-				size: 10,
-				priceToBeat: 2000,
-				windowStartMs: staleWindowStart,
-			}),
-		]);
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: null,
-			lookupTokenId: () => "token-down-456",
-			lookupConditionId: () => null,
-			redeemFn: vi.fn(),
-			candleWindowMs: CANDLE_WINDOW_MS,
-			getLatestPrices: () => new Map([["ETH", 2050]]),
-		});
-
-		const settled = await settler.settle();
-		expect(settled).toBe(1);
-		// price 2050 > PTB 2000 → UP wins → DOWN lost → won=false, pnl = -(10 * 0.5) = -5.0
-		expect(account.resolveTradeOnchain).toHaveBeenCalledWith("stale-down", false, expect.closeTo(-5.0, 2), null);
-		expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("Fallback settled LOST"));
+		const redeemed = await settler.settle();
+		expect(redeemed).toBe(0);
 	});
 });
