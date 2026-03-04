@@ -16,6 +16,16 @@ const STATUS_QUERY_LIMIT = 10_000;
 
 let walletAddress = "";
 
+function parseCreatedAtMs(value: string | number): number | null {
+	const rawNum = Number(value);
+	if (Number.isFinite(rawNum)) {
+		// SQLite created_at is Unix seconds; some rows may already be ms.
+		return rawNum > 1_000_000_000_000 ? rawNum : rawNum * 1000;
+	}
+	const parsed = Date.parse(String(value));
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
 // --- Core reconciliation ---
 
 function reconcileTrade(trade: TradeRow): ReconResult {
@@ -67,8 +77,8 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 				if (!isEventRow(rawEvent)) continue;
 
 				// Check temporal proximity
-				const eventTime = new Date(rawEvent.created_at).getTime();
-				if (!Number.isFinite(eventTime)) continue;
+				const eventTime = parseCreatedAtMs(rawEvent.created_at);
+				if (eventTime === null) continue;
 				const timeDiff = Math.abs(eventTime - tradeTimestamp);
 				if (timeDiff > TIME_MAX_MS) continue;
 
@@ -94,8 +104,10 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 				// Direction match bonus
 				if (walletAddress) {
 					const wallet = walletAddress.toLowerCase();
-					const isIncoming = rawEvent.to_addr.toLowerCase() === wallet;
-					const isOutgoing = rawEvent.from_addr.toLowerCase() === wallet;
+					const toAddr = typeof rawEvent.to_addr === "string" ? rawEvent.to_addr.toLowerCase() : "";
+					const fromAddr = typeof rawEvent.from_addr === "string" ? rawEvent.from_addr.toLowerCase() : "";
+					const isIncoming = toAddr === wallet;
+					const isOutgoing = fromAddr === wallet;
 					if (isIncoming || isOutgoing) {
 						confidence += 0.15;
 					}

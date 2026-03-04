@@ -18,12 +18,12 @@ export interface EventRow {
 	log_index: number;
 	block_number: number;
 	event_type: string;
-	from_addr: string;
-	to_addr: string;
+	from_addr: string | null;
+	to_addr: string | null;
 	token_id: string | null;
 	value: string;
 	raw_data: string | null;
-	created_at: string;
+	created_at: string | number;
 }
 
 interface KnownTokenRow {
@@ -44,7 +44,9 @@ export function isTradeRow(row: unknown): row is TradeRow {
 export function isEventRow(row: unknown): row is EventRow {
 	if (!row || typeof row !== "object") return false;
 	const r = row as Record<string, unknown>;
-	return typeof r.tx_hash === "string" && typeof r.event_type === "string";
+	const fromAddrOk = typeof r.from_addr === "string" || r.from_addr === null || r.from_addr === undefined;
+	const toAddrOk = typeof r.to_addr === "string" || r.to_addr === null || r.to_addr === undefined;
+	return typeof r.tx_hash === "string" && typeof r.event_type === "string" && fromAddrOk && toAddrOk;
 }
 
 export function isKnownTokenRow(row: unknown): row is KnownTokenRow {

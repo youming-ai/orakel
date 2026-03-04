@@ -76,6 +76,23 @@ describe("isEventRow", () => {
 		expect(isEventRow(validRow)).toBe(true);
 	});
 
+	it("returns true when nullable address fields are null", () => {
+		const validRowWithNullAddress = {
+			tx_hash: "0xdef",
+			log_index: 1,
+			block_number: 1001,
+			event_type: "usdc_transfer",
+			from_addr: null,
+			to_addr: null,
+			token_id: null,
+			value: "1000000",
+			raw_data: null,
+			created_at: 1700000000,
+		};
+
+		expect(isEventRow(validRowWithNullAddress)).toBe(true);
+	});
+
 	it("returns false for rows missing required fields", () => {
 		const missingTxHash = {
 			log_index: 0,
