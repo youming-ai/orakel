@@ -484,7 +484,7 @@ export class AccountStatsManager {
 	 * Used by LiveSettler for live trades — bypasses spot-price settlement.
 	 * Paper mode should continue using resolveTrades().
 	 */
-	resolveTradeOnchain(tradeId: string, won: boolean, pnl: number, txHash: string | null): void {
+	resolveTradeOnchain(tradeId: string, won: boolean, pnl: number, _txHash: string | null): void {
 		const trade = this.state.trades.find((t) => t.id === tradeId);
 		if (!trade) {
 			throw new Error(`Trade not found: ${tradeId}`);
