@@ -140,10 +140,7 @@ function AppContent() {
 		<Routes>
 			<Route path="/" element={<Layout {...layoutProps} />}>
 				<Route index element={<Dashboard />} />
-				<Route
-					path="trades"
-					element={<TradesPage viewMode={viewMode} liveTrades={trades} paperTrades={paperTrades} />}
-				/>
+				<Route path="logs" element={<TradesPage viewMode={viewMode} liveTrades={trades} paperTrades={paperTrades} />} />
 				<Route path="*" element={<Navigate to="/" replace />} />
 			</Route>
 		</Routes>

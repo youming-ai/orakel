@@ -63,8 +63,6 @@ function StatusIcon({ status }: { status: BotStatus }) {
 	}
 }
 
-
-
 export function Header({
 	viewMode,
 	paperRunning,
@@ -80,7 +78,7 @@ export function Header({
 	onLiveToggle,
 }: HeaderProps) {
 	const location = useLocation();
-	const isTradesActive = location.pathname === "/trades";
+	const isTradesActive = location.pathname === "/logs";
 	const isRunning = viewMode === "paper" ? paperRunning : liveRunning;
 	const pendingStart = viewMode === "paper" ? paperPendingStart : livePendingStart;
 	const pendingStop = viewMode === "paper" ? paperPendingStop : livePendingStop;
@@ -105,7 +103,7 @@ export function Header({
 					</Link>
 					<span className="text-xs text-muted-foreground">/</span>
 					<Link
-						to="/trades"
+						to="/logs"
 						className={cn(
 							"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline",
 							isTradesActive && "text-foreground",

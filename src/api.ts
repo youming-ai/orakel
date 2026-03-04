@@ -289,7 +289,7 @@ const apiRoutes = new Hono()
 		});
 	})
 
-	.get("/trades", (c) => {
+	.get("/logs", (c) => {
 		const mode = c.req.query("mode");
 
 		if (READ_BACKEND === "sqlite") {

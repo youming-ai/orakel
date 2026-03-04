@@ -58,7 +58,7 @@ async function put<T>(path: string, data: unknown): Promise<T> {
 
 export const api = {
 	getState: () => get<DashboardState>("/state"),
-	getTrades: (mode: string) => get<TradeRecord[]>(`/trades?mode=${mode}`),
+	getTrades: (mode: string) => get<TradeRecord[]>(`/logs?mode=${mode}`),
 	getPaperStats: () => get<PaperStatsResponse>("/paper-stats"),
 	saveConfig: (data: ConfigPayload) => put<{ ok: boolean }>("/config", data),
 	paperStart: () => post<{ ok: boolean }>("/paper/start"),
