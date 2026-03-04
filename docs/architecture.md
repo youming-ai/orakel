@@ -35,9 +35,9 @@ External Data Sources                Backend (Bun Runtime)                      
                          │   ├ probability.ts (probability)   │    │ REST API (/api/*)   │
                          │   ├ regime.ts (market state)       │    │ WebSocket (/ws)     │
                          │   ├ edge.ts (decision & edge)      │    └────────────────────┘
-                         │   ├ positionSizing.ts (sizing)     │              ↑
-                         │   ├ arbitrage.ts (arbitrage)       │              │
-                         │   └ feeOptimization.ts (fees)     │              │
+                         │   └ arbitrage.ts (arbitrage)       │              ↑
+                         │                                     │              │
+                         │                                     │              │
                          │                                     │──────────────┘
                          │ Indicators Layer (src/indicators/)  │
                          │   ├ rsi.ts      ├ macd.ts          │
@@ -46,9 +46,10 @@ External Data Sources                Backend (Bun Runtime)                      
                          │ Trading Layer (src/trading/)       │
                          │   ├ trader.ts (execution)          │
                          │   ├ orderManager.ts (orders)       │
-                         │   ├ paperStats.ts (paper stats)    │
+                         │   ├ accountStats.ts (account stats)│
                          │   ├ persistence.ts (persistence)   │
-                         │   └ terminal.ts / strategyRefinement│
+                         │   ├ liveGuards.ts (live safety)    │
+                         │   └ strategyRefinement / terminal   │
                          │                                     │
                          │ Blockchain Layer (src/blockchain/) │
                          │   ├ contracts.ts (contracts)       │
@@ -130,7 +131,7 @@ Validates `config.json` via Zod. Supports `fs.watch` auto hot-reload. Atomic wri
 
 ### core/db.ts — Database Layer
 
-SQLite with WAL mode enabled. Contains 5 tables: `trades`, `signals`, `paper_trades`, `daily_stats`, `paper_state`. Uses prepared statement caching. Includes 2 migration scripts.
+SQLite with WAL mode enabled. Contains 11 tables: `trades`, `signals`, `paper_trades`, `daily_stats`, `paper_state`, `live_state`, `live_trades`, `live_pending_orders`, `onchain_events`, `balance_snapshots`, `known_ctf_tokens`. Uses prepared statement caching. Includes 6 migration versions. For full schema details, see [Backend Documentation](./backend.md#3-core-layer).
 
 ### core/markets.ts — Market Definitions
 

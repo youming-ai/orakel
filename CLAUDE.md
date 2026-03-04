@@ -13,12 +13,20 @@ Orakel is a production-grade automated trading bot for Polymarket's 15-minute bi
 ```bash
 # Bot
 bun run start              # Start the trading bot (port 9999)
+bun run dev                # Run bot + web dashboard concurrently
 bun run test               # Run tests once
 bun run test:watch         # Run tests in watch mode
 bun run typecheck          # TypeScript type checking
+bun run typecheck:ci       # Type check without test files (CI mode)
 bun run lint               # Lint with Biome
 bun run lint:fix           # Auto-fix lint issues
 bun run format             # Format code with Biome
+
+# Run single test file
+bunx vitest run src/__tests__/rsi.test.ts
+
+# Run tests matching pattern
+bunx vitest run -t "clamp"
 
 # Web Dashboard
 cd web && bun run dev      # Start dev server (Vite default port)
@@ -111,6 +119,7 @@ All markets use `edgeMultiplier: 1.0` (conservative branch — uniform edge requ
    - `PAPER_MODE=true` - Paper vs live trading
    - `API_PORT=9999` - API server port
    - `ACTIVE_MARKETS=BTC,ETH,SOL,XRP` - Enabled markets (comma-separated)
+   - `CORS_ORIGIN=*` - CORS origins for API access (use `http://localhost:9998` for Docker Compose)
    - `PERSIST_BACKEND=sqlite` - Storage backend (csv/dual/sqlite)
    - `READ_BACKEND=sqlite` - Read backend (csv/sqlite, excludes "dual")
    - `POLYGON_RPC_URL` / `POLYGON_RPC_URLS` - Polygon RPC endpoint(s)
@@ -121,6 +130,9 @@ All markets use `edgeMultiplier: 1.0` (conservative branch — uniform edge requ
    - `CHAINLINK_BTC_USD_AGGREGATOR` - Chainlink aggregator address
    - `API_TOKEN` - Optional auth for mutation endpoints
    - `LOG_LEVEL` - Logging verbosity (debug/info/warn/error/silent)
+   - `PRIVATE_KEY` - 64-char hex for live trading (auto-connects wallet on startup)
+   - `AUTO_REDEEM_ENABLED=false` - Auto-redeem settled positions (requires PRIVATE_KEY)
+   - `AUTO_REDEEM_INTERVAL_MS=1800000` - Auto-redeem check interval (default: 30 minutes)
 
 2. **Strategy Config** ([`config.json`](config.json), validated in [`src/config.ts`](src/config.ts)):
    - `paper.risk` / `live.risk` - Per-account risk settings (maxTradeSizeUsdc, dailyMaxLossUsdc, limitDiscount, maxOpenPositions, minLiquidity, maxTradesPerWindow)
@@ -147,7 +159,7 @@ Config changes are auto-reloaded on next cycle - no restart needed.
 - Auto-connects wallet on startup if `PRIVATE_KEY` is set in `.env` (64-char hex, `0x` prefix optional)
 - Creates ClobClient for Polymarket CLOB API
 - Orders created via limit orders, polled by OrderManager
-- Manual redemption via [`src/redeemer.ts`](src/redeemer.ts)
+- Manual redemption via [`src/redeemer.ts`](src/redeemer.ts) or automatic via `AUTO_REDEEM_ENABLED`
 - Legacy: `/api/live/connect` endpoint still exists for manual connection
 
 **Critical:** Paper and live state are completely separate - separate configs, separate daily state tracking, different spending models.
@@ -240,6 +252,7 @@ src/
 ├── strategyRefinement.ts     # Backtest insights + MARKET_ADJUSTMENTS, BACKTEST_INSIGHTS
 ├── backtest.ts               # Backtest analysis tool
 ├── redeemer.ts               # Manual live trade redemption
+├── __tests__/                # Test files (vitest)
 ├── engines/
 │   ├── edge.ts               # Edge computation, confidence scoring, decision logic
 │   ├── probability.ts        # TA scoring, vol implied, blending, time decay
@@ -272,6 +285,7 @@ web/src/
 ## API Endpoints
 
 REST API (port 9999):
+- `GET /api/health` - Health check for Docker containers
 - `GET /api/state` - Full dashboard state
 - `GET /api/trades?mode=paper&limit=100` - Recent trades
 - `GET /api/signals?market=BTC&limit=200` - Recent signals for backtest
@@ -321,12 +335,12 @@ import type { AppConfig, RiskConfig } from "./types.ts";
 | Type aliases  | PascalCase      | `Phase`, `Regime`, `Side`        |
 | Constants     | UPPER_SNAKE_CASE| `MARKETS`, `CONFIG`, `REGIME_DISABLED` |
 | React comps   | PascalCase      | `MarketCard.tsx`, `Dashboard.tsx` |
-| Test files    | `{name}.test.ts`| `rsi.test.ts` next to `rsi.ts`  |
+| Test files    | `{name}.test.ts`| `rsi.test.ts` in `src/__tests__/` |
 
 ### Testing
 
-- Tests co-located with source files: `rsi.test.ts` beside `rsi.ts`
-- Run single test: `bunx vitest run src/utils.test.ts`
+- Tests located in `src/__tests__/` directory (not co-located with source files)
+- Run single test: `bunx vitest run src/__tests__/rsi.test.ts`
 - Run tests matching pattern: `bunx vitest run -t "clamp"`
 - Pure functions tested without mocks — pass data directly
 - Use `toBeCloseTo(value, precision)` for floating-point comparisons

@@ -184,7 +184,7 @@ bun run lint && bun run typecheck && bun run test
 
 ### 5.1 config.json
 
-Strategy and risk parameters, see [Backend Documentation](./backend.md#4-configuration-system-srcconfigts).
+Strategy and risk parameters, see [Backend Documentation](./backend.md#3-core-layer).
 
 ### 5.2 Hot Reload
 
