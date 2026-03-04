@@ -432,6 +432,11 @@ export interface StateSnapshotPayload {
 		totalPnl: number;
 	} | null;
 	liveTodayStats: { pnl: number; trades: number; limit: number } | null;
+	paperBalance?: { initial: number; current: number; maxDrawdown: number };
+	liveBalance?: { initial: number; current: number; maxDrawdown: number };
+	todayStats?: { pnl: number; trades: number; limit: number };
+	stopLoss?: { stoppedAt: string | null; reason: string | null } | null;
+	liveStopLoss?: { stoppedAt: string | null; reason: string | null } | null;
 }
 
 export interface SignalNewPayload {

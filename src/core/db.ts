@@ -965,3 +965,63 @@ export function resetLiveDbData(): void {
 	stmtCache.clear();
 	queryCache.clear();
 }
+
+// === Periodic Database Pruning ===
+
+const PRUNE_LIMITS = {
+	trades: 100,
+	paperTrades: 100,
+	liveTrades: 100,
+	signals: 500,
+	dailyStatsDays: 30,
+} as const;
+
+/**
+ * Remove old rows from high-growth tables and reclaim disk space.
+ * Safe to call periodically (e.g. once per hour). Runs in a single transaction.
+ */
+export function pruneDatabase(): { pruned: Record<string, number>; vacuumed: boolean } {
+	const db = getDb();
+	const pruned: Record<string, number> = {};
+
+	db.transaction(() => {
+		pruned.trades = db
+			.prepare(`DELETE FROM trades WHERE id NOT IN (SELECT id FROM trades ORDER BY created_at DESC LIMIT ?)`)
+			.run(PRUNE_LIMITS.trades).changes;
+
+		pruned.paper_trades = db
+			.prepare(
+				`DELETE FROM paper_trades WHERE id NOT IN (SELECT id FROM paper_trades ORDER BY window_start_ms DESC LIMIT ?)`,
+			)
+			.run(PRUNE_LIMITS.paperTrades).changes;
+
+		pruned.live_trades = db
+			.prepare(
+				`DELETE FROM live_trades WHERE id NOT IN (SELECT id FROM live_trades ORDER BY window_start_ms DESC LIMIT ?)`,
+			)
+			.run(PRUNE_LIMITS.liveTrades).changes;
+
+		pruned.signals = db
+			.prepare(`DELETE FROM signals WHERE id NOT IN (SELECT id FROM signals ORDER BY id DESC LIMIT ?)`)
+			.run(PRUNE_LIMITS.signals).changes;
+
+		const cutoffDate = new Date(Date.now() - PRUNE_LIMITS.dailyStatsDays * 86_400_000).toISOString().slice(0, 10);
+		pruned.daily_stats = db.prepare(`DELETE FROM daily_stats WHERE date < ?`).run(cutoffDate).changes;
+	})();
+
+	// VACUUM outside transaction to reclaim disk space
+	let vacuumed = false;
+	const totalPruned = Object.values(pruned).reduce((a, b) => a + b, 0);
+	if (totalPruned > 0) {
+		try {
+			db.run("VACUUM");
+			vacuumed = true;
+		} catch {
+			// VACUUM can fail under load — non-critical
+		}
+	}
+
+	stmtCache.clear();
+	queryCache.clear();
+	return { pruned, vacuumed };
+}

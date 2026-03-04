@@ -17,12 +17,12 @@ export function OverviewSkeleton() {
 				{/* Stats grid placeholder — 4 stat cards in a row */}
 				<Card className="flex-1 overflow-hidden border-border/60 shadow-sm py-0">
 					<div className="grid grid-cols-2 sm:grid-cols-4 gap-px sm:gap-0 bg-border/60 sm:bg-card sm:divide-x sm:divide-border/60 h-full">
-					{["trades", "winrate", "wins", "losses"].map((stat) => (
-						<div key={stat} className="flex flex-col gap-2 p-4 bg-card">
-							<Skeleton className="h-3 w-12 bg-muted/20" />
-							<Skeleton className="h-6 w-10 bg-muted/20" />
-						</div>
-					))}
+						{["trades", "winrate", "wins", "losses"].map((stat) => (
+							<div key={stat} className="flex flex-col gap-2 p-4 bg-card">
+								<Skeleton className="h-3 w-12 bg-muted/20" />
+								<Skeleton className="h-6 w-10 bg-muted/20" />
+							</div>
+						))}
 					</div>
 				</Card>
 			</div>
@@ -39,25 +39,25 @@ export function OverviewSkeleton() {
 
 			{/* Market cards placeholder — 2-col grid */}
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-			{["market-a", "market-b"].map((id) => (
-				<Card key={id} className="border-border/60 shadow-sm">
-					<CardHeader className="pb-3">
-						<div className="flex items-center justify-between">
-							<div className="flex items-center gap-2">
-								<Skeleton className="size-2.5 rounded-full bg-muted/20" />
-								<Skeleton className="h-4 w-20 bg-muted/20" />
+				{["market-a", "market-b"].map((id) => (
+					<Card key={id} className="border-border/60 shadow-sm">
+						<CardHeader className="pb-3">
+							<div className="flex items-center justify-between">
+								<div className="flex items-center gap-2">
+									<Skeleton className="size-2.5 rounded-full bg-muted/20" />
+									<Skeleton className="h-4 w-20 bg-muted/20" />
+								</div>
+								<Skeleton className="h-3 w-10 bg-muted/20" />
 							</div>
-							<Skeleton className="h-3 w-10 bg-muted/20" />
-						</div>
-						<Skeleton className="h-7 w-32 mt-1 bg-muted/20" />
-					</CardHeader>
-					<CardContent className="space-y-4 pt-0">
-						<Skeleton className="h-14 w-full rounded-lg bg-muted/20" />
-						<Skeleton className="h-4 w-full bg-muted/20" />
-						<Skeleton className="h-8 w-full rounded-md bg-muted/20" />
-					</CardContent>
-				</Card>
-			))}
+							<Skeleton className="h-7 w-32 mt-1 bg-muted/20" />
+						</CardHeader>
+						<CardContent className="space-y-4 pt-0">
+							<Skeleton className="h-14 w-full rounded-lg bg-muted/20" />
+							<Skeleton className="h-4 w-full bg-muted/20" />
+							<Skeleton className="h-8 w-full rounded-md bg-muted/20" />
+						</CardContent>
+					</Card>
+				))}
 			</div>
 		</div>
 	);

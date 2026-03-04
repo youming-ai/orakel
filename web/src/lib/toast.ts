@@ -6,11 +6,12 @@ interface ToastMessage {
 	title?: string;
 	description: string;
 	type: "success" | "error" | "info";
+	exiting: boolean;
 }
 
 interface ToastStore {
 	toasts: ToastMessage[];
-	toast: (props: Omit<ToastMessage, "id">) => void;
+	toast: (props: Omit<ToastMessage, "id" | "exiting">) => void;
 	dismiss: (id: string) => void;
 }
 
@@ -19,22 +20,35 @@ export const useToastStore = create<ToastStore>((set) => ({
 	toast: (props) => {
 		const id = Math.random().toString(36).slice(2, 9);
 		set((state) => ({
-			toasts: [...state.toasts, { ...props, id }],
+			toasts: [...state.toasts, { ...props, id, exiting: false }],
 		}));
-		// Auto dismiss
+		// Auto dismiss with exit animation
+		setTimeout(() => {
+			set((state) => ({
+				toasts: state.toasts.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
+			}));
+			// Remove after exit animation completes (200ms)
+			setTimeout(() => {
+				set((state) => ({
+					toasts: state.toasts.filter((t) => t.id !== id),
+				}));
+			}, 200);
+		}, TOAST_AUTO_DISMISS_MS);
+	},
+	dismiss: (id) => {
+		set((state) => ({
+			toasts: state.toasts.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
+		}));
+		// Remove after exit animation completes (200ms)
 		setTimeout(() => {
 			set((state) => ({
 				toasts: state.toasts.filter((t) => t.id !== id),
 			}));
-		}, TOAST_AUTO_DISMISS_MS);
+		}, 200);
 	},
-	dismiss: (id) =>
-		set((state) => ({
-			toasts: state.toasts.filter((t) => t.id !== id),
-		})),
 }));
 
-export function toast(props: Omit<ToastMessage, "id"> | string) {
+export function toast(props: Omit<ToastMessage, "id" | "exiting"> | string) {
 	if (typeof props === "string") {
 		useToastStore.getState().toast({ description: props, type: "info" });
 	} else {

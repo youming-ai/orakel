@@ -38,11 +38,14 @@ docker compose up --build
 
 ### 2. Access the Web Dashboard
 
-After bot startup, the frontend is integrated at port `:9999`:
+After bot startup, the web dashboard is available at port `:9998`:
 
 ```bash
 # Local access
-open http://localhost:9999
+open http://localhost:9998
+
+# Bot API is available at port 9999
+curl http://localhost:9999/api/health
 
 # Or remote access via Cloudflare Tunnel / frp / ngrok
 # Example: https://your-subdomain.pages.dev
@@ -60,7 +63,8 @@ Edit `.env` file:
 | `LOG_LEVEL` | Log level | `info` |
 
 - Bot API: http://localhost:9999
-- Web Frontend: `cd web && bun run dev` (Vite default port)
+- Web Dashboard: http://localhost:9998
+- Frontend dev server: `cd web && bun run dev` (Vite default port 5173)
 
 ## Development
 

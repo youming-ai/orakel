@@ -15,11 +15,11 @@ interface TradeTableMobileProps {
 export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProps) {
 	return (
 		<div className="grid grid-cols-1 gap-3 sm:hidden">
-			{pageTrades.map((t, i) => {
+			{pageTrades.map((t) => {
 				const { text, isUp } = sideLabel(t.side);
 				const slug = getMarketCycleSlug(t.market, t.timestamp);
 				return (
-					<Card key={`${t.orderId}-${i}`} className="p-3">
+					<Card key={t.orderId || `trade-${t.timestamp}-${t.market}`} className="p-3">
 						<div className="flex items-start justify-between">
 							<div className="flex flex-col">
 								<span className="text-xs text-muted-foreground">

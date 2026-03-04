@@ -1,10 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ConfigPayload, DashboardState } from "./api";
+import type { DashboardState } from "./api";
 
 import { api } from "./api";
-import type { ViewMode } from "./types";
-import type { WsMessage } from "./ws";
-import { useWebSocket } from "./ws";
 import {
 	QUERY_REFETCH_PAPER_STATS_MS,
 	QUERY_REFETCH_STATE_MS,
@@ -13,6 +10,9 @@ import {
 	QUERY_STALE_STATE_WS_MS,
 	QUERY_STALE_TRADES_MS,
 } from "./constants";
+import type { ViewMode } from "./types";
+import type { WsMessage } from "./ws";
+import { useWebSocket } from "./ws";
 
 // ---------------------------------------------------------------------------
 // Query Options Factory
@@ -45,6 +45,14 @@ export const queries = {
 			refetchInterval: QUERY_REFETCH_PAPER_STATS_MS,
 			staleTime: QUERY_STALE_TRADES_MS,
 		}),
+
+	liveStats: () =>
+		queryOptions({
+			queryKey: ["live-stats"] as const,
+			queryFn: api.getLiveStats,
+			refetchInterval: QUERY_REFETCH_PAPER_STATS_MS,
+			staleTime: QUERY_STALE_TRADES_MS,
+		}),
 };
 
 // ---------------------------------------------------------------------------
@@ -62,6 +70,14 @@ export function useTrades(mode: ViewMode) {
 export function usePaperStats(enabled: boolean) {
 	return useQuery({
 		...queries.paperStats(),
+		enabled,
+		refetchInterval: enabled ? QUERY_REFETCH_PAPER_STATS_MS : false,
+	});
+}
+
+export function useLiveStats(enabled: boolean) {
+	return useQuery({
+		...queries.liveStats(),
 		enabled,
 		refetchInterval: enabled ? QUERY_REFETCH_PAPER_STATS_MS : false,
 	});
@@ -95,7 +111,9 @@ function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 						liveStats: patch.liveStats ?? prev.liveStats,
 						liveWallet: patch.liveWallet ?? prev.liveWallet,
 						stopLoss: patch.stopLoss !== undefined ? patch.stopLoss : prev.stopLoss,
+						liveStopLoss: patch.liveStopLoss !== undefined ? patch.liveStopLoss : prev.liveStopLoss,
 						balance: patch.balance ?? prev.balance,
+						liveBalance: patch.liveBalance ?? prev.liveBalance,
 						todayStats: patch.todayStats ?? prev.todayStats,
 						liveTodayStats: patch.liveTodayStats ?? prev.liveTodayStats,
 						paperMode: patch.paperMode ?? prev.paperMode,
@@ -107,6 +125,7 @@ function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 				qc.invalidateQueries({ queryKey: queries.trades("paper").queryKey });
 				qc.invalidateQueries({ queryKey: queries.trades("live").queryKey });
 				qc.invalidateQueries({ queryKey: queries.paperStats().queryKey });
+				qc.invalidateQueries({ queryKey: queries.liveStats().queryKey });
 				break;
 			}
 			case "signal:new": {
@@ -181,7 +200,6 @@ export function usePaperClearStop() {
 	});
 }
 
-
 export function usePaperReset() {
 	const qc = useQueryClient();
 	return useMutation({
@@ -201,6 +219,7 @@ export function useLiveReset() {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queries.state().queryKey });
 			qc.invalidateQueries({ queryKey: queries.trades("live").queryKey });
+			qc.invalidateQueries({ queryKey: queries.liveStats().queryKey });
 		},
 	});
 }

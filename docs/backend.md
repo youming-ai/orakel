@@ -29,7 +29,7 @@ Orakel backend is a single-process trading bot built with Bun Runtime, TypeScrip
 ```
 src/
 ├── index.ts                    # Main loop entry point
-├── api.ts                      # Hono HTTP server + WebSocket
+├── api.ts                      # Hono HTTP server + WebSocket (~800 lines)
 ├── types.ts                    # All shared TypeScript interfaces/types
 ├── core/                       # Core infrastructure
 │   ├── config.ts               # Zod-validated config loader, hot-reload, atomic write
@@ -68,8 +68,9 @@ src/
 │   ├── trader.ts               # Trade execution (paper + live), wallet mgmt, heartbeat
 │   ├── orderManager.ts         # Live order polling lifecycle (placed → filled/cancelled)
 │   ├── accountStats.ts         # Paper/live account tracking, PnL, daily stats
-│   ├── persistence.ts          # Trade/signal persistence to DB
 │   ├── liveGuards.ts           # Live trading safety checks
+│   ├── liveSettler.ts          # Live trade settlement
+│   ├── persistence.ts          # Trade/signal persistence to DB
 │   ├── strategyRefinement.ts   # Strategy parameter adjustments
 │   └── terminal.ts             # Terminal output formatting
 └── blockchain/                 # On-chain integration
@@ -1070,7 +1071,7 @@ After 3 consecutive all-market failures, enters safe mode:
 | `hono` | HTTP server framework |
 | `ws` | WebSocket client implementation |
 | `zod` | Runtime schema validation |
-| `better-sqlite3` | SQLite database driver |
+| `bun:sqlite` | Bun built-in SQLite driver |
 
 ### Built-in Node Modules
 

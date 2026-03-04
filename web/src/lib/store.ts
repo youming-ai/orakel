@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ViewMode } from "./types";
 
-
 /* ── UI state ─────────────────────────────────────────── */
 
 interface UIState {
@@ -23,7 +22,6 @@ export const useUIStore = create<UIState>()(
 
 			confirmAction: null,
 			setConfirmAction: (action) => set({ confirmAction: action }),
-
 		}),
 		{
 			name: "orakel-ui",

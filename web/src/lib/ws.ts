@@ -11,7 +11,6 @@ export interface WsMessage<T = unknown> {
 	version: number;
 }
 
-
 type MessageHandler = (msg: WsMessage) => void;
 
 interface UseWebSocketOptions {
@@ -146,13 +145,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 						try {
 							handler(msg);
 						} catch (e) {
-						// biome-ignore lint/suspicious/noConsole: WS handler errors must be visible for debugging
-						console.error("[ws] Handler error:", e);
+							// biome-ignore lint/suspicious/noConsole: WS handler errors must be visible for debugging
+							console.error("[ws] Handler error:", e);
 						}
 					}
 				} catch (e) {
-				// biome-ignore lint/suspicious/noConsole: WS parse errors indicate broken server messages
-				console.error("[ws] Parse error:", e);
+					// biome-ignore lint/suspicious/noConsole: WS parse errors indicate broken server messages
+					console.error("[ws] Parse error:", e);
 				}
 			};
 

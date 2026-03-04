@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import {
 	AlertDialog,
@@ -12,19 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Toaster } from "@/components/ui/toaster";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import type { PaperTradeEntry, TradeRecord } from "@/lib/api";
-import {
-	useDashboardStateWithWs,
-	useLiveCancel,
-	useLiveReset,
-	useLiveToggle,
-	usePaperCancel,
-	usePaperClearStop,
-	usePaperReset,
-	usePaperStats,
-	usePaperToggle,
-	useTrades,
-} from "@/lib/queries";
+import { useDashboardStateWithWs, useLiveCancel, useLiveToggle, usePaperCancel, usePaperToggle } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 import { Layout } from "./components/Layout";
@@ -35,19 +23,13 @@ function AppContent() {
 	const prefersReducedMotion = useReducedMotion();
 	const viewMode = useUIStore((s) => s.viewMode);
 	const setViewMode = useUIStore((s) => s.setViewMode);
-	const confirmAction = useUIStore((s) => s.confirmAction);
 	const setConfirmAction = useUIStore((s) => s.setConfirmAction);
 	const { data: state, error: stateError } = useDashboardStateWithWs();
 
-	const { data: trades = [] } = useTrades(viewMode);
-	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
 	const paperToggle = usePaperToggle();
 	const liveToggle = useLiveToggle();
 	const paperCancel = usePaperCancel();
 	const liveCancel = useLiveCancel();
-
-	const paperTrades = paperStatsData?.trades ?? [];
-
 	const handleViewModeChange = useCallback(
 		(mode: "paper" | "live") => {
 			setViewMode(mode);
@@ -74,19 +56,6 @@ function AppContent() {
 		}
 		setConfirmAction(state.liveRunning ? "stop" : "start");
 	}, [state, liveCancel, setConfirmAction]);
-
-	const handleConfirm = useCallback(() => {
-		if (!state || !confirmAction) return;
-		const actionStr = confirmAction === "start" ? "Starting" : "Stopping";
-		if (viewMode === "paper") {
-			paperToggle.mutate(confirmAction === "stop");
-			toast({ title: "Paper Bot", description: `${actionStr} paper trading...`, type: "info" });
-		} else {
-			liveToggle.mutate(confirmAction === "stop");
-			toast({ title: "Live Bot", description: `${actionStr} live trading...`, type: "info" });
-		}
-		setConfirmAction(null);
-	}, [state, confirmAction, viewMode, paperToggle, liveToggle, setConfirmAction]);
 
 	if (!state) {
 		return (
@@ -140,7 +109,7 @@ function AppContent() {
 		<Routes>
 			<Route path="/" element={<Layout {...layoutProps} />}>
 				<Route index element={<Dashboard />} />
-				<Route path="logs" element={<TradesPage viewMode={viewMode} liveTrades={trades} paperTrades={paperTrades} />} />
+				<Route path="logs" element={<TradesPage />} />
 				<Route path="*" element={<Navigate to="/" replace />} />
 			</Route>
 		</Routes>
