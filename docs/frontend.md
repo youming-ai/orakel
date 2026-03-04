@@ -77,6 +77,44 @@ Both pages support view mode switching between paper trading and live trading da
 
 ## 4. Component Hierarchy
 
+Components are organized into logical subdirectories under `components/`:
+
+- `analytics/` — Dashboard tabs and charts (OverviewTab, TradesTab)
+- `market/` — Market-specific components (MarketCard, MarketIndicators)
+- `trades/` — Trade display components (TradeTable with desktop/mobile variants)
+- `ui/` — shadcn/ui primitives (alert-dialog, button, card, etc.)
+
+```
+App
+├── AlertDialog (confirm actions)
+├── Toaster (notifications)
+└── Layout
+    ├── Header
+    │   ├── Status indicators (paper/live running states)
+    │   ├── 15-minute window countdown timer
+    │   ├── View mode toggle (paper/live)
+    │   └── Navigation links (Dashboard / Trades)
+    └── <Outlet>
+        ├── Dashboard
+        │   └── Tabs
+        │       ├── OverviewTab (from analytics/)
+        │       │   ├── StatCard[] (win rate, P&L, positions)
+        │       │   ├── P&L Chart (Recharts)
+        │       │   └── MarketCard (from market/)
+        │       │       └── MarketIndicators (RSI, MACD, edge, confidence)
+        │       └── TradesTab (from analytics/)
+        │           ├── TradeTable (from trades/)
+        │           │   ├── TradeTableDesktop
+        │           │   └── TradeTableMobile
+        │           └── MarketComparisonTable
+        └── Trades
+            └── TradesTab
+                ├── TradeTable
+                │   ├── TradeTableDesktop
+                │   └── TradeTableMobile
+                └── MarketComparisonTable
+```
+
 ```
 App
 ├── AlertDialog (confirm actions)
@@ -155,6 +193,25 @@ Mutations invalidate related queries on completion to trigger refetch.
 ### WebSocket Integration
 
 When WebSocket is connected, state query polling is disabled (`refetchInterval: false`). WebSocket messages update TanStack Query cache directly via `setQueryData`, eliminating network overhead and reducing latency.
+
+---
+
+### Library Files (lib/)
+
+| File | Purpose |
+|------|---------|
+| `api.ts` | HTTP client with typed methods (get, post, put) |
+| `queries.ts` | TanStack Query hooks and cache handlers |
+| `store.ts` | Zustand store for UI state (viewMode, confirmations) |
+| `types.ts` | Shared TypeScript types/interfaces |
+| `utils.ts` | Pure utility functions (cn, formatters) |
+| `variants.ts` | Tailwind variant definitions for components |
+| `charts.ts` | Recharts configuration and helpers |
+| `constants.ts` | Application constants |
+| `format.ts` | Number/date formatting utilities |
+| `stats.ts` | Statistics calculation helpers |
+| `toast.ts` | Toast notification helpers |
+| `ws.ts` | WebSocket client and connection management |
 
 ---
 

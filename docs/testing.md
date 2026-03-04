@@ -21,23 +21,39 @@ This document outlines the test coverage and test file organization for the Orak
 
 | Category | Test Files | Test Count |
 |----------|------------|------------|
-| Core Trading Engines | 3 | 106 |
+| Core Trading Engines | 3 | 105 |
+| Trading Layer | 3 | 14 |
 | Technical Indicators | 4 | 91 |
 | Data Processing | 3 | 71 |
-| Blockchain Integration | 3 | 30 |
-| **Total** | **13** | **298** |
+| Blockchain Integration | 4 | 32 |
+| **Total** | **17** | **313** |
+
+_Note: Test count may vary slightly as tests are added/updated._
 
 ### Test Organization Structure
 
 ```
 src/
-├── __tests__/
-│   ├── engines/          # Core trading engine tests
-│   ├── indicators/       # Technical indicator tests
-│   ├── data/             # Data source tests
-│   └── blockchain/       # Blockchain integration tests
+└── __tests__/              # All test files (centralized, flat structure)
+    ├── probability.test.ts
+    ├── edge.test.ts
+    ├── arbitrage.test.ts
+    ├── accountStats.test.ts
+    ├── orderManager.test.ts
+    ├── liveGuards.test.ts
+    ├── liveSettler.test.ts
+    ├── rsi.test.ts
+    ├── macd.test.ts
+    ├── vwap.test.ts
+    ├── heikenAshi.test.ts
+    ├── polymarket.test.ts
+    ├── chainlinkWs.test.ts
+    ├── cache.test.ts
+    ├── accountState.test.ts
+    ├── reconciler.test.ts
+    ├── contracts.test.ts
+    └── redeemer.test.ts
 ```
-
 ---
 
 ## 2. Core Trading Engines
@@ -74,7 +90,7 @@ src/
 - High vig detection (sum > 1.04)
 - Market regime multiplier application
 
-**Test Count:** 50
+**Test Count:** 48
 
 ### 2.3 Arbitrage Detection ([arbitrage.test.ts](../src/__tests__/arbitrage.test.ts))
 
@@ -223,7 +239,7 @@ src/
 - Token amount conversion (different decimals)
 - Database row type verification
 
-**Test Count:** 16
+**Test Count:** 17
 
 ### 5.3 Contract Constants ([contracts.test.ts](../src/__tests__/contracts.test.ts))
 
@@ -250,9 +266,8 @@ bun run test
 
 **Current Results:**
 ```
-✓ 13 passed (298 tests)
-Duration: ~1.7s
-```
+✓ 17 passed (313 tests)
+Duration: ~500ms
 
 ### 6.2 Watch Mode
 
@@ -285,8 +300,12 @@ bunx vitest run --coverage
 | File | Category | Test Count | Description |
 |------|----------|------------|-------------|
 | `probability.test.ts` | Core Engine | 36 | Probability model, direction scoring, time decay |
-| `edge.test.ts` | Core Engine | 50 | Edge calculation, confidence, trading decisions |
+| `edge.test.ts` | Core Engine | 48 | Edge calculation, confidence, trading decisions |
 | `arbitrage.test.ts` | Core Engine | 21 | Arbitrage detection |
+| `accountStats.test.ts` | Trading Layer | 6 | Account statistics tracking |
+| `orderManager.test.ts` | Trading Layer | 2 | Live order lifecycle management |
+| `liveGuards.test.ts` | Trading Layer | 4 | Live trading safety checks |
+| `liveSettler.test.ts` | Trading Layer | 8 | Live trade settlement |
 | `rsi.test.ts` | Indicators | 36 | RSI, SMA, slope |
 | `macd.test.ts` | Indicators | 13 | MACD calculation |
 | `heikenAshi.test.ts` | Indicators | 25 | HA candles, consecutive counts |
@@ -295,16 +314,18 @@ bunx vitest run --coverage
 | `chainlinkWs.test.ts` | Data Processing | 15 | Chainlink price conversion |
 | `cache.test.ts` | Data Processing | 5 | TTL cache |
 | `accountState.test.ts` | Blockchain | 9 | Account state management |
-| `reconciler.test.ts` | Blockchain | 16 | Reconciliation logic, type checks |
+| `reconciler.test.ts` | Blockchain | 17 | Reconciliation logic, type checks |
 | `contracts.test.ts` | Blockchain | 5 | Contract addresses, constants |
+| `redeemer.test.ts` | Blockchain | 3 | Position redemption |
 
+**Total: 17 files, 313 tests**
 ---
 
 ## 8. Testing Best Practices
 
 ### 8.1 Test Organization
 
-Test files co-located with source files (if any), or uniformly placed in `__tests__` directory.
+All test files are centralized in `src/__tests__/` (flat structure, no subdirectories). Tests are organized by module category but kept in a single flat directory for simplicity.
 
 ### 8.2 Test Naming
 

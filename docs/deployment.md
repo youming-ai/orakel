@@ -17,7 +17,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Visit http://localhost:9999 to view the integrated web dashboard.
+Visit http://localhost:9998 to view the web dashboard.
 
 ### 1.3 Remote Access (Using Tunnel)
 
@@ -25,14 +25,16 @@ Recommended to use Cloudflare Tunnel, frp, or ngrok to expose local port:
 
 ```bash
 # Cloudflare Tunnel (recommended)
-cloudflare tunnel --url http://localhost:9999
+cloudflare tunnel --url http://localhost:9998
 
 # frp
-frp tcp --local-port 9999 --remote-port 6000
+frp tcp --local-port 9998 --remote-port 6000
 
 # ngrok
-ngrok http 9999
+ngrok http 9998
 ```
+
+The bot API is available at http://localhost:9999.
 
 ### 1.4 Local Development (Optional)
 
@@ -66,9 +68,13 @@ Dockerfile divided into two stages:
 
 ### 2.2 docker-compose.yml
 
+The compose file defines two services: `bot` (backend) and `web` (frontend):
+
 ```yaml
 services:
   bot:
+    # Use pre-built image (CI/CD) or local build
+    image: ${IMAGE_TAG:-orakel-bot:local}
     build:
       context: .
       args:
@@ -77,6 +83,7 @@ services:
     env_file: .env
     environment:
       - PAPER_MODE=${PAPER_MODE:-true}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:9998}
     ports:
       - "9999:9999"
     volumes:
@@ -84,20 +91,36 @@ services:
       - ./config.json:/app/config.json:ro      # Config (read-only)
     restart: unless-stopped
     healthcheck:
-      test: wget -q --spider http://localhost:9999/api/health || exit 1
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9999/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
+    networks:
+      - orakel-network
+
+  web:
+    image: ${WEB_IMAGE_TAG:-orakel-web:local}
+    build:
+      context: ./web
+    ports:
+      - "${WEB_PORT:-9998}:80"
+    restart: unless-stopped
+    depends_on:
+      - bot
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - orakel-network
+
+networks:
+  orakel-network:
+    driver: bridge
 ```
-
-Key notes:
-
-- `BUILD_UID` / `BUILD_GID` match host user to avoid volume mount permission issues
-- `data/` volume persists SQLite database and daily state
-- `config.json` mounted read-only (file watching hot-reload still works)
-- Health check via `/api/health` endpoint
-- `PAPER_MODE` defaults to `true` (safe default)
 
 ### 2.3 Data Persistence
 
