@@ -902,6 +902,11 @@ export const onchainStatements = {
 			SELECT * FROM known_ctf_tokens WHERE token_id = $tokenId
 		`),
 
+	getCtfTokenByMarketSide: () =>
+		cachedQuery(`
+			SELECT * FROM known_ctf_tokens WHERE market_id = $marketId AND side = $side LIMIT 1
+		`),
+
 	updateTradeReconStatus: () =>
 		cachedPrepare(`
 			UPDATE trades SET
