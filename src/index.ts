@@ -1,7 +1,7 @@
 import { startApiServer } from "./api.ts";
 import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } from "./blockchain/accountState.ts";
 import { startReconciler } from "./blockchain/reconciler.ts";
-import { fetchRedeemablePositions, redeemAll } from "./blockchain/redeemer.ts";
+import { fetchRedeemablePositions, redeemAll, redeemByConditionId } from "./blockchain/redeemer.ts";
 import { CONFIG, startConfigWatcher } from "./core/config.ts";
 import { getDb, onchainStatements, statements } from "./core/db.ts";
 import { env } from "./core/env.ts";
@@ -29,6 +29,7 @@ import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
 import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
 import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
 import { getAccount, initAccountStats, liveAccount, paperAccount } from "./trading/accountStats.ts";
+import { LiveSettler } from "./trading/liveSettler.ts";
 import { OrderManager, type TrackedOrder } from "./trading/orderManager.ts";
 import { shouldTakeTrade } from "./trading/strategyRefinement.ts";
 import { renderDashboard } from "./trading/terminal.ts";
@@ -99,6 +100,7 @@ let eventStreamHandle: { close(): void } | null = null;
 let reconcilerHandle: { runNow(): Promise<number>; close(): void } | null = null;
 let redeemTimerHandle: ReturnType<typeof setInterval> | null = null;
 let activeOnchainWallet: string | null = null;
+let liveSettlerInstance: LiveSettler | null = null;
 
 // Auto-redeem configuration
 const AUTO_REDEEM_ENABLED = env.AUTO_REDEEM_ENABLED;
@@ -337,6 +339,45 @@ async function main(): Promise<void> {
 	}
 
 	const clobWs: ClobWsHandle = startClobMarketWs();
+
+	function lookupTokenId(marketId: string, side: string): string | null {
+		try {
+			const row = onchainStatements.getCtfTokenByMarketSide().get({
+				$marketId: marketId,
+				$side: side,
+			}) as { token_id: string } | null;
+			return row?.token_id ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	function lookupConditionId(tokenId: string): string | null {
+		try {
+			const row = onchainStatements.getKnownCtfToken().get({
+				$tokenId: tokenId,
+			}) as { condition_id: string | null } | null;
+			return row?.condition_id ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	function ensureLiveSettler(): void {
+		if (liveSettlerInstance?.isRunning()) return;
+		if (!isLiveRunning()) return;
+
+		liveSettlerInstance = new LiveSettler({
+			clobWs,
+			liveAccount,
+			wallet: getWallet(),
+			lookupTokenId,
+			lookupConditionId,
+			redeemFn: redeemByConditionId,
+			candleWindowMs: CONFIG.candleWindowMinutes * 60_000,
+		});
+		liveSettlerInstance.start();
+	}
 
 	const states = new Map<string, MarketState>(
 		markets.map((m) => [
@@ -609,6 +650,10 @@ async function main(): Promise<void> {
 	let prevWindowStartMs: number | null = null;
 	const shutdown = () => {
 		log.info("Shutdown signal received, stopping bot...");
+		if (liveSettlerInstance) {
+			liveSettlerInstance.stop();
+			liveSettlerInstance = null;
+		}
 		orderManager.stopPolling();
 		stopHeartbeat();
 		setPaperRunning(false);
@@ -648,21 +693,21 @@ async function main(): Promise<void> {
 
 		if (latestPrices.size > 0) {
 			const paperRecovered = paperAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
-			const liveRecovered = liveAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
-			if (paperRecovered > 0 || liveRecovered > 0) {
-				log.info(`Recovered expired trades: paper=${paperRecovered} live=${liveRecovered}`);
+			if (paperRecovered > 0) {
+				log.info(`Recovered expired paper trades: ${paperRecovered}`);
 			}
 		}
 
 		if (prevWindowStartMs !== null && prevWindowStartMs !== timing.startMs) {
 			if (latestPrices.size > 0) {
 				const paperResolved = paperAccount.resolveTrades(prevWindowStartMs, latestPrices);
-				const liveResolved = liveAccount.resolveTrades(prevWindowStartMs, latestPrices);
-				if (paperResolved > 0 || liveResolved > 0) {
-					log.info(`Window settled: paper=${paperResolved} live=${liveResolved}`);
+				if (paperResolved > 0) {
+					log.info(`Paper window settled: ${paperResolved}`);
 				}
 			}
 		}
+
+		ensureLiveSettler();
 		prevWindowStartMs = timing.startMs;
 
 		orderTracker.prune();

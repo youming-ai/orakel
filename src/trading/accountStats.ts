@@ -480,6 +480,42 @@ export class AccountStatsManager {
 	}
 
 	/**
+	 * Resolve a single trade using on-chain confirmed data.
+	 * Used by LiveSettler for live trades — bypasses spot-price settlement.
+	 * Paper mode should continue using resolveTrades().
+	 */
+	resolveTradeOnchain(tradeId: string, won: boolean, pnl: number, _txHash: string | null): void {
+		const trade = this.state.trades.find((t) => t.id === tradeId);
+		if (!trade) {
+			throw new Error(`Trade not found: ${tradeId}`);
+		}
+		if (trade.resolved) {
+			throw new Error(`Trade already resolved: ${tradeId}`);
+		}
+
+		trade.resolved = true;
+		trade.won = won;
+		trade.pnl = pnl;
+
+		if (won) {
+			this.state.wins++;
+		} else {
+			this.state.losses++;
+		}
+
+		this.state.currentBalance += trade.size * trade.price + pnl;
+		const drawdown = this.state.initialBalance - this.state.currentBalance;
+		if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
+		this.state.totalPnl += pnl;
+
+		this.updateDailyPnl(trade.id, pnl);
+		this.upsertTrade(trade);
+		this.syncTradeLog(trade);
+		this.checkAndTriggerStopLoss();
+		this.save();
+	}
+
+	/**
 	 * Settle pending trades from windows that have already ended.
 	 * Handles recovery after restart when window transitions were missed.
 	 * Uses current spot prices as settlement proxy for recently-ended windows only.
