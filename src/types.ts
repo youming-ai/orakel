@@ -266,13 +266,6 @@ export interface TradeSignal {
 	tokens: { upTokenId: string; downTokenId: string } | null;
 }
 
-export interface PositionSizeResult {
-	size: number;
-	rawKelly: number;
-	adjustedKelly: number;
-	reason: string;
-}
-
 export interface TradeResult {
 	success: boolean;
 	order?: unknown;
@@ -285,13 +278,6 @@ export interface TradeResult {
 	/** Whether the order was GTD (needs heartbeat/polling) vs FOK */
 	isGtdOrder?: boolean;
 }
-
-export interface DailyState {
-	date: string;
-	pnl: number;
-	trades: number;
-}
-
 export interface OrderTracker {
 	orders: Map<string, number>;
 	lastTradeMs: number;
@@ -474,30 +460,6 @@ export interface TradeExecutedPayload {
 // === Account Separation Types ===
 
 export type AccountMode = "paper" | "live";
-
-export interface LiveWalletState {
-	address: string;
-	connected: boolean;
-	clientReady: boolean;
-}
-
-export interface PaperAccountState {
-	initialBalance: number;
-	currentBalance: number;
-	maxDrawdown: number;
-}
-
-export interface AccountDailyState {
-	paper: DailyState;
-	live: DailyState;
-}
-
-export interface PerAccountConfig {
-	paper: { risk: RiskConfig };
-	live: { risk: RiskConfig };
-	strategy: StrategyConfig;
-}
-
 // === On-Chain Data Types ===
 
 export interface CtfPosition {

@@ -76,7 +76,7 @@ export function buildMarketFromTrades(trades: PaperTradeEntry[]): Record<string,
 	return result;
 }
 
-export interface PnLTimelineEntry {
+interface PnLTimelineEntry {
 	ts: string;
 	time: string;
 	market: string;

@@ -79,7 +79,7 @@ export interface StopLossStatus {
 	reason: string | null;
 }
 
-export interface DailyPnlEntry {
+interface DailyPnlEntry {
 	date: string;
 	pnl: number;
 	trades: number;
@@ -91,7 +91,7 @@ export interface TodayStats {
 	limit: number;
 }
 
-export interface PaperBalance {
+interface PaperBalance {
 	initial: number;
 	current: number;
 	maxDrawdown: number;
@@ -99,7 +99,7 @@ export interface PaperBalance {
 
 // ============ Confidence Types ============
 
-export interface ConfidenceFactors {
+interface ConfidenceFactors {
 	indicatorAlignment: number;
 	volatilityScore: number;
 	orderbookScore: number;
@@ -187,7 +187,7 @@ export interface PaperStats {
 	totalPnl: number;
 }
 
-export interface PaperStatsResponse {
+interface PaperStatsResponse {
 	stats: PaperStats;
 	trades: PaperTradeEntry[];
 	byMarket: Record<string, MarketBreakdown>;
@@ -197,7 +197,7 @@ export interface PaperStatsResponse {
 	dailyPnl?: DailyPnlEntry[];
 }
 
-export interface StrategyConfig {
+interface StrategyConfig {
 	edgeThresholdEarly: number;
 	edgeThresholdMid: number;
 	edgeThresholdLate: number;
@@ -214,7 +214,7 @@ export interface StrategyConfig {
 	minConfidence?: number;
 }
 
-export interface RiskConfig {
+interface RiskConfig {
 	maxTradeSizeUsdc: number;
 	limitDiscount: number;
 	dailyMaxLossUsdc: number;
