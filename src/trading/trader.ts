@@ -46,17 +46,25 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 let heartbeatReconnecting = false;
 
 export function startHeartbeat(): boolean {
+	return startHeartbeatWithOptions();
+}
+
+function startHeartbeatWithOptions(options?: { preserveReconnectAttempts?: boolean }): boolean {
+	const preserveReconnectAttempts = options?.preserveReconnectAttempts ?? false;
+
 	if (heartbeatTimer) return true; // already running
 	if (!client) {
 		log.warn("Cannot start heartbeat: client not initialized");
 		return false;
 	}
 	heartbeatFailures = 0;
-	reconnectAttempts = 0;
+	if (!preserveReconnectAttempts) {
+		reconnectAttempts = 0;
+	}
 	heartbeatReconnecting = false;
 	heartbeatTimer = setInterval(async () => {
 		if (!client) {
-			stopHeartbeat();
+			stopHeartbeat({ clearOpenOrders: !isLiveRunning() });
 			return;
 		}
 		// Only send heartbeat if we have open GTD orders
@@ -73,7 +81,7 @@ export function startHeartbeat(): boolean {
 			heartbeatFailures++;
 			if (heartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
 				log.error(`Heartbeat failed ${heartbeatFailures} consecutive times, stopping live trading:`, msg);
-				stopHeartbeat();
+				stopHeartbeat({ clearOpenOrders: false });
 
 				// Attempt reconnection with exponential backoff
 				if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -88,7 +96,7 @@ export function startHeartbeat(): boolean {
 					reconnectTimer = setTimeout(async () => {
 						if (client && isLiveRunning()) {
 							log.info("Attempting to restart heartbeat...");
-							const success = startHeartbeat();
+							const success = startHeartbeatWithOptions({ preserveReconnectAttempts: true });
 							if (success) {
 								log.info("Heartbeat reconnection successful");
 								reconnectAttempts = 0;
@@ -110,8 +118,9 @@ export function startHeartbeat(): boolean {
 	return true;
 }
 
-export function stopHeartbeat(): void {
+export function stopHeartbeat(options?: { clearOpenOrders?: boolean }): void {
 	const wasRunning = heartbeatTimer !== null;
+	const clearOpenOrders = options?.clearOpenOrders ?? true;
 	if (heartbeatTimer) {
 		clearInterval(heartbeatTimer);
 		heartbeatTimer = null;
@@ -123,7 +132,9 @@ export function stopHeartbeat(): void {
 	heartbeatId = null;
 	heartbeatFailures = 0;
 	reconnectAttempts = 0;
-	openGtdOrders.clear(); // Clear open order tracking
+	if (clearOpenOrders) {
+		openGtdOrders.clear(); // Clear open order tracking
+	}
 	heartbeatReconnecting = false;
 	if (wasRunning) log.info("Heartbeat stopped");
 }
@@ -397,7 +408,7 @@ export async function executeTrade(
 			return { success: false, reason: "market_too_confident" };
 		}
 
-		const timing = getCandleWindowTiming(15);
+		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
 		const account = getAccount("paper");
 		const tradeId = account.addTrade({
 			marketId: signal.marketId,
@@ -490,6 +501,7 @@ export async function executeTrade(
 		const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
 		const isLatePhase = signal.phase === "LATE";
 		const isHighConfidence = signal.strength === "STRONG" || signal.strength === "GOOD";
+		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
 
 		let result: unknown;
 
@@ -517,7 +529,6 @@ export async function executeTrade(
 			// EARLY/MID phase → GTD with post-only for maker rebate.
 			// postOnly guarantees maker status; if order would take, it is rejected.
 			// No taker fallback — conservative: skip rather than pay taker fees.
-			const timing = getCandleWindowTiming(15);
 			// Dynamic expiration buffer: minimum 10s, max 50% of remaining time
 			// This ensures orders don't expire too early in LATE phase
 			const bufferMs = Math.max(10_000, Math.min(timing.remainingMs / 2, 60_000));
@@ -554,6 +565,8 @@ export async function executeTrade(
 
 		log.info("Order result:", JSON.stringify(result));
 		const liveTradeTimestamp = new Date().toISOString();
+		const isGtdOrder = !isLatePhase || !isHighConfidence;
+		const defaultStatus = isGtdOrder ? "placed" : "filled";
 
 		logTrade(
 			{
@@ -562,7 +575,7 @@ export async function executeTrade(
 				amount: Number(riskConfig.maxTradeSizeUsdc || 0),
 				price,
 				orderId: resultOrderId || resultId || "unknown",
-				status: resultStatus || "placed",
+				status: resultStatus || defaultStatus,
 				currentPriceAtEntry: signal.currentPrice,
 			},
 			signal.marketId || marketConfig?.id,
@@ -571,6 +584,29 @@ export async function executeTrade(
 
 		if (resultOrderId || resultId) {
 			const finalOrderId = resultOrderId || resultId || "unknown";
+
+			if (isGtdOrder) {
+				try {
+					statements.upsertLivePendingOrder().run({
+						$orderId: finalOrderId,
+						$marketId: signal.marketId ?? "",
+						$windowStartMs: timing.startMs,
+						$side: side,
+						$price: price,
+						$size: Number(riskConfig.maxTradeSizeUsdc || 0),
+						$priceToBeat: signal.priceToBeat ?? null,
+						$currentPriceAtEntry: signal.currentPrice ?? null,
+						$tokenId: tokenId,
+						$placedAt: Date.now(),
+						$status: "placed",
+					});
+				} catch (persistErr) {
+					log.warn(
+						`Failed to persist live pending order ${finalOrderId.slice(0, 12)}...:`,
+						persistErr instanceof Error ? persistErr.message : String(persistErr),
+					);
+				}
+			}
 
 			// Post-trade recording — failures here must NOT affect success status.
 			// The order is already placed on Polymarket (real money spent).
@@ -584,23 +620,27 @@ export async function executeTrade(
 					size: Number(riskConfig.maxTradeSizeUsdc || 0),
 					timestamp: liveTradeTimestamp,
 					orderId: finalOrderId,
-					status: resultStatus || "placed",
+					status: resultStatus || defaultStatus,
 				});
 
-				const liveAccount = getAccount("live");
-				liveAccount.addTrade(
-					{
-						marketId: signal.marketId ?? "",
-						windowStartMs: getCandleWindowTiming(15).startMs,
-						side,
-						price,
-						size: Number(riskConfig.maxTradeSizeUsdc || 0),
-						priceToBeat: signal.priceToBeat ?? 0,
-						currentPriceAtEntry: signal.currentPrice,
-						timestamp: liveTradeTimestamp,
-					},
-					finalOrderId, // Use exchange orderId so trades table can be matched for P&L updates
-				);
+				// FOK is immediate fill-or-kill. GTD trades are recorded only when order
+				// transitions to FILLED via OrderManager polling in index.ts.
+				if (!isGtdOrder) {
+					const liveAccount = getAccount("live");
+					liveAccount.addTrade(
+						{
+							marketId: signal.marketId ?? "",
+							windowStartMs: timing.startMs,
+							side,
+							price,
+							size: Number(riskConfig.maxTradeSizeUsdc || 0),
+							priceToBeat: signal.priceToBeat ?? 0,
+							currentPriceAtEntry: signal.currentPrice,
+							timestamp: liveTradeTimestamp,
+						},
+						finalOrderId, // Use exchange orderId so trades table can be matched for P&L updates
+					);
+				}
 			} catch (recordErr) {
 				log.error(
 					`Post-trade recording failed (order ${finalOrderId} was placed successfully):`,
@@ -623,13 +663,12 @@ export async function executeTrade(
 			}
 
 			// Heartbeat tracking — always runs regardless of recording success
-			if (!isLatePhase || !isHighConfidence) {
+			if (isGtdOrder) {
 				registerOpenGtdOrder(finalOrderId);
 				startHeartbeat();
 			}
 		}
 
-		const isGtdOrder = !isLatePhase || !isHighConfidence;
 		return {
 			success: !!(resultOrderId || resultId),
 			order: result,
@@ -668,6 +707,10 @@ export function getWalletAddress(): string | null {
 
 export function getWallet(): Wallet | null {
 	return wallet;
+}
+
+export function getClient(): ClobClient | null {
+	return client;
 }
 
 export function getClientStatus(): {
