@@ -91,10 +91,12 @@ Pre-push check: `bun run lint && bun run typecheck && bun run test`
 | Document | Description |
 |----------|-------------|
 | [System Architecture](./docs/architecture.md) | Overall architecture, module relationships, data flow, design decisions |
+| [Backend Documentation](./docs/backend.md) | Backend modules, API endpoints, database schema, data layer |
+| [Frontend Documentation](./docs/frontend.md) | React components, state management, WebSocket integration, styling |
 | [Trading Strategy](./docs/trading-strategy.md) | Probability model, edge calculation, confidence scoring, decision logic |
 | [Deployment Guide](./docs/deployment.md) | Docker, CI/CD, environment setup, VPS auto-deployment |
 | [Testing Documentation](./docs/testing.md) | Test coverage, test file organization, running tests |
-| [Flowcharts](./docs/FLOWCHARTS.md) | Detailed system and decision flow diagrams |
+
 
 ## Disclaimer
 

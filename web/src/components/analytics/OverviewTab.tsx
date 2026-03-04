@@ -235,11 +235,7 @@ export function OverviewTab({
 					) : (
 						<ChartErrorBoundary>
 							<ResponsiveContainer width="100%" height="100%">
-								<AreaChart
-									data={chartData}
-									animationDuration={750}
-									animationEasing="ease-in-out"
-								>
+								<AreaChart data={chartData}>
 									<defs>
 										<linearGradient id="timelineGrad" x1="0" y1="0" x2="0" y2="1">
 											<stop

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { TOAST_AUTO_DISMISS_MS } from "./constants";
 
-export interface ToastMessage {
+interface ToastMessage {
 	id: string;
 	title?: string;
 	description: string;

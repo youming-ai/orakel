@@ -20,7 +20,8 @@ import {
 	setPaperRunning,
 } from "./core/state.ts";
 import { liveAccount, paperAccount } from "./trading/accountStats.ts";
-import { connectWallet, disconnectWallet, getWallet, getWalletAddress } from "./trading/trader.ts";
+import { getLiveStartReadinessError } from "./trading/liveGuards.ts";
+import { connectWallet, disconnectWallet, getClientStatus, getWallet, getWalletAddress } from "./trading/trader.ts";
 import type { SignalNewPayload, StateSnapshotPayload, TradeExecutedPayload, WsMessage } from "./types.ts";
 
 const PORT = env.API_PORT;
@@ -251,11 +252,14 @@ const apiRoutes = new Hono()
 		const paperTodayStats = paperAccount.getTodayStats();
 		const liveTodayStats = liveAccount.getTodayStats();
 		const stopLoss = paperAccount.getStopReason();
+		const walletAddress = getWalletAddress();
+		const clientStatus = getClientStatus();
 
 		return c.json({
 			markets: getMarkets(),
 			updatedAt: getUpdatedAt(),
-			wallet: { address: null, connected: false },
+			paperMode: CONFIG.paperMode !== false,
+			wallet: { address: walletAddress, connected: !!walletAddress },
 			paperDaily: { date: new Date().toDateString(), pnl: paperTodayStats.pnl, trades: paperTodayStats.trades },
 			liveDaily: { date: new Date().toDateString(), pnl: liveTodayStats.pnl, trades: liveTodayStats.trades },
 			config: {
@@ -269,9 +273,9 @@ const apiRoutes = new Hono()
 			liveStats: liveAccount.getStats(),
 			paperBalance: paperAccount.getBalance(),
 			liveWallet: {
-				address: null,
-				connected: false,
-				clientReady: false,
+				address: walletAddress,
+				connected: clientStatus.walletLoaded,
+				clientReady: clientStatus.clientReady,
 			},
 			paperPendingStart: false,
 			paperPendingStop: false,
@@ -540,7 +544,17 @@ const apiRoutes = new Hono()
 			const body = await c.req.json();
 			const privateKey = typeof body.privateKey === "string" ? body.privateKey : "";
 			const result = await connectWallet(privateKey);
-			return c.json({ ok: true as const, address: result.address });
+			const status = getClientStatus();
+			if (!status.walletLoaded || !status.clientReady) {
+				return c.json(
+					{
+						ok: false as const,
+						error: "Wallet connected but trading client is not ready. Reconnect and try again.",
+					},
+					503,
+				);
+			}
+			return c.json({ ok: true as const, address: result.address, clientReady: true });
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : "Unknown error";
 			return c.json({ ok: false as const, error: msg }, 400);
@@ -554,6 +568,15 @@ const apiRoutes = new Hono()
 	})
 
 	.post("/live/start", (c) => {
+		const clientStatus = getClientStatus();
+		const startError = getLiveStartReadinessError({
+			walletLoaded: clientStatus.walletLoaded,
+			clientReady: clientStatus.clientReady,
+			stopLossActive: liveAccount.isStopped(),
+		});
+		if (startError) {
+			return c.json({ ok: false as const, error: startError }, 400);
+		}
 		setLiveRunning(true);
 		return c.json({
 			ok: true as const,
@@ -681,11 +704,24 @@ setInterval(() => {
 
 const app = new Hono();
 
-// CORS disabled - frontend is served from the same origin
-// Enable if you need to access API from external domains
-// const corsOrigins = env.CORS_ORIGIN === "*" ? "*" : env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
+// CORS configuration - simple custom middleware
+const corsOrigins = env.CORS_ORIGIN === "*" ? "*" : env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
+const corsMiddleware = createMiddleware(async (c, next) => {
+	const origin = c.req.header("Origin");
+	if (corsOrigins === "*" || (origin && corsOrigins.includes(origin))) {
+		c.header("Access-Control-Allow-Origin", corsOrigins === "*" ? "*" : origin);
+		c.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+		c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+		c.header("Access-Control-Allow-Credentials", "true");
+	}
+	if (c.req.method === "OPTIONS") {
+		return new Response(null, { status: 204 });
+	}
+	return next();
+});
+app.use("/api/*", corsMiddleware);
+app.use("/*", corsMiddleware);
 app.use("/api/*", rateLimit);
-// app.use("/api/*", cors({ origin: corsOrigins }));
 app.use("/api/paper/*", requireAuth);
 app.use("/api/live/*", requireAuth);
 app.use("/api/config", requireAuth);

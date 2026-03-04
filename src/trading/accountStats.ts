@@ -408,6 +408,10 @@ export class AccountStatsManager {
 	): string {
 		// For live trading with exchangeOrderId provided, use it; otherwise generate
 		const id = exchangeOrderId ?? `${this.mode}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+		if (this.state.trades.some((t) => t.id === id)) {
+			this.log.warn(`Duplicate trade id ignored: ${id}`);
+			return id;
+		}
 		const trade: TradeEntry = {
 			...entry,
 			id,
@@ -478,16 +482,21 @@ export class AccountStatsManager {
 	/**
 	 * Settle pending trades from windows that have already ended.
 	 * Handles recovery after restart when window transitions were missed.
-	 * Uses current spot prices as settlement proxy (accurate for recently-ended windows).
+	 * Uses current spot prices as settlement proxy for recently-ended windows only.
+	 * Old windows are skipped to avoid writing highly inaccurate historical PnL.
 	 */
-	resolveExpiredTrades(currentPrices: Map<string, number>, windowMinutes: number): number {
+	resolveExpiredTrades(currentPrices: Map<string, number>, windowMinutes: number, maxLagWindows = 2): number {
 		const now = Date.now();
 		const windowMs = windowMinutes * 60_000;
 		let totalResolved = 0;
+		const maxRecoveryLagMs = Math.max(windowMs, Math.floor(windowMs * Math.max(1, maxLagWindows)));
 
 		const expiredWindows = new Set<number>();
 		for (const trade of this.state.trades) {
-			if (!trade.resolved && trade.windowStartMs + windowMs < now) {
+			const windowEndMs = trade.windowStartMs + windowMs;
+			if (trade.resolved || windowEndMs >= now) continue;
+			const lagMs = now - windowEndMs;
+			if (lagMs <= maxRecoveryLagMs) {
 				expiredWindows.add(trade.windowStartMs);
 			}
 		}

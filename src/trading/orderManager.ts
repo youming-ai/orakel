@@ -4,7 +4,11 @@ import { createLogger } from "../core/logger.ts";
 const log = createLogger("orders");
 
 // Callback type for order status changes
-type OrderStatusCallback = (orderId: string, status: TrackedOrder["status"]) => void;
+type OrderStatusCallback = (
+	order: TrackedOrder,
+	status: TrackedOrder["status"],
+	previousStatus: TrackedOrder["status"],
+) => void;
 
 export interface TrackedOrder {
 	orderId: string;
@@ -19,6 +23,8 @@ export interface TrackedOrder {
 	lastChecked: number;
 	orderType?: "GTD" | "FOK"; // Track order type for heartbeat management
 	tokenId?: string;
+	priceToBeat?: number | null;
+	currentPriceAtEntry?: number | null;
 }
 
 export class OrderManager {
@@ -28,7 +34,7 @@ export class OrderManager {
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private onStatusChange: OrderStatusCallback | null = null;
 
-	setClient(client: ClobClient): void {
+	setClient(client: ClobClient | null): void {
 		this.client = client;
 	}
 
@@ -86,7 +92,7 @@ export class OrderManager {
 				const sizeMatched = Number(orderResult.size_matched ?? orderResult.sizeMatched ?? 0);
 				const previousStatus = order.status;
 
-				if (status === "matched" || (sizeMatched > 0 && sizeMatched >= order.size * 0.99)) {
+				if (status === "matched" || status === "filled" || (sizeMatched > 0 && sizeMatched >= order.size * 0.99)) {
 					order.status = "filled";
 					order.sizeMatched = sizeMatched;
 					log.info(`Order ${order.orderId.slice(0, 8)} FILLED: ${sizeMatched} / ${order.size}`);
@@ -96,13 +102,16 @@ export class OrderManager {
 				} else if (status === "unmatched" || status === "cancelled") {
 					order.status = "cancelled";
 					log.info(`Order ${order.orderId.slice(0, 8)} CANCELLED`);
+				} else if (status === "expired") {
+					order.status = "expired";
+					log.info(`Order ${order.orderId.slice(0, 8)} EXPIRED`);
 				}
 
 				order.lastChecked = Date.now();
 
 				// Notify callback if status changed (for heartbeat tracking)
 				if (this.onStatusChange && order.status !== previousStatus) {
-					this.onStatusChange(order.orderId, order.status);
+					this.onStatusChange(order, order.status, previousStatus);
 				}
 			} catch (err: unknown) {
 				const msg = err instanceof Error ? err.message : String(err);

@@ -1,7 +1,7 @@
 services:
   bot:
     # Use pre-built image (CI/CD) or local build
-    image: ${IMAGE_TAG:-orakel:local}
+    image: ${IMAGE_TAG:-orakel-bot:local}
     build:
       context: .
       args:
@@ -10,6 +10,7 @@ services:
     env_file: .env
     environment:
       - PAPER_MODE=${PAPER_MODE:-true}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:9998}
     ports:
       - "9999:9999"
     volumes:
@@ -22,3 +23,27 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    networks:
+      - orakel-network
+
+  web:
+    image: ${WEB_IMAGE_TAG:-orakel-web:local}
+    build:
+      context: ./web
+    ports:
+      - "${WEB_PORT:-9998}:80"
+    restart: unless-stopped
+    depends_on:
+      - bot
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - orakel-network
+
+networks:
+  orakel-network:
+    driver: bridge

@@ -1,22 +1,28 @@
 import { startApiServer } from "./api.ts";
+import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } from "./blockchain/accountState.ts";
+import { startReconciler } from "./blockchain/reconciler.ts";
 import { fetchRedeemablePositions, redeemAll } from "./blockchain/redeemer.ts";
-import { CONFIG } from "./core/config.ts";
-import { getDb } from "./core/db.ts";
+import { CONFIG, startConfigWatcher } from "./core/config.ts";
+import { getDb, onchainStatements, statements } from "./core/db.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
 import {
+	emitBalanceSnapshot,
 	emitStateSnapshot,
 	getUpdatedAt,
 	isLiveRunning,
 	isPaperRunning,
 	setLiveRunning,
+	setOnchainBalance,
 	setPaperRunning,
 	updateMarkets,
 } from "./core/state.ts";
 import { getCandleWindowTiming, sleep } from "./core/utils.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
+import { startBalancePolling } from "./data/polygonBalance.ts";
+import { startOnChainEventStream } from "./data/polygonEvents.ts";
 import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
 import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
@@ -26,7 +32,17 @@ import { getAccount, initAccountStats, liveAccount, paperAccount } from "./tradi
 import { OrderManager, type TrackedOrder } from "./trading/orderManager.ts";
 import { shouldTakeTrade } from "./trading/strategyRefinement.ts";
 import { renderDashboard } from "./trading/terminal.ts";
-import { connectWallet, executeTrade, getWallet, stopHeartbeat, unregisterOpenGtdOrder } from "./trading/trader.ts";
+import {
+	connectWallet,
+	executeTrade,
+	getClient,
+	getOpenGtdOrderCount,
+	getWallet,
+	registerOpenGtdOrder,
+	startHeartbeat,
+	stopHeartbeat,
+	unregisterOpenGtdOrder,
+} from "./trading/trader.ts";
 import type { MarketSnapshot, StreamHandles, WsStreamHandle } from "./types.ts";
 
 export type { ProcessMarketResult } from "./pipeline/processMarket.ts";
@@ -41,7 +57,7 @@ interface SimpleOrderTracker {
 	keyFor(marketId: string, windowSlug: string): string;
 	hasOrder(marketId: string, windowSlug: string): boolean;
 	totalActive(): number;
-	record(marketId: string, windowSlug: string): void;
+	record(marketId: string, windowSlug: string, recordedAtMs?: number): void;
 	prune(): void;
 	onCooldown(): boolean;
 }
@@ -82,13 +98,58 @@ let balancePollingHandle: { getLast(): unknown; close(): void } | null = null;
 let eventStreamHandle: { close(): void } | null = null;
 let reconcilerHandle: { runNow(): Promise<number>; close(): void } | null = null;
 let redeemTimerHandle: ReturnType<typeof setInterval> | null = null;
+let activeOnchainWallet: string | null = null;
 
 // Auto-redeem configuration
 const AUTO_REDEEM_ENABLED = env.AUTO_REDEEM_ENABLED;
 const AUTO_REDEEM_INTERVAL_MS = env.AUTO_REDEEM_INTERVAL_MS; // Default: 30 minutes (set in env.ts)
 
+interface KnownTokenRow {
+	token_id?: string;
+}
+
+interface LivePendingOrderRow {
+	order_id?: string;
+	market_id?: string;
+	window_start_ms?: number;
+	side?: string;
+	price?: number;
+	size?: number;
+	price_to_beat?: number | null;
+	current_price_at_entry?: number | null;
+	token_id?: string | null;
+	placed_at?: number;
+	status?: string;
+}
+
+function collectLatestPrices(
+	markets: ReadonlyArray<{ id: string }>,
+	states: Map<string, MarketState>,
+): Map<string, number> {
+	const prices = new Map<string, number>();
+	for (const market of markets) {
+		const marketState = states.get(market.id);
+		const p = marketState?.prevCurrentPrice;
+		if (p !== null && p !== undefined) {
+			prices.set(market.id, p);
+		}
+	}
+	return prices;
+}
+
+function readKnownTokenIds(): string[] {
+	try {
+		const rows = onchainStatements.getKnownCtfTokens().all({}) as KnownTokenRow[];
+		if (!Array.isArray(rows)) return [];
+		return rows.map((row) => String(row?.token_id ?? "").trim()).filter((tokenId) => tokenId.length > 0);
+	} catch {
+		return [];
+	}
+}
+
 async function main(): Promise<void> {
 	startApiServer();
+	startConfigWatcher();
 	initAccountStats();
 
 	// Auto-connect wallet if PRIVATE_KEY is configured
@@ -180,11 +241,80 @@ async function main(): Promise<void> {
 
 	const orderManager = new OrderManager();
 
-	orderManager.onOrderStatusChange((orderId: string, status: TrackedOrder["status"]) => {
-		if (status === "filled" || status === "cancelled" || status === "expired") {
-			unregisterOpenGtdOrder(orderId);
-		}
-	});
+	orderManager.onOrderStatusChange(
+		(order: TrackedOrder, status: TrackedOrder["status"], previousStatus: TrackedOrder["status"]) => {
+			try {
+				statements.updateTradeStatus().run({
+					$orderId: order.orderId,
+					$mode: "live",
+					$status: status,
+				});
+			} catch (err) {
+				log.warn(`Failed to update live trade status for ${order.orderId.slice(0, 12)}...`, err);
+			}
+
+			try {
+				statements.updateLivePendingOrderStatus().run({
+					$orderId: order.orderId,
+					$status: status,
+				});
+			} catch {
+				// Best-effort: row may not exist (e.g. FOK orders or already cleaned up)
+			}
+
+			if (status === "filled" && previousStatus !== "filled") {
+				const parsedWindowStartMs = Number(order.windowSlug);
+				const windowStartMs = Number.isFinite(parsedWindowStartMs)
+					? parsedWindowStartMs
+					: getCandleWindowTiming(CONFIG.candleWindowMinutes).startMs;
+				let recorded = false;
+
+				try {
+					liveAccount.addTrade(
+						{
+							marketId: order.marketId,
+							windowStartMs,
+							side: order.side === "DOWN" ? "DOWN" : "UP",
+							price: order.price,
+							size: order.size,
+							priceToBeat: order.priceToBeat ?? 0,
+							currentPriceAtEntry: order.currentPriceAtEntry ?? null,
+							timestamp: new Date(order.placedAt).toISOString(),
+						},
+						order.orderId,
+					);
+					log.info(`Recorded filled live trade ${order.orderId.slice(0, 12)}...`);
+					recorded = true;
+				} catch (err) {
+					log.error(
+						`Failed to record filled live trade ${order.orderId.slice(0, 12)}...:`,
+						err instanceof Error ? err.message : String(err),
+					);
+				}
+
+				if (recorded) {
+					try {
+						statements.deleteLivePendingOrder().run({ $orderId: order.orderId });
+					} catch {
+						// Best-effort cleanup
+					}
+				}
+			}
+
+			if (status === "cancelled" || status === "expired") {
+				try {
+					statements.deleteLivePendingOrder().run({ $orderId: order.orderId });
+				} catch {
+					// Best-effort cleanup
+				}
+				orderTracker.orders.delete(orderTracker.keyFor(order.marketId, order.windowSlug));
+			}
+
+			if (status === "filled" || status === "cancelled" || status === "expired") {
+				unregisterOpenGtdOrder(order.orderId);
+			}
+		},
+	);
 
 	const markets = getActiveMarkets();
 	const binanceSymbols = markets.map((m) => m.binanceSymbol);
@@ -232,9 +362,12 @@ async function main(): Promise<void> {
 		totalActive(): number {
 			return this.orders.size;
 		},
-		record(marketId: string, windowSlug: string): void {
-			this.orders.set(this.keyFor(marketId, windowSlug), Date.now());
-			this.lastTradeMs = Date.now();
+		record(marketId: string, windowSlug: string, recordedAtMs?: number): void {
+			const normalizedTs =
+				typeof recordedAtMs === "number" && Number.isFinite(recordedAtMs) ? Math.floor(recordedAtMs) : Date.now();
+			const ts = Math.min(normalizedTs, Date.now());
+			this.orders.set(this.keyFor(marketId, windowSlug), ts);
+			this.lastTradeMs = Math.max(this.lastTradeMs, ts);
 		},
 		prune(): void {
 			const cutoff = Date.now() - 16 * 60_000;
@@ -258,7 +391,8 @@ async function main(): Promise<void> {
 		// The exact Polymarket slug isn't stored, but this ensures totalActive() is correct
 		// and hasOrder() blocks the same market in the same window.
 		const slugProxy = String(trade.windowStartMs);
-		orderTracker.record(trade.marketId, slugProxy);
+		const tradeTsMs = Date.parse(trade.timestamp);
+		orderTracker.record(trade.marketId, slugProxy, Number.isFinite(tradeTsMs) ? tradeTsMs : trade.windowStartMs);
 
 		// Restore liveTracker — only for trades in the current window
 		if (trade.windowStartMs === currentTiming.startMs) {
@@ -271,6 +405,206 @@ async function main(): Promise<void> {
 			`Restored ${restoredCount} pending live trades into trackers (window active: ${liveTracker.canTradeGlobally(1) ? 0 : "≥1"})`,
 		);
 	}
+
+	const pendingOrderRows = statements.getAllLivePendingOrders().all({}) as LivePendingOrderRow[];
+	let restoredPendingOrderCount = 0;
+	let recoveredFilledPendingCount = 0;
+	for (const row of pendingOrderRows) {
+		const orderId = String(row.order_id ?? "").trim();
+		const marketId = String(row.market_id ?? "").trim();
+		const windowStartMs = Number(row.window_start_ms ?? Number.NaN);
+		if (!orderId || !marketId || !Number.isFinite(windowStartMs)) continue;
+		const price = Number(row.price ?? Number.NaN);
+		const size = Number(row.size ?? Number.NaN);
+		if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) {
+			log.warn(`Skipping invalid live_pending_orders row ${orderId.slice(0, 12)}...`);
+			continue;
+		}
+
+		const rowStatus = String(row.status ?? "placed").toLowerCase();
+		if (rowStatus === "cancelled" || rowStatus === "expired") {
+			try {
+				statements.deleteLivePendingOrder().run({ $orderId: orderId });
+			} catch {
+				// Best-effort cleanup
+			}
+			continue;
+		}
+		const side = String(row.side ?? "UP").toUpperCase() === "DOWN" ? "DOWN" : "UP";
+
+		if (rowStatus === "filled") {
+			let recorded = false;
+			try {
+				liveAccount.addTrade(
+					{
+						marketId,
+						windowStartMs,
+						side,
+						price,
+						size,
+						priceToBeat: Number(row.price_to_beat ?? 0),
+						currentPriceAtEntry:
+							row.current_price_at_entry === null || row.current_price_at_entry === undefined
+								? null
+								: Number(row.current_price_at_entry),
+						timestamp: new Date(Number(row.placed_at ?? Date.now())).toISOString(),
+					},
+					orderId,
+				);
+				recorded = true;
+			} catch (err) {
+				log.warn(`Failed to recover filled pending order ${orderId.slice(0, 12)}...`, err);
+			}
+
+			if (recorded) {
+				try {
+					statements.updateTradeStatus().run({
+						$orderId: orderId,
+						$mode: "live",
+						$status: "filled",
+					});
+				} catch {
+					// Best-effort
+				}
+				const windowKey = String(windowStartMs);
+				if (!orderTracker.hasOrder(marketId, windowKey)) {
+					orderTracker.record(marketId, windowKey, Number(row.placed_at ?? windowStartMs));
+				}
+				if (windowStartMs === currentTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
+					liveTracker.record(marketId, windowStartMs);
+				}
+				try {
+					statements.deleteLivePendingOrder().run({ $orderId: orderId });
+				} catch {
+					// Best-effort cleanup
+				}
+				recoveredFilledPendingCount++;
+			}
+			continue;
+		}
+
+		const windowKey = String(windowStartMs);
+		if (!orderTracker.hasOrder(marketId, windowKey)) {
+			orderTracker.record(marketId, windowKey, Number(row.placed_at ?? windowStartMs));
+		}
+		if (windowStartMs === currentTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
+			liveTracker.record(marketId, windowStartMs);
+		}
+
+		orderManager.addOrderWithTracking(
+			{
+				orderId,
+				marketId,
+				windowSlug: windowKey,
+				side,
+				tokenId: row.token_id ? String(row.token_id) : undefined,
+				price,
+				size,
+				priceToBeat: row.price_to_beat ?? null,
+				currentPriceAtEntry: row.current_price_at_entry ?? null,
+				placedAt: Number(row.placed_at ?? Date.now()),
+			},
+			true,
+		);
+		registerOpenGtdOrder(orderId);
+		restoredPendingOrderCount++;
+	}
+	if (restoredPendingOrderCount > 0) {
+		log.info(`Restored ${restoredPendingOrderCount} live pending GTD order(s) for status polling`);
+	}
+	if (recoveredFilledPendingCount > 0) {
+		log.info(`Recovered ${recoveredFilledPendingCount} previously-filled pending live order(s)`);
+	}
+
+	const closeOnchainPipelines = () => {
+		if (balancePollingHandle) {
+			balancePollingHandle.close();
+			balancePollingHandle = null;
+		}
+		if (eventStreamHandle) {
+			eventStreamHandle.close();
+			eventStreamHandle = null;
+		}
+		if (reconcilerHandle) {
+			reconcilerHandle.close();
+			reconcilerHandle = null;
+		}
+		activeOnchainWallet = null;
+		resetAccountState();
+	};
+
+	const ensureOrderPolling = () => {
+		const clobClient = getClient();
+		if (clobClient) {
+			orderManager.setClient(clobClient);
+			orderManager.startPolling();
+			if (getOpenGtdOrderCount() > 0) {
+				startHeartbeat();
+			}
+			return;
+		}
+		orderManager.setClient(null);
+		if (!isLiveRunning()) {
+			orderManager.stopPolling();
+		}
+	};
+
+	const ensureOnchainPipelines = () => {
+		const wallet = getWallet();
+		if (!wallet) {
+			if (activeOnchainWallet !== null) {
+				log.info("Wallet disconnected, stopping on-chain pipelines");
+				closeOnchainPipelines();
+			}
+			return;
+		}
+
+		const walletAddress = wallet.address.toLowerCase();
+		const walletChanged = activeOnchainWallet !== null && activeOnchainWallet !== walletAddress;
+		if (walletChanged) {
+			log.info(`Wallet changed (${activeOnchainWallet} -> ${walletAddress}), restarting on-chain pipelines`);
+			closeOnchainPipelines();
+		}
+
+		if (activeOnchainWallet === walletAddress && balancePollingHandle && eventStreamHandle && reconcilerHandle) {
+			return;
+		}
+
+		initAccountState(walletAddress);
+		balancePollingHandle = startBalancePolling({
+			wallet: walletAddress,
+			knownTokenIds: readKnownTokenIds,
+			onUpdate: (snapshot) => {
+				updateFromSnapshot(snapshot);
+				setOnchainBalance(snapshot);
+				emitBalanceSnapshot(snapshot);
+			},
+		});
+		eventStreamHandle = startOnChainEventStream({
+			wallet: walletAddress,
+			onEvent: (event) => {
+				applyEvent(event);
+				try {
+					onchainStatements.insertOnchainEvent().run({
+						$txHash: event.txHash,
+						$logIndex: event.logIndex,
+						$blockNumber: event.blockNumber,
+						$eventType: event.type,
+						$fromAddr: event.from,
+						$toAddr: event.to,
+						$tokenId: event.tokenId,
+						$value: event.value,
+						$rawData: JSON.stringify(event),
+					});
+				} catch (err) {
+					log.warn("Failed to persist on-chain event", err);
+				}
+			},
+		});
+		reconcilerHandle = startReconciler({ wallet: walletAddress });
+		activeOnchainWallet = walletAddress;
+		log.info("On-chain balance/events/reconciler pipelines started");
+	};
 
 	let prevWindowStartMs: number | null = null;
 	const shutdown = () => {
@@ -285,18 +619,7 @@ async function main(): Promise<void> {
 		for (const [, handle] of streams.chainlink) {
 			handle.close();
 		}
-		if (balancePollingHandle) {
-			balancePollingHandle.close();
-			balancePollingHandle = null;
-		}
-		if (eventStreamHandle) {
-			eventStreamHandle.close();
-			eventStreamHandle = null;
-		}
-		if (reconcilerHandle) {
-			reconcilerHandle.close();
-			reconcilerHandle = null;
-		}
+		closeOnchainPipelines();
 		if (redeemTimerHandle) {
 			clearInterval(redeemTimerHandle);
 			redeemTimerHandle = null;
@@ -311,6 +634,9 @@ async function main(): Promise<void> {
 	const SAFE_MODE_THRESHOLD = 3;
 
 	while (true) {
+		ensureOrderPolling();
+		ensureOnchainPipelines();
+
 		const shouldRunLoop = isPaperRunning() || isLiveRunning();
 		if (!shouldRunLoop) {
 			await sleep(1000);
@@ -318,18 +644,20 @@ async function main(): Promise<void> {
 		}
 
 		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+		const latestPrices = collectLatestPrices(markets, states);
+
+		if (latestPrices.size > 0) {
+			const paperRecovered = paperAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
+			const liveRecovered = liveAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
+			if (paperRecovered > 0 || liveRecovered > 0) {
+				log.info(`Recovered expired trades: paper=${paperRecovered} live=${liveRecovered}`);
+			}
+		}
 
 		if (prevWindowStartMs !== null && prevWindowStartMs !== timing.startMs) {
-			const finalPrices = new Map<string, number>();
-			for (const market of markets) {
-				const marketState = states.get(market.id);
-				if (marketState?.prevCurrentPrice !== null && marketState?.prevCurrentPrice !== undefined) {
-					finalPrices.set(market.id, marketState.prevCurrentPrice);
-				}
-			}
-			if (finalPrices.size > 0) {
-				const paperResolved = paperAccount.resolveTrades(prevWindowStartMs, finalPrices);
-				const liveResolved = liveAccount.resolveTrades(prevWindowStartMs, finalPrices);
+			if (latestPrices.size > 0) {
+				const paperResolved = paperAccount.resolveTrades(prevWindowStartMs, latestPrices);
+				const liveResolved = liveAccount.resolveTrades(prevWindowStartMs, latestPrices);
 				if (paperResolved > 0 || liveResolved > 0) {
 					log.info(`Window settled: paper=${paperResolved} live=${liveResolved}`);
 				}
@@ -431,7 +759,7 @@ async function main(): Promise<void> {
 			const sig = candidate.signalPayload;
 			if (!sig) continue;
 			const mkt = candidate.market;
-			const slug = candidate.marketSlug ?? "";
+			const windowKey = String(timing.startMs);
 			const sideBook = sig.side === "UP" ? (candidate.orderbook?.up ?? null) : (candidate.orderbook?.down ?? null);
 			const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
 
@@ -477,7 +805,7 @@ async function main(): Promise<void> {
 					const liveAffordCheck = liveAcc.canAffordTradeWithStopCheck(liveTradeSize);
 					const canPlace =
 						orderTracker &&
-						!orderTracker.hasOrder(mkt.id, slug) &&
+						!orderTracker.hasOrder(mkt.id, windowKey) &&
 						!orderTracker.onCooldown() &&
 						orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
 						successfulTradesThisTick < liveWindowLimit &&
@@ -488,11 +816,11 @@ async function main(): Promise<void> {
 					if (canPlace) {
 						const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
 						if (result?.success) {
-							orderTracker.record(mkt.id, slug);
+							orderTracker.record(mkt.id, windowKey);
 							liveTracker.record(mkt.id, timing.startMs);
 							successfulTradesThisTick += 1;
 
-							if (result.orderId) {
+							if (result.orderId && (result.isGtdOrder ?? true)) {
 								const tradeTokenId = sig.tokens
 									? sig.side === "UP"
 										? sig.tokens.upTokenId
@@ -502,14 +830,16 @@ async function main(): Promise<void> {
 									{
 										orderId: result.orderId,
 										marketId: mkt.id,
-										windowSlug: slug,
+										windowSlug: windowKey,
 										side: sig.side ?? "UP",
 										tokenId: tradeTokenId,
 										price: result.tradePrice ?? 0,
 										size: Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0),
+										priceToBeat: sig.priceToBeat ?? null,
+										currentPriceAtEntry: sig.currentPrice ?? null,
 										placedAt: Date.now(),
 									},
-									result.isGtdOrder ?? true,
+									true,
 								);
 							}
 						} else {

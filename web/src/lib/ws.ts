@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getApiToken } from "./api.ts";
 
 // WebSocket message types (match backend)
-export type WsEventType = "state:snapshot" | "signal:new" | "trade:executed";
+type WsEventType = "state:snapshot" | "signal:new" | "trade:executed";
 
 export interface WsMessage<T = unknown> {
 	type: WsEventType;
@@ -11,51 +11,6 @@ export interface WsMessage<T = unknown> {
 	version: number;
 }
 
-export interface StateSnapshotData {
-	markets: Array<{
-		id: string;
-		spotPrice: number | null;
-		priceToBeat: number | null;
-		marketUp: number | null;
-		marketDown: number | null;
-		predictDirection: string;
-		action: string;
-		side: string | null;
-		edge: number | null;
-	}>;
-	updatedAt: string;
-	paperRunning: boolean;
-	liveRunning: boolean;
-	paperPendingStart: boolean;
-	paperPendingStop: boolean;
-	livePendingStart: boolean;
-	livePendingStop: boolean;
-	paperStats: {
-		totalTrades: number;
-		wins: number;
-		losses: number;
-		pending: number;
-		winRate: number;
-		totalPnl: number;
-	} | null;
-}
-
-export interface SignalNewData {
-	marketId: string;
-	direction: string;
-	probability: number;
-	edge: number;
-	ts: number;
-}
-
-export interface TradeExecutedData {
-	marketId: string;
-	side: string;
-	size: number;
-	price: number;
-	pnl?: number;
-	ts: number;
-}
 
 type MessageHandler = (msg: WsMessage) => void;
 
@@ -244,46 +199,5 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 		disconnect,
 		reconnect: connect,
 		send,
-	};
-}
-
-// Singleton for use outside React components
-let globalWs: WebSocket | null = null;
-const globalHandlers = new Set<MessageHandler>();
-
-export function getGlobalWebSocket(): WebSocket | null {
-	return globalWs;
-}
-
-export function subscribeGlobal(handler: MessageHandler): () => void {
-	globalHandlers.add(handler);
-	return () => globalHandlers.delete(handler);
-}
-
-export function initGlobalWebSocket(url?: string): () => void {
-	if (globalWs) {
-		globalWs.close();
-	}
-
-	const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const wsUrl = url || `${protocol}//${window.location.host}/ws`;
-
-	globalWs = new WebSocket(wsUrl);
-
-	globalWs.onmessage = (event) => {
-		try {
-			const msg: WsMessage = JSON.parse(event.data);
-			for (const handler of globalHandlers) {
-				handler(msg);
-			}
-		} catch (e) {
-			// biome-ignore lint/suspicious/noConsole: WS parse errors must be visible
-			console.error("[ws:global] Parse error:", e);
-		}
-	};
-
-	return () => {
-		globalWs?.close();
-		globalWs = null;
 	};
 }

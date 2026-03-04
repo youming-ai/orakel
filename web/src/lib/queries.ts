@@ -71,7 +71,7 @@ export function usePaperStats(enabled: boolean) {
 // WebSocket Cache Handler
 // ---------------------------------------------------------------------------
 
-export function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
+function createWsCacheHandler(qc: ReturnType<typeof useQueryClient>) {
 	return (msg: WsMessage) => {
 		switch (msg.type) {
 			case "state:snapshot": {
@@ -166,19 +166,6 @@ export function useLiveCancel() {
 		mutationFn: () => api.liveCancel(),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: queries.state().queryKey });
-		},
-	});
-}
-
-export function useConfigMutation(viewMode: ViewMode) {
-	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: (payload: ConfigPayload) => api.saveConfig(payload),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: queries.state().queryKey });
-			if (viewMode === "paper") {
-				qc.invalidateQueries({ queryKey: queries.paperStats().queryKey });
-			}
 		},
 	});
 }
