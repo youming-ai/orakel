@@ -25,10 +25,15 @@ function toPositions(value: unknown): RedeemablePosition[] {
 
 const DATA_API = "https://data-api.polymarket.com";
 
-const GAS_OVERRIDES = {
-	maxPriorityFeePerGas: 30_000_000_000,
-	maxFeePerGas: 200_000_000_000,
-};
+const PRIORITY_FEE = 30_000_000_000; // 30 gwei
+
+async function getGasOverrides(wallet: Wallet): Promise<{ maxPriorityFeePerGas: number; maxFeePerGas: number }> {
+	const feeData = await wallet.provider.getFeeData();
+	const baseFee = feeData.lastBaseFeePerGas?.toNumber() ?? 200_000_000_000;
+	const maxFeePerGas = baseFee * 2 + PRIORITY_FEE;
+	log.info(`Gas: baseFee=${(baseFee / 1e9).toFixed(1)} gwei, maxFee=${(maxFeePerGas / 1e9).toFixed(1)} gwei`);
+	return { maxPriorityFeePerGas: PRIORITY_FEE, maxFeePerGas };
+}
 
 const redeemed = new Set<string>();
 
@@ -64,7 +69,8 @@ export async function redeemAll(wallet: Wallet): Promise<RedeemResult[]> {
 				continue;
 			}
 
-			const tx = await ctf.redeemPositions(USDC_E_ADDRESS, constants.HashZero, conditionId, [1, 2], GAS_OVERRIDES);
+			const gasOverrides = await getGasOverrides(wallet);
+			const tx = await ctf.redeemPositions(USDC_E_ADDRESS, constants.HashZero, conditionId, [1, 2], gasOverrides);
 			log.info(`Redeem tx sent: ${tx.hash} (condition: ${conditionId.slice(0, 10)}...)`);
 			const receipt = await Promise.race([
 				tx.wait(),
@@ -123,7 +129,8 @@ export async function redeemByConditionId(wallet: Wallet | null, conditionId: st
 			return { success: false, txHash: null, error: "not_resolved" };
 		}
 
-		const tx = await ctf.redeemPositions(USDC_E_ADDRESS, constants.HashZero, conditionId, [1, 2], GAS_OVERRIDES);
+		const gasOverrides = await getGasOverrides(wallet);
+		const tx = await ctf.redeemPositions(USDC_E_ADDRESS, constants.HashZero, conditionId, [1, 2], gasOverrides);
 		log.info(`Redeem tx sent: ${tx.hash} (condition: ${conditionId.slice(0, 10)}...)`);
 
 		const receipt = await Promise.race([
