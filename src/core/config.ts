@@ -24,7 +24,6 @@ import type { AppConfig, RiskConfig } from "../types.ts";
 export const PERSIST_BACKEND = env.PERSIST_BACKEND;
 export const READ_BACKEND = env.READ_BACKEND;
 
-// Minimal safe defaults - actual values should be configured in config.json
 const RISK_DEFAULTS = {
 	maxTradeSizeUsdc: 1,
 	limitDiscount: 0.05,
@@ -34,7 +33,6 @@ const RISK_DEFAULTS = {
 	maxTradesPerWindow: 1,
 };
 
-// Minimal safe defaults - actual values should be configured in config.json
 const STRATEGY_DEFAULTS: {
 	edgeThresholdEarly: number;
 	edgeThresholdMid: number;
@@ -47,7 +45,7 @@ const STRATEGY_DEFAULTS: {
 	skipMarkets: string[];
 	minConfidence: number;
 } = {
-	edgeThresholdEarly: 0.05,
+	edgeThresholdEarly: 0.06,
 	edgeThresholdMid: 0.08,
 	edgeThresholdLate: 0.1,
 	minProbEarly: 0.52,

@@ -28,8 +28,8 @@
     "minProbMid": 0.58,
     "minProbLate": 0.62,
     "blendWeights": {
-      "vol": 0.5,
-      "ta": 0.5
+      "vol": 0.50,
+      "ta": 0.50
     },
     "regimeMultipliers": {
       "CHOP": 1.6,
@@ -37,14 +37,8 @@
       "TREND_ALIGNED": 0.75,
       "TREND_OPPOSED": 1.3
     },
+    "maxGlobalTradesPerWindow": 1,
     "minConfidence": 0.55,
-    "skipMarkets": [],
-    "marketPerformance": {
-      "BTC": { "winRate": 0.5, "edgeMultiplier": 1.0 },
-      "ETH": { "winRate": 0.5, "edgeMultiplier": 1.0 },
-      "SOL": { "winRate": 0.5, "edgeMultiplier": 1.0 },
-      "XRP": { "winRate": 0.5, "edgeMultiplier": 1.0 }
-    },
-    "maxGlobalTradesPerWindow": 1
+    "skipMarkets": []
   }
 }
