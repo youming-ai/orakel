@@ -5,7 +5,6 @@ import { fetchChainlinkPrice } from "../data/chainlink.ts";
 import {
 	fetchClobPrice,
 	fetchLiveEventsBySeriesId,
-	fetchMarketBySlug,
 	fetchOrderBook,
 	flattenEventMarkets,
 	parseGammaMarket,

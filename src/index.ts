@@ -3,7 +3,7 @@ import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } f
 import { startReconciler } from "./blockchain/reconciler.ts";
 import { fetchRedeemablePositions, redeemAll, redeemByConditionId } from "./blockchain/redeemer.ts";
 import { CONFIG, startConfigWatcher } from "./core/config.ts";
-import { getDb, onchainStatements, pruneDatabase, statements } from "./core/db.ts";
+import { backupDatabase, closeDb, getDb, onchainStatements, pruneDatabase, statements } from "./core/db.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
@@ -248,6 +248,15 @@ async function main(): Promise<void> {
 			log.error("WAL checkpoint failed:", err instanceof Error ? err.message : String(err));
 		}
 	}, WAL_CHECKPOINT_INTERVAL_MS);
+
+	// Periodic database backup (every 4 hours, keeps 5 most recent)
+	const DB_BACKUP_INTERVAL_MS = 4 * 60 * 60 * 1000;
+	log.info(`Database backup enabled: running every ${DB_BACKUP_INTERVAL_MS / 3_600_000} hours`);
+	setInterval(() => {
+		backupDatabase();
+	}, DB_BACKUP_INTERVAL_MS);
+	// Run initial backup on startup
+	backupDatabase();
 
 	const orderManager = new OrderManager();
 
@@ -707,6 +716,9 @@ async function main(): Promise<void> {
 			redeemTimerHandle = null;
 			log.info("Auto-redeem timer stopped");
 		}
+		// Gracefully close database: checkpoint WAL and close connection
+		// This prevents corruption from incomplete WAL writes on hard kill
+		closeDb();
 		setTimeout(() => process.exit(0), 2000);
 	};
 	process.on("SIGTERM", shutdown);

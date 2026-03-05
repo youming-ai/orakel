@@ -62,7 +62,7 @@ export function getDb(): Database {
 		}
 
 		dbInstance.run("PRAGMA journal_mode = WAL");
-		dbInstance.run("PRAGMA synchronous = NORMAL");
+		dbInstance.run("PRAGMA synchronous = FULL");
 		dbInstance.run("PRAGMA cache_size = -64000");
 		dbInstance.run("PRAGMA busy_timeout = 5000");
 		dbInstance.run("PRAGMA foreign_keys = ON");
@@ -72,6 +72,30 @@ export function getDb(): Database {
 	}
 
 	return dbInstance;
+}
+
+/**
+ * Gracefully close the database: checkpoint WAL, clear caches, close connection.
+ * MUST be called during shutdown to prevent WAL corruption from hard kills.
+ */
+export function closeDb(): void {
+	if (!dbInstance) return;
+	try {
+		// Checkpoint WAL to main database file before closing
+		dbInstance.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+		log.info("WAL checkpoint completed during shutdown");
+	} catch (err) {
+		log.error("WAL checkpoint failed during shutdown:", err instanceof Error ? err.message : String(err));
+	}
+	try {
+		dbInstance.close();
+		log.info("Database closed cleanly");
+	} catch (err) {
+		log.error("Database close failed:", err instanceof Error ? err.message : String(err));
+	}
+	dbInstance = null;
+	stmtCache.clear();
+	queryCache.clear();
 }
 
 /**
@@ -1026,4 +1050,55 @@ export function pruneDatabase(): { pruned: Record<string, number>; vacuumed: boo
 	stmtCache.clear();
 	queryCache.clear();
 	return { pruned, vacuumed };
+}
+
+// === Automated Database Backup ===
+
+const BACKUP_DIR = "./data/backups";
+const MAX_BACKUPS = 5;
+
+/**
+ * Create a safe backup of the database using SQLite's backup API.
+ * Checkpoints WAL first, then copies the main DB file.
+ * Maintains a rolling window of MAX_BACKUPS backups.
+ */
+export function backupDatabase(): { path: string; sizeBytes: number } | null {
+	try {
+		const db = getDb();
+		// Checkpoint WAL to ensure backup includes all pending writes
+		db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+
+		// Ensure backup directory exists
+		fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+		// Generate timestamped backup filename
+		const now = new Date();
+		const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
+		const backupPath = path.join(BACKUP_DIR, `bot.sqlite.bak.${timestamp}`);
+
+		// Copy database file (WAL is already checkpointed)
+		const srcPath = path.resolve(process.cwd(), DB_PATH);
+		fs.copyFileSync(srcPath, backupPath);
+
+		const stats = fs.statSync(backupPath);
+		log.info(`Database backup created: ${backupPath} (${(stats.size / 1024 / 1024).toFixed(1)}MB)`);
+
+		// Prune old backups — keep only the newest MAX_BACKUPS
+		const backups = fs
+			.readdirSync(BACKUP_DIR)
+			.filter((f) => f.startsWith("bot.sqlite.bak."))
+			.sort()
+			.reverse();
+
+		for (const old of backups.slice(MAX_BACKUPS)) {
+			const oldPath = path.join(BACKUP_DIR, old);
+			fs.unlinkSync(oldPath);
+			log.info(`Pruned old backup: ${old}`);
+		}
+
+		return { path: backupPath, sizeBytes: stats.size };
+	} catch (err) {
+		log.error("Database backup failed:", err instanceof Error ? err.message : String(err));
+		return null;
+	}
 }

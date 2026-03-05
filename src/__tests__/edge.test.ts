@@ -10,6 +10,7 @@ function makeStrategy(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
 		minProbEarly: 0.55,
 		minProbMid: 0.6,
 		minProbLate: 0.65,
+		maxGlobalTradesPerWindow: 100,
 		...overrides,
 	};
 }

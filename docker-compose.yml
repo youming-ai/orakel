@@ -17,6 +17,7 @@ services:
       - ./data:/app/data
       - ./config.json:/app/config.json:ro
     restart: unless-stopped
+    stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:9999/api/health || exit 1"]
       interval: 30s
