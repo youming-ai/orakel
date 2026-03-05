@@ -95,12 +95,6 @@ function parseJsonArray(value: unknown): unknown[] {
 const polymarketMarketCache: Map<string, { market: GammaMarket; fetchedAtMs: number }> = new Map();
 
 async function resolveCurrent15mMarket(marketDef: MarketConfig): Promise<GammaMarket | null> {
-	const customSlug = marketDef.id === "BTC" ? CONFIG.polymarket.marketSlug : "";
-	if (customSlug) {
-		const bySlug = await fetchMarketBySlug(customSlug);
-		return bySlug;
-	}
-
 	if (!CONFIG.polymarket.autoSelectLatest) return null;
 
 	const now = Date.now();

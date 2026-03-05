@@ -18,10 +18,10 @@ const HARD_CAP_EDGE = 0.4; // Increased from 0.30 - hard cap was too strict for 
 // edgeMultiplier > 1.0 = RAISE threshold (harder to trade) for poor performers
 // Use strategy.skipMarkets in config.json to skip markets entirely
 const DEFAULT_MARKET_PERFORMANCE: Record<string, { winRate: number; edgeMultiplier: number }> = {
-	BTC: { winRate: 0.421, edgeMultiplier: 1.0 },
-	ETH: { winRate: 0.469, edgeMultiplier: 1.0 },
-	SOL: { winRate: 0.51, edgeMultiplier: 1.0 },
-	XRP: { winRate: 0.542, edgeMultiplier: 1.0 },
+	BTC: { winRate: 0.5, edgeMultiplier: 1.0 },
+	ETH: { winRate: 0.5, edgeMultiplier: 1.0 },
+	SOL: { winRate: 0.5, edgeMultiplier: 1.0 },
+	XRP: { winRate: 0.5, edgeMultiplier: 1.0 },
 };
 
 /** Get market performance from config or use defaults */

@@ -21,12 +21,12 @@
     }
   },
   "strategy": {
-    "edgeThresholdEarly": 0.05,
-    "edgeThresholdMid": 0.06,
-    "edgeThresholdLate": 0.08,
-    "minProbEarly": 0.55,
-    "minProbMid": 0.58,
-    "minProbLate": 0.62,
+    "edgeThresholdEarly": 0.06,
+    "edgeThresholdMid": 0.08,
+    "edgeThresholdLate": 0.1,
+    "minProbEarly": 0.52,
+    "minProbMid": 0.55,
+    "minProbLate": 0.6,
     "blendWeights": {
       "vol": 0.50,
       "ta": 0.50
