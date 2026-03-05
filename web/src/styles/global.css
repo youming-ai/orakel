@@ -44,6 +44,16 @@
 	--color-sidebar-ring: var(--sidebar-ring);
 	--font-sans: "Open Sans", ui-sans-serif, system-ui, sans-serif;
 	--font-mono: "Open Sans", ui-monospace, SFMono-Regular, monospace;
+	--color-pixel-bg: #1a1c2c;
+	--color-pixel-card: #29366f;
+	--color-pixel-border: #4b692a;
+	--color-pixel-text: #f4f4f4;
+	--color-pixel-accent: #ff004d;
+	--color-pixel-highlight: #ffcc00;
+	--color-pixel-success: #00e436;
+	--color-pixel-warning: #ff8700;
+	--font-pixel: "Press Start 2P", cursive;
+	--border-width-4: 4px;
 }
 
 :root {
