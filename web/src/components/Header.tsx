@@ -119,7 +119,7 @@ export function Header({
 				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
 					<div className="flex items-center gap-1.5 shrink-0" title="Time until next 15-minute cycle boundary">
 						<Clock className="size-3 text-muted-foreground" />
-						<span className="font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
+						<span className="header-countdown font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
 					</div>
 
 					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
