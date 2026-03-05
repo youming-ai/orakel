@@ -208,6 +208,7 @@ export interface OrderBookSummary {
 
 export interface PolymarketSnapshot {
 	ok: boolean;
+	degraded?: boolean;
 	reason?: string;
 	market?: GammaMarket;
 	tokens?: { upTokenId: string; downTokenId: string };

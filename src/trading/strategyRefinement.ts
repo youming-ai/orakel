@@ -7,11 +7,11 @@
  * - High edge (>=20%): 43.6% WR (model overconfident - BAD!)
  * - CHOP regime: 38.9% WR (avoid or heavily filter)
  * - BTC: 42.1% WR (market-specific issues)
- * - XRP/SOL: 54%+ WR (best performers)
+ * - XRP: 54.2% WR, SOL: 51% WR (best performers)
  */
 
 // Market-specific adjustments based on backtest
-// NOTE: edgeMultiplier is authoritative in edge.ts (MARKET_PERFORMANCE).
+// NOTE: edgeMultiplier is authoritative in edge.ts (DEFAULT_MARKET_PERFORMANCE).
 //       This table only drives skipChop for the shouldTakeTrade filter.
 export const MARKET_ADJUSTMENTS: Record<
 	string,

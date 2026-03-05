@@ -1,5 +1,8 @@
 import type { MarketConfig } from "../types.ts";
 import { env } from "./env.ts";
+import { createLogger } from "./logger.ts";
+
+const log = createLogger("markets");
 
 export const MARKETS: MarketConfig[] = [
 	{
@@ -77,5 +80,11 @@ export function getActiveMarkets(): MarketConfig[] {
 	if (active.length === 0) return MARKETS;
 	const wanted = new Set(active.map((s) => s.toUpperCase()));
 	const filtered = MARKETS.filter((m) => wanted.has(m.id));
-	return filtered.length > 0 ? filtered : MARKETS;
+	if (filtered.length === 0) {
+		log.warn(
+			`No valid ACTIVE_MARKETS=[${active.join(",")}]. Valid: ${MARKETS.map((m) => m.id).join(", ")}. Using all.`,
+		);
+		return MARKETS;
+	}
+	return filtered;
 }

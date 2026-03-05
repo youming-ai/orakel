@@ -45,6 +45,19 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 let heartbeatReconnecting = false;
 
+let tradeLock: Promise<void> = Promise.resolve();
+
+function withTradeLock<T>(fn: () => Promise<T>): Promise<T> {
+	const prev = tradeLock;
+	let releaseLock: (() => void) | undefined;
+	tradeLock = new Promise<void>((resolve) => {
+		releaseLock = resolve;
+	});
+	return prev.then(fn).finally(() => {
+		releaseLock?.();
+	});
+}
+
 export function startHeartbeat(): boolean {
 	return startHeartbeatWithOptions();
 }
@@ -379,6 +392,14 @@ export async function executeTrade(
 	options: { marketConfig?: MarketConfig | null; riskConfig: RiskConfig },
 	mode: "paper" | "live" = "paper",
 ): Promise<TradeResult> {
+	return withTradeLock(() => executeTradeInternal(signal, options, mode));
+}
+
+async function executeTradeInternal(
+	signal: TradeSignal,
+	options: { marketConfig?: MarketConfig | null; riskConfig: RiskConfig },
+	mode: "paper" | "live" = "paper",
+): Promise<TradeResult> {
 	const { marketConfig = null, riskConfig } = options;
 
 	if (mode === "paper") {
@@ -410,6 +431,12 @@ export async function executeTrade(
 
 		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
 		const account = getAccount("paper");
+		const actualCost = Number(riskConfig.maxTradeSizeUsdc || 0) * price;
+		const paperBalance = account.getBalance().current;
+		if (paperBalance < actualCost) {
+			log.warn(`Insufficient balance for actual cost: ${actualCost.toFixed(2)} > ${paperBalance.toFixed(2)}`);
+			return { success: false, reason: "insufficient_balance_actual_cost" };
+		}
 		const tradeId = account.addTrade({
 			marketId: signal.marketId,
 			windowStartMs: timing.startMs,
@@ -494,6 +521,14 @@ export async function executeTrade(
 
 	if (!client) {
 		return { success: false, reason: "trading_disabled" };
+	}
+
+	const liveAccount = getAccount("live");
+	const actualCost = Number(riskConfig.maxTradeSizeUsdc || 0) * price;
+	const liveBalance = liveAccount.getBalance().current;
+	if (liveBalance < actualCost) {
+		log.warn(`Insufficient balance for actual cost: ${actualCost.toFixed(2)} > ${liveBalance.toFixed(2)}`);
+		return { success: false, reason: "insufficient_balance_actual_cost" };
 	}
 
 	try {
@@ -626,7 +661,6 @@ export async function executeTrade(
 				// FOK is immediate fill-or-kill. GTD trades are recorded only when order
 				// transitions to FILLED via OrderManager polling in index.ts.
 				if (!isGtdOrder) {
-					const liveAccount = getAccount("live");
 					liveAccount.addTrade(
 						{
 							marketId: signal.marketId ?? "",

@@ -1,5 +1,22 @@
 import type { ClobClient } from "@polymarket/clob-client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../core/db.ts", () => ({
+	statements: {
+		getAllLivePendingOrders: null,
+		upsertLivePendingOrder: () => ({ run: vi.fn() }),
+	},
+}));
+
+vi.mock("../core/logger.ts", () => ({
+	createLogger: () => ({
+		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+	}),
+}));
+
 import { OrderManager } from "../trading/orderManager.ts";
 
 describe("OrderManager.pollOrders", () => {

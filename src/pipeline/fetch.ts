@@ -51,6 +51,22 @@ const clobCircuitBreaker = {
 
 const MAX_PRICE_AGE_MS = 60_000;
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+		promise.then(
+			(v) => {
+				clearTimeout(timer);
+				resolve(v);
+			},
+			(e) => {
+				clearTimeout(timer);
+				reject(e);
+			},
+		);
+	});
+}
+
 function parsePriceToBeat(market: GammaMarket): number | null {
 	const text = String(market.question ?? market.title ?? "");
 	if (!text) return null;
@@ -147,6 +163,7 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 
 	let upBuy: number | null = null;
 	let downBuy: number | null = null;
+	let degraded = false;
 	let upBookSummary: OrderBookSummary = {
 		bestBid: null,
 		bestAsk: null,
@@ -163,6 +180,7 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 	};
 
 	if (clobCircuitBreaker.isOpen()) {
+		degraded = true;
 		log.warn(
 			`CLOB fetch skipped for ${marketDef.id} - circuit breaker open until ${new Date(clobCircuitBreaker.openUntil).toISOString()}`,
 		);
@@ -182,18 +200,23 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 		};
 	} else {
 		try {
-			const [yesBuy, noBuy, upBook, downBook] = await Promise.all([
-				fetchClobPrice({ tokenId: upTokenId, side: "buy" }),
-				fetchClobPrice({ tokenId: downTokenId, side: "buy" }),
-				fetchOrderBook({ tokenId: upTokenId }),
-				fetchOrderBook({ tokenId: downTokenId }),
-			]);
+			const [yesBuy, noBuy, upBook, downBook] = await withTimeout(
+				Promise.all([
+					fetchClobPrice({ tokenId: upTokenId, side: "buy" }),
+					fetchClobPrice({ tokenId: downTokenId, side: "buy" }),
+					fetchOrderBook({ tokenId: upTokenId }),
+					fetchOrderBook({ tokenId: downTokenId }),
+				]),
+				10_000,
+				`CLOB(${marketDef.id})`,
+			);
 			upBuy = yesBuy;
 			downBuy = noBuy;
 			upBookSummary = summarizeOrderBook(upBook);
 			downBookSummary = summarizeOrderBook(downBook);
 			clobCircuitBreaker.recordSuccess();
 		} catch (err) {
+			degraded = true;
 			clobCircuitBreaker.recordFailure();
 			log.warn(`CLOB fetch failed for ${marketDef.id}:`, err);
 			upBookSummary = {
@@ -215,6 +238,7 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 
 	return {
 		ok: true,
+		degraded,
 		market,
 		tokens: { upTokenId, downTokenId },
 		prices: { up: upBuy ?? gammaYes, down: downBuy ?? gammaNo },
@@ -259,12 +283,16 @@ export async function fetchMarketData(
 							decimals: market.chainlink.decimals,
 						});
 
-		const [klines1mRaw, lastPriceRaw, chainlink, poly] = await Promise.all([
-			fetchKlines({ symbol: market.binanceSymbol, interval: "1m", limit: 240 }),
-			fetchLastPrice({ symbol: market.binanceSymbol }),
-			chainlinkPromise,
-			fetchPolymarketSnapshot(market),
-		]);
+		const [klines1mRaw, lastPriceRaw, chainlink, poly] = await withTimeout(
+			Promise.all([
+				fetchKlines({ symbol: market.binanceSymbol, interval: "1m", limit: 240 }),
+				fetchLastPrice({ symbol: market.binanceSymbol }),
+				chainlinkPromise,
+				fetchPolymarketSnapshot(market),
+			]),
+			15_000,
+			`fetchMarketData(${market.id})`,
+		);
 
 		const settlementMs = poly.ok && poly.market?.endDate ? new Date(String(poly.market.endDate)).getTime() : null;
 		const settlementLeftMin = settlementMs ? (settlementMs - Date.now()) / 60_000 : null;

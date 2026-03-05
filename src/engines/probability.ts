@@ -125,11 +125,17 @@ export function computeRealizedVolatility(closes: (number | null)[], lookback = 
 	if (!Array.isArray(closes) || closes.length < lookback + 1) return null;
 	const slice = closes.slice(-(lookback + 1));
 	let sumSqRet = 0;
+	let count = 0;
 	for (let i = 1; i < slice.length; i += 1) {
-		const logRet = Math.log(Number(slice[i]) / Number(slice[i - 1]));
+		const cur = Number(slice[i]);
+		const prev = Number(slice[i - 1]);
+		if (prev <= 0 || cur <= 0) continue;
+		const logRet = Math.log(cur / prev);
 		sumSqRet += logRet * logRet;
+		count += 1;
 	}
-	const variance1m = sumSqRet / lookback;
+	if (count === 0) return null;
+	const variance1m = sumSqRet / count;
 	return Math.sqrt(variance1m * 15);
 }
 
@@ -148,7 +154,7 @@ export function computeVolatilityImpliedProb({
 }): number | null {
 	if (currentPrice === null || priceToBeat === null || priceToBeat === 0) return null;
 	if (volatility15m === null || volatility15m <= 0) return null;
-	if (timeLeftMin === null || timeLeftMin <= 0) return currentPrice > priceToBeat ? 0.99 : 0.01;
+	if (timeLeftMin === null || timeLeftMin <= 0) return null;
 	const timeRatio = Math.sqrt(timeLeftMin / windowMin);
 	const d = Math.log(currentPrice / priceToBeat);
 	const z = d / (volatility15m * timeRatio);

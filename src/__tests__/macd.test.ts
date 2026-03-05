@@ -48,18 +48,16 @@ describe("computeMacd", () => {
 		expect(result?.hist).toBeLessThan(0);
 	});
 
-	// Expanding green histogram: hist > 0
 	it("returns expanding green histogram (hist > 0)", () => {
-		const closes = Array.from({ length: 70 }, (_, i) => 100 + i * 0.5);
+		const closes = Array.from({ length: 70 }, (_, i) => (i < 35 ? 100 : 100 + (i - 35) * 2));
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
 		expect(result?.hist).toBeGreaterThan(0);
 		expect(result?.histDelta).toBeDefined();
 	});
 
-	// Expanding red histogram: hist < 0
 	it("returns expanding red histogram (hist < 0)", () => {
-		const closes = Array.from({ length: 70 }, (_, i) => 100 - i * 0.5);
+		const closes = Array.from({ length: 70 }, (_, i) => (i < 35 ? 100 : 100 - (i - 35) * 2));
 		const result = computeMacd(closes, 12, 26, 9);
 		expect(result).not.toBeNull();
 		expect(result?.hist).toBeLessThan(0);

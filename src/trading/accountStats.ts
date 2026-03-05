@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import { CONFIG, LIVE_INITIAL_BALANCE, PAPER_INITIAL_BALANCE } from "../core/config.ts";
-import { PERSIST_BACKEND, resetLiveDbData, resetPaperDbData, statements } from "../core/db.ts";
+import { getDb, PERSIST_BACKEND, resetLiveDbData, resetPaperDbData, statements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
 import type { AccountMode, RiskConfig, Side } from "../types.ts";
 
@@ -426,8 +426,22 @@ export class AccountStatsManager {
 		this.state.trades.push(trade);
 		this.state.currentBalance -= entry.size * entry.price;
 		try {
-			this.upsertTrade(trade);
-			this.save();
+			const shouldUseTransaction = PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite";
+			const db = shouldUseTransaction ? getDb() : null;
+			if (db) {
+				db.run("BEGIN IMMEDIATE");
+				try {
+					this.upsertTrade(trade);
+					this.save();
+					db.run("COMMIT");
+				} catch (innerErr) {
+					db.run("ROLLBACK");
+					throw innerErr;
+				}
+			} else {
+				this.upsertTrade(trade);
+				this.save();
+			}
 		} catch (err) {
 			// Rollback in-memory state on DB write failure
 			this.state.trades.pop();
@@ -439,45 +453,97 @@ export class AccountStatsManager {
 
 	resolveTrades(windowStartMs: number, finalPrices: Map<string, number>): number {
 		let resolved = 0;
-		for (const trade of this.state.trades) {
-			if (trade.resolved) continue;
-			if (trade.windowStartMs !== windowStartMs) continue;
-
-			const finalPrice = finalPrices.get(trade.marketId);
-			if (finalPrice === undefined || trade.priceToBeat <= 0) continue;
-
-			// Unified settlement rule: price <= PTB → DOWN wins (standard Polymarket rule)
-			const upWon = finalPrice > trade.priceToBeat;
-			const downWon = finalPrice <= trade.priceToBeat;
-			trade.won = trade.side === "UP" ? upWon : downWon;
-
-			trade.settlePrice = finalPrice;
-			trade.resolved = true;
-
-			if (trade.won) {
-				trade.pnl = trade.size * (1 - trade.price);
-				this.state.wins++;
-			} else {
-				trade.pnl = -(trade.size * trade.price);
-				this.state.losses++;
-			}
-
-			this.state.currentBalance += trade.size * trade.price + trade.pnl;
-			const drawdown = this.state.initialBalance - this.state.currentBalance;
-			if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
-			this.state.totalPnl += trade.pnl;
-
-			// Update daily PnL tracking (with deduplication)
-			this.updateDailyPnl(trade.id, trade.pnl);
-
-			this.upsertTrade(trade);
-			this.syncTradeLog(trade);
-			resolved++;
+		const shouldUseTransaction = PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite";
+		const db = shouldUseTransaction ? getDb() : null;
+		if (db) {
+			db.run("BEGIN IMMEDIATE");
 		}
 
-		if (resolved > 0) {
-			this.checkAndTriggerStopLoss();
-			this.save();
+		const prevWins = this.state.wins;
+		const prevLosses = this.state.losses;
+		const prevBalance = this.state.currentBalance;
+		const prevMaxDrawdown = this.state.maxDrawdown;
+		const prevTotalPnl = this.state.totalPnl;
+		const prevDailyPnl = this.state.dailyPnl.map((d) => ({ ...d }));
+		const prevDailyCountedTradeIds = [...this.state.dailyCountedTradeIds];
+		const mutatedTrades: Array<{
+			trade: TradeEntry;
+			prevResolved: boolean;
+			prevWon: boolean | null;
+			prevPnl: number | null;
+			prevSettlePrice: number | null;
+		}> = [];
+
+		try {
+			for (const trade of this.state.trades) {
+				if (trade.resolved) continue;
+				if (trade.windowStartMs !== windowStartMs) continue;
+
+				const finalPrice = finalPrices.get(trade.marketId);
+				if (finalPrice === undefined || trade.priceToBeat <= 0) continue;
+
+				mutatedTrades.push({
+					trade,
+					prevResolved: trade.resolved,
+					prevWon: trade.won,
+					prevPnl: trade.pnl,
+					prevSettlePrice: trade.settlePrice,
+				});
+
+				// Unified settlement rule: price <= PTB → DOWN wins (standard Polymarket rule)
+				const upWon = finalPrice > trade.priceToBeat;
+				const downWon = finalPrice <= trade.priceToBeat;
+				trade.won = trade.side === "UP" ? upWon : downWon;
+
+				trade.settlePrice = finalPrice;
+				trade.resolved = true;
+
+				if (trade.won) {
+					trade.pnl = trade.size * (1 - trade.price);
+					this.state.wins++;
+				} else {
+					trade.pnl = -(trade.size * trade.price);
+					this.state.losses++;
+				}
+
+				this.state.currentBalance += trade.size * trade.price + trade.pnl;
+				const drawdown = this.state.initialBalance - this.state.currentBalance;
+				if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
+				this.state.totalPnl += trade.pnl;
+
+				this.updateDailyPnl(trade.id, trade.pnl);
+
+				this.upsertTrade(trade);
+				this.syncTradeLog(trade);
+				resolved++;
+			}
+
+			if (resolved > 0) {
+				this.checkAndTriggerStopLoss();
+				this.save();
+			}
+			if (db) {
+				db.run("COMMIT");
+			}
+		} catch (err) {
+			if (db) {
+				db.run("ROLLBACK");
+			}
+			for (const snap of mutatedTrades) {
+				snap.trade.resolved = snap.prevResolved;
+				snap.trade.won = snap.prevWon;
+				snap.trade.pnl = snap.prevPnl;
+				snap.trade.settlePrice = snap.prevSettlePrice;
+			}
+			this.state.wins = prevWins;
+			this.state.losses = prevLosses;
+			this.state.currentBalance = prevBalance;
+			this.state.maxDrawdown = prevMaxDrawdown;
+			this.state.totalPnl = prevTotalPnl;
+			this.state.dailyPnl = prevDailyPnl;
+			this.state.dailyCountedTradeIds = prevDailyCountedTradeIds;
+			this.dailyCountedTradeIdSet = new Set(prevDailyCountedTradeIds);
+			throw err;
 		}
 		return resolved;
 	}

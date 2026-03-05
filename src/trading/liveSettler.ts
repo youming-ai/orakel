@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import type { Wallet } from "ethers";
 import type { RedeemOneResult } from "../blockchain/redeemer.ts";
 import { fetchRedeemablePositions } from "../blockchain/redeemer.ts";
@@ -34,6 +35,33 @@ export class LiveSettler {
 
 	constructor(deps: LiveSettlerDeps) {
 		this.deps = deps;
+		this.loadRedeemedIds();
+	}
+
+	private loadRedeemedIds(): void {
+		try {
+			const filePath = "./data/redeemed-trades.json";
+			if (fs.existsSync(filePath)) {
+				const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as unknown;
+				if (Array.isArray(data)) {
+					for (const id of data) {
+						this.redeemedIds.add(String(id));
+					}
+					log.info(`Loaded ${this.redeemedIds.size} redeemed trade IDs`);
+				}
+			}
+		} catch (err) {
+			log.warn("Failed to load redeemed IDs:", err instanceof Error ? err.message : String(err));
+		}
+	}
+
+	private saveRedeemedIds(): void {
+		try {
+			fs.mkdirSync("./data", { recursive: true });
+			fs.writeFileSync("./data/redeemed-trades.json", JSON.stringify([...this.redeemedIds]));
+		} catch (err) {
+			log.warn("Failed to save redeemed IDs:", err instanceof Error ? err.message : String(err));
+		}
 	}
 
 	/**
@@ -84,6 +112,7 @@ export class LiveSettler {
 				}
 
 				this.redeemedIds.add(trade.id);
+				this.saveRedeemedIds();
 				redeemed++;
 				log.info(`Redeemed: ${trade.marketId} ${trade.side} pnl=$${(trade.pnl ?? 0).toFixed(2)} tx=${result.txHash}`);
 			}
@@ -110,11 +139,14 @@ export class LiveSettler {
 							$side: null,
 							$conditionId: pos.conditionId,
 						});
-					} catch {}
+					} catch (err) {
+						log.warn("Failed to upsert known CTF token:", err instanceof Error ? err.message : String(err));
+					}
 				}
 			}
 			return this.deps.lookupConditionId(tokenId);
-		} catch {
+		} catch (err) {
+			log.warn("Failed to resolve conditionId:", err instanceof Error ? err.message : String(err));
 			return null;
 		}
 	}

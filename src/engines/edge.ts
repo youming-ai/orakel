@@ -223,7 +223,8 @@ export function computeEdge(params: {
 	if (imbalance !== null && Math.abs(imbalance) > 0.2) {
 		// Strong buy pressure → buying UP costs more (less effective edge for UP)
 		// Strong sell pressure → buying DOWN costs more (less effective edge for DOWN)
-		const slippageFactor = Math.abs(imbalance) * 0.02; // Up to 2% adjustment
+		// Execution slippage penalty (distinct from probability.ts directional signal of 0.03)
+		const slippageFactor = Math.abs(imbalance) * 0.02; // Up to 2% edge reduction
 
 		if (imbalance > 0) {
 			// More bids → UP is harder to fill
@@ -407,10 +408,10 @@ export function decide(params: {
 	}
 
 	// Overconfidence checks
-	if (Math.abs(bestEdge) > HARD_CAP_EDGE) {
+	if (bestEdge > HARD_CAP_EDGE) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_hard_cap" };
 	}
-	if (Math.abs(bestEdge) > SOFT_CAP_EDGE) {
+	if (bestEdge > SOFT_CAP_EDGE) {
 		const penalizedThreshold = threshold * 1.4;
 		if (bestEdge < penalizedThreshold) {
 			return { action: "NO_TRADE", side: null, phase, regime, reason: "overconfident_soft_cap" };

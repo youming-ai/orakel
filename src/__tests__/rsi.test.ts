@@ -40,12 +40,16 @@ describe("computeRsi", () => {
 		expect(rsi).toBeLessThanOrEqual(100);
 	});
 
-	it("should use last N+1 bars of array", () => {
-		const closes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
-		const rsi1 = computeRsi(closes, 14);
-		const closesSubset = closes.slice(-15);
-		const rsi2 = computeRsi(closesSubset, 14);
-		expect(rsi1).toBe(rsi2);
+	it("should account for full history with Wilder smoothing", () => {
+		const closes = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110];
+		const rsiFull = computeRsi(closes, 14);
+		const rsiSubset = computeRsi(closes.slice(-15), 14);
+
+		expect(rsiFull).not.toBeNull();
+		expect(rsiSubset).not.toBeNull();
+		expect(rsiFull).not.toBe(rsiSubset);
+		expect(rsiFull).toBeGreaterThanOrEqual(0);
+		expect(rsiFull).toBeLessThanOrEqual(100);
 	});
 
 	it("should handle exact period+1 length", () => {
@@ -178,10 +182,10 @@ describe("slopeLast", () => {
 		expect(result).toBe(1); // (10-8)/(3-1) = 1
 	});
 
-	it("should handle points=1 (returns NaN due to division by zero)", () => {
+	it("should handle points=1 (returns null)", () => {
 		const values = [5, 10];
 		const result = slopeLast(values, 1);
-		expect(Number.isNaN(result)).toBe(true);
+		expect(result).toBeNull();
 	});
 
 	it("should handle points=2", () => {

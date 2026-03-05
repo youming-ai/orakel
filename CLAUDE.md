@@ -127,7 +127,7 @@ Both paper and live trades settle at 15-min window boundary (finalPrice > priceT
 **Edge Engine** ([`src/engines/edge.ts`](src/engines/edge.ts))
 - `computeEdge()` - Calculates edge = modelProb - marketPrice with confidence scoring, orderbook adjustments (imbalance, spread), arbitrage detection (sum < 0.98), and high vig detection (sum > 1.04)
 - `computeConfidence()` - 5-factor weighted score: Indicator Alignment (25%), Volatility Score (15%), Orderbook Score (15%), Timing Score (25%), Regime Score (20%)
-- `decide()` - Main decision logic with phase-based thresholds, regime multipliers, market-specific adjustments, and overconfidence protection (SOFT_CAP_EDGE: 0.22, HARD_CAP_EDGE: 0.3)
+- `decide()` - Main decision logic with phase-based thresholds, regime multipliers, market-specific adjustments, and overconfidence protection (SOFT_CAP_EDGE: 0.25, HARD_CAP_EDGE: 0.4)
 - `regimeMultiplier()` - Returns regime-based threshold multiplier from config (CHOP: 1.4, RANGE: 1.0, TREND_ALIGNED: 0.75, TREND_OPPOSED: 1.3)
 
 **Regime Detection** ([`src/engines/regime.ts`](src/engines/regime.ts))
@@ -234,7 +234,7 @@ New code should use SQLite prepared statements from [`src/core/db.ts`](src/core/
 
 7. **Time-Aware Probability Decay** - S-curve decay preserves early confidence, volatility-adjusted time remaining (high vol → slower decay)
 
-8. **Overconfidence Protection** - Soft cap (0.22) and hard cap (0.3) on edge to prevent trades when model appears too confident
+8. **Overconfidence Protection** - Soft cap (0.25) and hard cap (0.4) on edge to prevent trades when model appears too confident
 
 9. **Unified Settlement** - Paper and live trades settle using same logic in main loop (`resolveTrades()`), LiveSettler only redeems on-chain winnings
 
@@ -248,7 +248,7 @@ New code should use SQLite prepared statements from [`src/core/db.ts`](src/core/
 
 4. **CHOP regime gets 1.4× threshold penalty** - Configured via `strategy.regimeMultipliers.CHOP` in `config.json`. All markets participate in CHOP (no per-market skip).
 
-5. **Edge overconfidence is the #1 killer** - High edge (≥20%) had 43.6% win rate vs low edge (<10%) at 57.9%. The model is overconfident when edge looks too good. Protected by SOFT_CAP_EDGE (0.22) and HARD_CAP_EDGE (0.3).
+5. **Edge overconfidence is the #1 killer** - High edge (≥20%) had 43.6% win rate vs low edge (<10%) at 57.9%. The model is overconfident when edge looks too good. Protected by SOFT_CAP_EDGE (0.25) and HARD_CAP_EDGE (0.4).
 
 6. **WebSocket is single-source of truth** - Dashboard connects to `/ws` WS endpoint and receives `state:snapshot` events. Don't poll REST endpoints in the frontend.
 
