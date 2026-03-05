@@ -270,3 +270,61 @@
 .pixel-theme textarea::placeholder {
 	color: rgba(244, 244, 244, 0.5) !important;
 }
+
+/* ============================================
+   COMPONENT-SPECIFIC STYLES
+   ============================================ */
+
+/* Task 6: Badge component */
+.pixel-theme .badge {
+	border-radius: 0 !important;
+	border: 2px solid currentColor;
+	padding: 4px 8px !important;
+	font-family: "Press Start 2P", monospace;
+	font-size: 0.625rem;
+	text-transform: uppercase;
+	font-weight: normal;
+}
+
+/* Task 9: Header-specific styles */
+.pixel-theme header {
+	border-radius: 0 !important;
+	border: 4px solid var(--pixel-border);
+	box-shadow: 4px 4px 0 #000;
+}
+.pixel-theme .header-countdown {
+	font-family: "Press Start 2P", monospace;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Task 10: StatCard component */
+.pixel-theme .stat-card {
+	border-radius: 0 !important;
+	border: 4px solid var(--pixel-border);
+	box-shadow: 4px 4px 0 #000;
+}
+.pixel-theme .stat-value {
+	font-family: "Press Start 2P", monospace;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Task 11: MarketCard component */
+.pixel-theme .market-card {
+	border-radius: 0 !important;
+	border: 4px solid var(--pixel-border);
+	box-shadow: 4px 4px 0 #000;
+}
+
+/* Task 12: TradeTable component */
+.pixel-theme table {
+	border-radius: 0 !important;
+	border: 4px solid var(--pixel-border);
+}
+.pixel-theme th {
+	font-family: "Press Start 2P", monospace;
+	font-size: 0.5rem;
+}
+.pixel-theme td {
+	border: 2px solid var(--pixel-border);
+	font-family: "Courier New", monospace;
+}
