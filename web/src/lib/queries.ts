@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DashboardState } from "./api";
 
@@ -64,6 +65,18 @@ export function useDashboardState() {
 }
 
 export function useTrades(mode: ViewMode) {
+	const queryClient = useQueryClient();
+	const previousModeRef = useRef<ViewMode>(mode);
+
+	useEffect(() => {
+		// 当 mode 从 live 切换到 paper，或从 paper 切换到 live 时
+		// 清除所有 trades 相关的缓存，确保显示正确的数据
+		if (previousModeRef.current !== mode) {
+			queryClient.invalidateQueries({ queryKey: ["trades"] });
+			previousModeRef.current = mode;
+		}
+	}, [mode, queryClient]);
+
 	return useQuery(queries.trades(mode));
 }
 

@@ -59,10 +59,13 @@ interface SimpleOrderTracker {
 	orders: Map<string, number>;
 	lastTradeMs: number;
 	cooldownMs: number;
+	windowStartMs: number;
 	keyFor(marketId: string, windowSlug: string): string;
 	hasOrder(marketId: string, windowSlug: string): boolean;
 	totalActive(): number;
 	record(marketId: string, windowSlug: string, recordedAtMs?: number): void;
+	clear(): void;
+	setWindow(startMs: number): void;
 	prune(): void;
 	onCooldown(): boolean;
 }
@@ -440,6 +443,7 @@ async function main(): Promise<void> {
 		orders: new Map<string, number>(),
 		lastTradeMs: 0,
 		cooldownMs: 30_000,
+		windowStartMs: 0,
 		keyFor(marketId: string, windowSlug: string): string {
 			return `${marketId}:${windowSlug}`;
 		},
@@ -455,6 +459,16 @@ async function main(): Promise<void> {
 			const ts = Math.min(normalizedTs, Date.now());
 			this.orders.set(this.keyFor(marketId, windowSlug), ts);
 			this.lastTradeMs = Math.max(this.lastTradeMs, ts);
+		},
+		clear(): void {
+			this.orders.clear();
+			this.lastTradeMs = 0;
+		},
+		setWindow(startMs: number): void {
+			if (this.windowStartMs !== startMs) {
+				this.clear();
+				this.windowStartMs = startMs;
+			}
 		},
 		prune(): void {
 			const cutoff = Date.now() - 16 * 60_000;
@@ -794,7 +808,7 @@ async function main(): Promise<void> {
 		ensureLiveSettler();
 		prevWindowStartMs = timing.startMs;
 
-		orderTracker.prune();
+		orderTracker.setWindow(timing.startMs);
 		paperTracker.setWindow(timing.startMs);
 		liveTracker.setWindow(timing.startMs);
 		const results: ProcessMarketResult[] = await Promise.all(
