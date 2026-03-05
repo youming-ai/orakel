@@ -249,4 +249,15 @@ export class OrderManager {
 	totalActive(): number {
 		return this.getActiveOrders().length + this.getFilledOrders().length;
 	}
+
+	/** Sum of price * size for all placed/live orders (USDC reserved for pending GTD) */
+	totalPendingCost(): number {
+		let cost = 0;
+		for (const order of this.orders.values()) {
+			if (order.status === "placed" || order.status === "live") {
+				cost += order.price * order.size;
+			}
+		}
+		return cost;
+	}
 }

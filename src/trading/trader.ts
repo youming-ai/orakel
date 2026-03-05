@@ -45,14 +45,20 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 let heartbeatReconnecting = false;
 
-let tradeLock: Promise<void> = Promise.resolve();
+let paperTradeLock: Promise<void> = Promise.resolve();
+let liveTradeLock: Promise<void> = Promise.resolve();
 
-function withTradeLock<T>(fn: () => Promise<T>): Promise<T> {
-	const prev = tradeLock;
+function withTradeLock<T>(mode: "paper" | "live", fn: () => Promise<T>): Promise<T> {
+	const prev = mode === "paper" ? paperTradeLock : liveTradeLock;
 	let releaseLock: (() => void) | undefined;
-	tradeLock = new Promise<void>((resolve) => {
+	const lockPromise = new Promise<void>((resolve) => {
 		releaseLock = resolve;
 	});
+	if (mode === "paper") {
+		paperTradeLock = lockPromise;
+	} else {
+		liveTradeLock = lockPromise;
+	}
 	return prev.then(fn).finally(() => {
 		releaseLock?.();
 	});
@@ -85,7 +91,12 @@ function startHeartbeatWithOptions(options?: { preserveReconnectAttempts?: boole
 			return;
 		}
 		try {
-			const resp = await client.postHeartbeat(heartbeatId ?? undefined);
+			const resp = (await Promise.race([
+				client.postHeartbeat(heartbeatId ?? undefined),
+				new Promise<never>((_, reject) => {
+					setTimeout(() => reject(new Error("heartbeat_timeout")), 8_000);
+				}),
+			])) as { heartbeat_id: string };
 			heartbeatId = resp.heartbeat_id;
 			heartbeatFailures = 0;
 			reconnectAttempts = 0; // Reset reconnect attempts on success
@@ -392,7 +403,7 @@ export async function executeTrade(
 	options: { marketConfig?: MarketConfig | null; riskConfig: RiskConfig },
 	mode: "paper" | "live" = "paper",
 ): Promise<TradeResult> {
-	return withTradeLock(() => executeTradeInternal(signal, options, mode));
+	return withTradeLock(mode, () => executeTradeInternal(signal, options, mode));
 }
 
 async function executeTradeInternal(

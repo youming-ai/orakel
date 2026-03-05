@@ -1,3 +1,5 @@
+import { ChevronDown } from "lucide-react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { MarketSnapshot } from "@/lib/api";
@@ -11,6 +13,8 @@ interface MarketCardProps {
 }
 
 export function MarketCard({ market: m }: MarketCardProps) {
+	const [techOpen, setTechOpen] = useState(false);
+
 	if (!m.ok) {
 		return (
 			<Card className="border-red-500/30 bg-red-500/10">
@@ -79,82 +83,93 @@ export function MarketCard({ market: m }: MarketCardProps) {
 				{/* Confidence bar */}
 				{confidence && <ConfidenceBar confidence={confidence} />}
 
-				{/* Technicals Area */}
+				{/* Technicals Area — collapsible on mobile, always open on desktop */}
 				<section
 					id={`technicals-${m.id}`}
 					aria-label={`${m.id} technical indicators`}
-					className="space-y-3 p-3 bg-muted/20 border border-border/50 rounded-lg"
+					className="bg-muted/20 border border-border/50 rounded-lg overflow-hidden"
 				>
-					<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
-						<div className="space-y-1">
-							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">HA Trend</span>
-							<div className="flex items-center gap-1.5">
-								<MiniTrend haColor={m.haColor} count={m.haConsecutive} />
+					<button
+						type="button"
+						onClick={() => setTechOpen((v) => !v)}
+						className="flex items-center justify-between w-full px-3 py-2 text-[10px] uppercase text-muted-foreground font-semibold tracking-wide sm:hidden"
+					>
+						<span>Technicals</span>
+						<ChevronDown className={cn("size-3.5 transition-transform", techOpen && "rotate-180")} />
+					</button>
+
+					<div className={cn("space-y-3 p-3 pt-0 sm:!block sm:pt-3", techOpen ? "block" : "hidden sm:block")}>
+						<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
+							<div className="space-y-1">
+								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">HA Trend</span>
+								<div className="flex items-center gap-1.5">
+									<MiniTrend haColor={m.haColor} count={m.haConsecutive} />
+								</div>
+							</div>
+							<div className="space-y-1">
+								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">RSI</span>
+								<span
+									className={cn(
+										"font-mono font-medium block",
+										sentimentText({
+											sentiment: (m.rsi ?? 50) > 70 ? "negative" : (m.rsi ?? 50) < 30 ? "positive" : "neutral",
+										}),
+									)}
+								>
+									{m.rsi?.toFixed(1) ?? "-"}
+								</span>
+							</div>
+							<div className="space-y-1">
+								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">MACD</span>
+								<span className={cn("font-mono font-medium block", macdInfo.color)}>{macdInfo.text}</span>
+							</div>
+							<div className="space-y-1">
+								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">VWAP</span>
+								<span
+									className={cn(
+										"font-mono font-medium block",
+										sentimentText({ sentiment: (m.vwapSlope ?? 0) > 0 ? "positive" : "negative" }),
+									)}
+								>
+									{(m.vwapSlope ?? 0) > 0 ? "Upward" : "Downward"}
+								</span>
 							</div>
 						</div>
-						<div className="space-y-1">
-							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">RSI</span>
-							<span
-								className={cn(
-									"font-mono font-medium block",
-									sentimentText({
-										sentiment: (m.rsi ?? 50) > 70 ? "negative" : (m.rsi ?? 50) < 30 ? "positive" : "neutral",
-									}),
-								)}
-							>
-								{m.rsi?.toFixed(1) ?? "-"}
-							</span>
-						</div>
-						<div className="space-y-1">
-							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">MACD</span>
-							<span className={cn("font-mono font-medium block", macdInfo.color)}>{macdInfo.text}</span>
-						</div>
-						<div className="space-y-1">
-							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">VWAP</span>
-							<span
-								className={cn(
-									"font-mono font-medium block",
-									sentimentText({ sentiment: (m.vwapSlope ?? 0) > 0 ? "positive" : "negative" }),
-								)}
-							>
-								{(m.vwapSlope ?? 0) > 0 ? "Upward" : "Downward"}
-							</span>
-						</div>
-					</div>
 
-					<div className="h-px bg-border/50" />
+						<div className="h-px bg-border/50" />
 
-					<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
-						<div className="space-y-1">
-							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Vol (15m)</span>
-							<span className="font-mono font-medium block">
-								{m.volatility15m !== null ? `${(m.volatility15m * 100).toFixed(2)}%` : "-"}
-							</span>
-						</div>
-						<div className="space-y-1">
-							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Blend</span>
-							<span className="font-mono font-medium block truncate" title={m.blendSource ?? undefined}>
-								{m.blendSource ?? "-"}
-							</span>
-						</div>
-						<div className="space-y-1">
-							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Imbalance</span>
-							<span
-								className={cn(
-									"font-mono font-medium block",
-									sentimentText({
-										sentiment: m.orderbookImbalance !== null && m.orderbookImbalance > 0 ? "positive" : "negative",
-									}),
-								)}
-							>
-								{m.orderbookImbalance !== null ? `${(m.orderbookImbalance * 100).toFixed(0)}%` : "-"}
-							</span>
-						</div>
-						<div className="space-y-1">
-							<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Arb Sum</span>
-							<span className={cn("font-mono font-medium block", m.arbitrage ? "text-amber-400" : "")}>
-								{m.rawSum !== null ? m.rawSum.toFixed(3) : "-"}
-							</span>
+						<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
+							<div className="space-y-1">
+								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Vol (15m)</span>
+								<span className="font-mono font-medium block">
+									{m.volatility15m !== null ? `${(m.volatility15m * 100).toFixed(2)}%` : "-"}
+								</span>
+							</div>
+							<div className="space-y-1">
+								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Blend</span>
+								<span className="font-mono font-medium block truncate" title={m.blendSource ?? undefined}>
+									{m.blendSource ?? "-"}
+								</span>
+							</div>
+							<div className="space-y-1">
+								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Imbalance</span>
+								<span
+									className={cn(
+										"font-mono font-medium block",
+										sentimentText({
+											sentiment: m.orderbookImbalance !== null && m.orderbookImbalance > 0 ? "positive" : "negative",
+										}),
+									)}
+								>
+									{m.orderbookImbalance !== null ? `${(m.orderbookImbalance * 100).toFixed(0)}%` : "-"}
+								</span>
+							</div>
+							<div className="space-y-1">
+								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Arb Sum</span>
+								<span className={cn("font-mono font-medium block", m.arbitrage ? "text-amber-400" : "")}>
+									{m.rawSum !== null ? m.rawSum.toFixed(3) : "-"}
+								</span>
+							</div>
 						</div>
 					</div>
 				</section>

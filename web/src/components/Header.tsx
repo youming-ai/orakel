@@ -101,11 +101,11 @@ export function Header({
 						</div>
 						<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
 					</Link>
-					<span className="text-xs text-muted-foreground">/</span>
+					<span className="text-xs text-muted-foreground hidden sm:inline">/</span>
 					<Link
 						to="/logs"
 						className={cn(
-							"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline",
+							"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline hidden sm:inline",
 							isTradesActive && "text-foreground",
 						)}
 					>
@@ -127,14 +127,13 @@ export function Header({
 						onClick={handleToggle}
 						disabled={mutationPending}
 						className={cn(
-							"flex items-center gap-1.5 h-7 px-2 sm:px-2.5 text-[10px] font-semibold tracking-wide uppercase rounded-md transition-all shrink-0 border outline-none",
+							"flex items-center justify-center size-7 rounded-md transition-all shrink-0 border outline-none",
 							cfg.className,
 							isPending && "animate-pulse",
 						)}
-						title={isPending ? "Click to cancel" : undefined}
+						title={cfg.label}
 					>
 						<StatusIcon status={status} />
-						<span>{cfg.label}</span>
 					</button>
 
 					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />

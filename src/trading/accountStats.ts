@@ -131,6 +131,8 @@ export class AccountStatsManager {
 	private log: ReturnType<typeof createLogger>;
 	private initialBalanceDefault: number;
 	private loadedFromSqlite = false;
+	/** Tracks USDC reserved for placed-but-unfilled GTD orders */
+	private reservedBalance = 0;
 
 	constructor(mode: AccountMode, initialBalance: number) {
 		this.mode = mode;
@@ -316,6 +318,21 @@ export class AccountStatsManager {
 			this.state.currentBalance = balance;
 			this.saveState();
 		}
+	}
+
+	/** Reserve balance for a pending GTD order (called when order is placed) */
+	reserveBalance(amount: number): void {
+		this.reservedBalance += amount;
+	}
+
+	/** Release reserved balance (called when order fills, cancels, or expires) */
+	unreserveBalance(amount: number): void {
+		this.reservedBalance = Math.max(0, this.reservedBalance - amount);
+	}
+
+	/** Effective balance = current balance minus reserved for pending GTD orders */
+	getEffectiveBalance(): number {
+		return this.state.currentBalance - this.reservedBalance;
 	}
 
 	// ---- Persistence ----
@@ -511,7 +528,7 @@ export class AccountStatsManager {
 				if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
 				this.state.totalPnl += trade.pnl;
 
-				this.updateDailyPnl(trade.id, trade.pnl);
+				this.updateDailyPnl(trade.id, trade.pnl, trade.timestamp);
 
 				this.upsertTrade(trade);
 				this.syncTradeLog(trade);
@@ -578,6 +595,60 @@ export class AccountStatsManager {
 		return totalResolved;
 	}
 
+	/**
+	 * Force-resolve trades pending beyond maxAgeMs as losses.
+	 * Safety net for trades that resolveExpiredTrades cannot reach (too old).
+	 * Logs a warning for each force-resolved trade.
+	 */
+	forceResolveStuckTrades(maxAgeMs: number): number {
+		const now = Date.now();
+		let resolved = 0;
+		const shouldUseTransaction = PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite";
+		const db = shouldUseTransaction ? getDb() : null;
+		if (db) {
+			db.run("BEGIN IMMEDIATE");
+		}
+
+		try {
+			for (const trade of this.state.trades) {
+				if (trade.resolved) continue;
+				const tradeAgeMs = now - trade.windowStartMs;
+				if (tradeAgeMs <= maxAgeMs) continue;
+
+				trade.resolved = true;
+				trade.won = false;
+				trade.pnl = -(trade.size * trade.price);
+				trade.settlePrice = null;
+
+				this.state.losses++;
+				this.state.currentBalance += trade.size * trade.price + trade.pnl;
+				const drawdown = this.state.initialBalance - this.state.currentBalance;
+				if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
+				this.state.totalPnl += trade.pnl;
+
+				this.updateDailyPnl(trade.id, trade.pnl, trade.timestamp);
+				this.upsertTrade(trade);
+				this.syncTradeLog(trade);
+				resolved++;
+				this.log.warn(`Force-resolved stuck trade ${trade.id} as loss (age: ${Math.round(tradeAgeMs / 60_000)}min)`);
+			}
+
+			if (resolved > 0) {
+				this.checkAndTriggerStopLoss();
+				this.save();
+			}
+			if (db) {
+				db.run("COMMIT");
+			}
+		} catch (err) {
+			if (db) {
+				db.run("ROLLBACK");
+			}
+			throw err;
+		}
+		return resolved;
+	}
+
 	// ---- Queries ----
 
 	getStats(): AccountStatsResult {
@@ -593,16 +664,17 @@ export class AccountStatsManager {
 		};
 	}
 
-	getBalance(): { initial: number; current: number; maxDrawdown: number } {
+	getBalance(): { initial: number; current: number; maxDrawdown: number; reserved: number } {
 		return {
 			initial: this.state.initialBalance,
 			current: this.state.currentBalance,
 			maxDrawdown: this.state.maxDrawdown,
+			reserved: this.reservedBalance,
 		};
 	}
 
 	canAffordTrade(size: number): boolean {
-		return this.state.currentBalance >= size;
+		return this.getEffectiveBalance() >= size;
 	}
 
 	canAffordTradeWithStopCheck(size: number): { canTrade: boolean; reason: string | null } {
@@ -610,7 +682,7 @@ export class AccountStatsManager {
 		if (stopCheck.triggered) {
 			return { canTrade: false, reason: `trading_stopped:${stopCheck.reason}` };
 		}
-		if (this.state.currentBalance < size) {
+		if (this.getEffectiveBalance() < size) {
 			return { canTrade: false, reason: "insufficient_balance" };
 		}
 		if (this.isDailyLossLimitExceeded()) {
@@ -634,9 +706,9 @@ export class AccountStatsManager {
 
 	getMarketBreakdown(): Record<string, MarketBreakdown> {
 		const breakdown: Record<string, MarketBreakdown> = {};
-		const markets = ["BTC", "ETH", "SOL", "XRP"];
+		const marketIds = new Set(this.state.trades.map((t) => t.marketId));
 
-		for (const market of markets) {
+		for (const market of marketIds) {
 			const trades = this.state.trades.filter((t) => t.marketId === market);
 			const resolvedTrades = trades.filter((t) => t.resolved);
 			const wins = resolvedTrades.filter((t) => t.won).length;
@@ -737,14 +809,22 @@ export class AccountStatsManager {
 		this.save();
 	}
 
-	private updateDailyPnl(tradeId: string, pnl: number): void {
+	private updateDailyPnl(tradeId: string, pnl: number, tradeTimestamp?: string): void {
 		if (this.dailyCountedTradeIdSet.has(tradeId)) {
 			return;
 		}
 
-		const today = this.getTodayPnlEntry();
-		today.pnl += pnl;
-		today.trades += 1;
+		const tradeDate = tradeTimestamp ? (tradeTimestamp.split("T")[0] ?? this.getTodayDate()) : this.getTodayDate();
+		let entry = this.state.dailyPnl.find((d) => d.date === tradeDate);
+		if (!entry) {
+			entry = { date: tradeDate, pnl: 0, trades: 0 };
+			this.state.dailyPnl.push(entry);
+			if (this.state.dailyPnl.length > 30) {
+				this.state.dailyPnl = this.state.dailyPnl.slice(-30);
+			}
+		}
+		entry.pnl += pnl;
+		entry.trades += 1;
 		this.state.dailyCountedTradeIds.push(tradeId);
 		this.dailyCountedTradeIdSet.add(tradeId);
 
@@ -773,6 +853,23 @@ export class AccountStatsManager {
 		this.state.currentBalance = this.state.initialBalance;
 		this.state.maxDrawdown = 0;
 		this.save();
+	}
+
+	/**
+	 * Prune old resolved trades from in-memory array to prevent unbounded growth.
+	 * Keeps all pending trades and the most recent maxResolved resolved trades.
+	 * Returns the number of pruned trades.
+	 */
+	pruneTrades(maxResolved = 500): number {
+		const pending = this.state.trades.filter((t) => !t.resolved);
+		const resolved = this.state.trades.filter((t) => t.resolved);
+
+		if (resolved.length <= maxResolved) return 0;
+
+		const pruned = resolved.length - maxResolved;
+		const kept = resolved.slice(-maxResolved);
+		this.state.trades = [...kept, ...pending];
+		return pruned;
 	}
 }
 

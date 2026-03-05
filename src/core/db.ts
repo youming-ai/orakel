@@ -960,7 +960,7 @@ export function resetLiveDbData(): void {
 		db.run("DELETE FROM daily_stats WHERE mode = 'live'");
 		db.run("DELETE FROM onchain_events");
 		db.run("DELETE FROM balance_snapshots");
-		db.run("DELETE FROM known_ctf_tokens");
+		// Preserve known_ctf_tokens — needed by LiveSettler for post-reset redemptions
 	})();
 	stmtCache.clear();
 	queryCache.clear();

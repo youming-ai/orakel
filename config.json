@@ -4,9 +4,9 @@
       "maxTradeSizeUsdc": 10,
       "limitDiscount": 0.01,
       "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 1,
+      "maxOpenPositions": 4,
       "minLiquidity": 15000,
-      "maxTradesPerWindow": 1
+      "maxTradesPerWindow": 4
     },
     "initialBalance": 1000
   },
@@ -15,9 +15,9 @@
       "maxTradeSizeUsdc": 10,
       "limitDiscount": 0.01,
       "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 1,
+      "maxOpenPositions": 4,
       "minLiquidity": 15000,
-      "maxTradesPerWindow": 1
+      "maxTradesPerWindow": 4
     }
   },
   "strategy": {

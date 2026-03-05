@@ -130,9 +130,9 @@ export function OverviewTab({
 									{todayStats.trades} trade{todayStats.trades !== 1 ? "s" : ""}
 								</span>
 							</div>
-							<div className="flex items-center gap-2 pl-6 sm:pl-0">
+							<div className="flex items-center gap-2 sm:pl-0">
 								<span className="text-xs text-muted-foreground shrink-0">Daily Limit:</span>
-								<div className="w-24 h-2 bg-white/10 dark:bg-black/30 rounded-full overflow-hidden shrink-0">
+								<div className="flex-1 sm:flex-none sm:w-24 h-2 bg-white/10 dark:bg-black/30 rounded-full overflow-hidden shrink-0">
 									<div
 										className={cn(
 											"h-full rounded-full transition-all",
@@ -170,7 +170,7 @@ export function OverviewTab({
 					</span>
 					<span
 						className={cn(
-							"font-mono text-4xl sm:text-5xl font-black tracking-tighter truncate",
+							"font-mono text-3xl sm:text-5xl font-black tracking-tighter truncate",
 							mergedStats.totalPnl >= 0 ? "text-emerald-400" : "text-red-400",
 						)}
 					>
@@ -184,7 +184,7 @@ export function OverviewTab({
 
 				{/* Standard Stats */}
 				<Card className="flex-1 overflow-hidden">
-					<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 h-full">
+					<div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-4 h-full">
 						<StatCard label="Trades" value={String(mergedStats.totalTrades)} icon={<Hash className="size-3.5" />} />
 						<StatCard
 							label="Win Rate"
@@ -243,11 +243,11 @@ export function OverviewTab({
 										</linearGradient>
 									</defs>
 									<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-									<XAxis dataKey="time" tick={{ fontSize: 11, fill: CHART_COLORS.axis }} minTickGap={24} />
+									<XAxis dataKey="time" tick={{ fontSize: 10, fill: CHART_COLORS.axis }} minTickGap={32} />
 									<YAxis
-										tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
+										tick={{ fontSize: 10, fill: CHART_COLORS.axis }}
 										tickFormatter={(v: number) => `${v.toFixed(1)}`}
-										width={52}
+										width={44}
 									/>
 									<ReferenceLine y={0} stroke={CHART_COLORS.axis} strokeDasharray="3 3" opacity={0.5} />
 									<Tooltip

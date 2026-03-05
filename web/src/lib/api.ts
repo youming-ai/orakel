@@ -96,6 +96,7 @@ export interface PaperBalance {
 	initial: number;
 	current: number;
 	maxDrawdown: number;
+	reserved?: number;
 }
 // ============ Confidence Types ============
 

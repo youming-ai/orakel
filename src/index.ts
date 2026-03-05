@@ -169,6 +169,10 @@ async function main(): Promise<void> {
 				log.info(`Auto-redeem enabled: checking every ${AUTO_REDEEM_INTERVAL_MS / 60_000} minutes`);
 				redeemTimerHandle = setInterval(async () => {
 					try {
+						if (liveSettlerInstance?.isRunning()) {
+							log.debug("Auto-redeem skipped: LiveSettler is active");
+							return;
+						}
 						const wallet = getWallet();
 						if (!wallet) {
 							log.warn("Auto-redeem skipped: wallet not connected");
@@ -273,36 +277,65 @@ async function main(): Promise<void> {
 				const windowStartMs = Number.isFinite(parsedWindowStartMs)
 					? parsedWindowStartMs
 					: getCandleWindowTiming(CONFIG.candleWindowMinutes).startMs;
-				let recorded = false;
+				const effectiveSize = order.sizeMatched > 0 ? order.sizeMatched : order.size;
 
-				try {
-					liveAccount.addTrade(
-						{
-							marketId: order.marketId,
-							windowStartMs,
-							side: order.side === "DOWN" ? "DOWN" : "UP",
-							price: order.price,
-							size: order.size,
-							priceToBeat: order.priceToBeat ?? 0,
-							currentPriceAtEntry: order.currentPriceAtEntry ?? null,
-							timestamp: new Date(order.placedAt).toISOString(),
-						},
-						order.orderId,
-					);
-					log.info(`Recorded filled live trade ${order.orderId.slice(0, 12)}...`);
-					recorded = true;
-				} catch (err) {
-					log.error(
-						`Failed to record filled live trade ${order.orderId.slice(0, 12)}...:`,
-						err instanceof Error ? err.message : String(err),
-					);
+				const recordFilledTrade = (): boolean => {
+					try {
+						liveAccount.addTrade(
+							{
+								marketId: order.marketId,
+								windowStartMs,
+								side: order.side === "DOWN" ? "DOWN" : "UP",
+								price: order.price,
+								size: effectiveSize,
+								priceToBeat: order.priceToBeat ?? 0,
+								currentPriceAtEntry: order.currentPriceAtEntry ?? null,
+								timestamp: new Date(order.placedAt).toISOString(),
+							},
+							order.orderId,
+						);
+						log.info(`Recorded filled live trade ${order.orderId.slice(0, 12)}...`);
+						return true;
+					} catch (err) {
+						log.error(
+							`Failed to record filled live trade ${order.orderId.slice(0, 12)}...:`,
+							err instanceof Error ? err.message : String(err),
+						);
+						return false;
+					}
+				};
+
+				const recorded = recordFilledTrade();
+
+				if (!recorded) {
+					setTimeout(() => {
+						if (recordFilledTrade()) {
+							try {
+								statements.deleteLivePendingOrder().run({ $orderId: order.orderId });
+							} catch {
+								/* best-effort */
+							}
+						} else {
+							log.error(`Retry also failed for ${order.orderId.slice(0, 12)}... — will recover on restart`);
+						}
+					}, 5_000);
 				}
 
 				if (recorded) {
+					const currentTiming = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+					if (windowStartMs < currentTiming.startMs) {
+						const prices = collectLatestPrices(markets, states);
+						if (prices.size > 0) {
+							const settled = liveAccount.resolveTrades(windowStartMs, prices);
+							if (settled > 0) {
+								log.info(`Immediate settlement for late-filled trade: ${settled} trade(s)`);
+							}
+						}
+					}
 					try {
 						statements.deleteLivePendingOrder().run({ $orderId: order.orderId });
 					} catch {
-						// Best-effort cleanup
+						/* best-effort */
 					}
 				}
 			}
@@ -311,12 +344,13 @@ async function main(): Promise<void> {
 				try {
 					statements.deleteLivePendingOrder().run({ $orderId: order.orderId });
 				} catch {
-					// Best-effort cleanup
+					/* best-effort */
 				}
 				orderTracker.orders.delete(orderTracker.keyFor(order.marketId, order.windowSlug));
 			}
 
 			if (status === "filled" || status === "cancelled" || status === "expired") {
+				liveAccount.unreserveBalance(order.price * order.size);
 				unregisterOpenGtdOrder(order.orderId);
 			}
 		},
@@ -691,6 +725,8 @@ async function main(): Promise<void> {
 			if (total > 0) {
 				log.info("DB pruned", { ...result.pruned, vacuumed: result.vacuumed });
 			}
+			paperAccount.pruneTrades(500);
+			liveAccount.pruneTrades(500);
 		} catch (err) {
 			log.warn("DB prune failed", { error: err instanceof Error ? err.message : String(err) });
 		}
@@ -715,11 +751,11 @@ async function main(): Promise<void> {
 			if (paperRecovered > 0) {
 				log.info(`Recovered expired paper trades: ${paperRecovered}`);
 			}
-			if (isLiveRunning()) {
-				const liveRecovered = liveAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
-				if (liveRecovered > 0) {
-					log.info(`Recovered expired live trades: ${liveRecovered}`);
-				}
+			// Live settlement runs regardless of isLiveRunning() — pending trades must
+			// settle even after live trading is stopped (fix: issue 2.1)
+			const liveRecovered = liveAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
+			if (liveRecovered > 0) {
+				log.info(`Recovered expired live trades: ${liveRecovered}`);
 			}
 		}
 
@@ -729,14 +765,19 @@ async function main(): Promise<void> {
 				if (paperResolved > 0) {
 					log.info(`Paper window settled: ${paperResolved}`);
 				}
-				if (isLiveRunning()) {
-					const liveResolved = liveAccount.resolveTrades(prevWindowStartMs, latestPrices);
-					if (liveResolved > 0) {
-						log.info(`Live window settled: ${liveResolved}`);
-					}
+				const liveResolved = liveAccount.resolveTrades(prevWindowStartMs, latestPrices);
+				if (liveResolved > 0) {
+					log.info(`Live window settled: ${liveResolved}`);
 				}
 			}
 		}
+
+		// Force-resolve trades stuck beyond 1 hour — safety net for issue 7.2
+		const FORCE_RESOLVE_MAX_AGE_MS = 60 * 60_000;
+		const paperForced = paperAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS);
+		if (paperForced > 0) log.warn(`Force-resolved ${paperForced} stuck paper trade(s)`);
+		const liveForced = liveAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS);
+		if (liveForced > 0) log.warn(`Force-resolved ${liveForced} stuck live trade(s)`);
 
 		ensureLiveSettler();
 		prevWindowStartMs = timing.startMs;
@@ -890,6 +931,9 @@ async function main(): Promise<void> {
 										? sig.tokens.upTokenId
 										: sig.tokens.downTokenId
 									: undefined;
+								const gtdPrice = result.tradePrice ?? 0;
+								const gtdSize = Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0);
+								liveAcc.reserveBalance(gtdSize * gtdPrice);
 								orderManager.addOrderWithTracking(
 									{
 										orderId: result.orderId,
@@ -897,8 +941,8 @@ async function main(): Promise<void> {
 										windowSlug: windowKey,
 										side: sig.side ?? "UP",
 										tokenId: tradeTokenId,
-										price: result.tradePrice ?? 0,
-										size: Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0),
+										price: gtdPrice,
+										size: gtdSize,
 										priceToBeat: sig.priceToBeat ?? null,
 										currentPriceAtEntry: sig.currentPrice ?? null,
 										placedAt: Date.now(),
