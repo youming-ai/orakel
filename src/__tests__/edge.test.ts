@@ -40,8 +40,6 @@ describe("computeEdge", () => {
 		expect(result.marketDown).toBeCloseTo(0.5, 10);
 		expect(result.edgeUp).toBeCloseTo(0.1, 10);
 		expect(result.edgeDown).toBeCloseTo(-0.1, 10);
-		expect(result.effectiveEdgeUp).toBeCloseTo(0.1, 10);
-		expect(result.effectiveEdgeDown).toBeCloseTo(-0.1, 10);
 	});
 
 	it("removes vig from market prices via normalization", () => {
@@ -93,7 +91,7 @@ describe("computeEdge", () => {
 		expect(result.marketDown).toBe(0);
 	});
 
-	it("sets effectiveEdge equal to edge (no adjustments)", () => {
+	it("sets edge directly without adjustments (simplified strategy)", () => {
 		const result = computeEdge({
 			modelUp: 0.7,
 			modelDown: 0.3,
@@ -101,8 +99,8 @@ describe("computeEdge", () => {
 			marketNo: 0.45,
 		});
 
-		expect(result.effectiveEdgeUp).toBe(result.edgeUp);
-		expect(result.effectiveEdgeDown).toBe(result.edgeDown);
+		expect(result.edgeUp).toBeCloseTo(0.15, 10);
+		expect(result.edgeDown).toBeCloseTo(-0.15, 10);
 	});
 });
 

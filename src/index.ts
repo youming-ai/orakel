@@ -956,7 +956,6 @@ async function main(): Promise<void> {
 				volImpliedUp: r.volImpliedUp ?? null,
 				binanceChainlinkDelta: r.binanceChainlinkDelta ?? null,
 				orderbookImbalance: r.orderbookImbalance ?? null,
-				confidence: r.rec?.confidence ?? undefined,
 			}),
 		);
 		updateMarkets(snapshots);

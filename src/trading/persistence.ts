@@ -4,7 +4,6 @@ import { createLogger } from "../core/logger.ts";
 import { emitSignalNew } from "../core/state.ts";
 import { appendCsvRow } from "../core/utils.ts";
 import type {
-	BlendResult,
 	CandleWindowTiming,
 	EdgeResult,
 	MarketConfig,
@@ -22,12 +21,10 @@ interface PersistSignalParams {
 	regimeInfo: { regime: Regime };
 	edge: EdgeResult;
 	scored: { rawUp: number };
-	blended: BlendResult;
 	finalUp: number;
 	finalDown: number;
 	volatility15m: number | null;
 	priceToBeat: number | null;
-	volImplied: number | null;
 	binanceChainlinkDelta: number | null;
 	orderbookImbalance: number | null;
 	timeLeftMin: number | null;
@@ -59,12 +56,10 @@ export function persistSignal({
 	regimeInfo,
 	edge,
 	scored,
-	blended,
 	finalUp,
 	finalDown,
 	volatility15m,
 	priceToBeat,
-	volImplied,
 	binanceChainlinkDelta,
 	orderbookImbalance,
 	timeLeftMin,
@@ -94,7 +89,6 @@ export function persistSignal({
 				"time_left_min",
 				"regime",
 				"signal",
-				"vol_implied_up",
 				"ta_raw_up",
 				"blended_up",
 				"blend_source",
@@ -118,10 +112,9 @@ export function persistSignal({
 				Number(timeLeftMin).toFixed(3),
 				regimeInfo.regime,
 				signalLabel,
-				volImplied,
 				scored.rawUp,
-				blended.blendedUp,
-				blended.source,
+				finalUp,
+				"ta_only",
 				volatility15m,
 				priceToBeat,
 				binanceChainlinkDelta,
@@ -145,10 +138,10 @@ export function persistSignal({
 			$market: market.id,
 			$regime: regimeInfo.regime,
 			$signal: signalLabel,
-			$vol_implied_up: volImplied,
+			$vol_implied_up: null,
 			$ta_raw_up: scored.rawUp,
-			$blended_up: blended.blendedUp,
-			$blend_source: blended.source,
+			$blended_up: finalUp,
+			$blend_source: "ta_only",
 			$volatility_15m: volatility15m,
 			$price_to_beat: priceToBeat,
 			$binance_chainlink_delta: binanceChainlinkDelta,
@@ -186,8 +179,8 @@ export function persistSignal({
 		spotPrice,
 		priceToBeat,
 		currentPrice,
-		blendSource: blended.source,
-		volImpliedUp: volImplied,
+		blendSource: "ta_only",
+		volImpliedUp: null,
 		volatility15m,
 		binanceChainlinkDelta,
 		orderbookImbalance,
