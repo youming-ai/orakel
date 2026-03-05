@@ -51,6 +51,8 @@ const STRATEGY_DEFAULTS: {
 	skipMarkets: [],
 };
 
+
+
 const RiskConfigSchema = z
 	.object({
 		maxTradeSizeUsdc: z.coerce.number().optional(),
@@ -71,32 +73,13 @@ const StrategyConfigSchema = z
 		minProbEarly: z.coerce.number().min(0).max(1).optional(),
 		minProbMid: z.coerce.number().min(0).max(1).optional(),
 		minProbLate: z.coerce.number().min(0).max(1).optional(),
-		blendWeights: z
-			.object({
-				vol: z.coerce.number().min(0).max(1).optional(),
-				ta: z.coerce.number().min(0).max(1).optional(),
-			})
-			.partial()
-			.optional(),
-		regimeMultipliers: z
-			.object({
-				CHOP: z.coerce.number().optional(),
-				RANGE: z.coerce.number().optional(),
-				TREND_ALIGNED: z.coerce.number().optional(),
-				TREND_OPPOSED: z.coerce.number().optional(),
-			})
-			.partial()
-			.optional(),
 		skipMarkets: z.array(z.string()).optional(),
 	})
 	.partial()
 	.transform((value) => ({
 		...STRATEGY_DEFAULTS,
 		...value,
-		blendWeights: { ...STRATEGY_DEFAULTS.blendWeights, ...value.blendWeights },
-		regimeMultipliers: { ...STRATEGY_DEFAULTS.regimeMultipliers, ...value.regimeMultipliers },
 		skipMarkets: value.skipMarkets ?? [],
-		marketPerformance: value.marketPerformance ?? {},
 	}));
 
 const ConfigFileSchema = z
@@ -266,9 +249,6 @@ export function reloadConfig(): AppConfig {
 	const fileStrategy = fileConfig.strategy;
 	const filePaperRisk = fileConfig.paper.risk;
 	const fileLiveRisk = fileConfig.live.risk;
-
-	// P1-7: Preserve runtime-only fields that are not in config.json
-	const prevMarketPerformance = CONFIG.strategy.marketPerformance;
 
 	CONFIG.strategy = {
 		edgeThresholdEarly: fileStrategy.edgeThresholdEarly,
