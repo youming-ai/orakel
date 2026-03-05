@@ -19,7 +19,7 @@ export interface TrackedOrder {
 	price: number;
 	size: number;
 	placedAt: number;
-	status: "placed" | "live" | "matched" | "filled" | "cancelled" | "expired";
+	status: "placed" | "filled" | "cancelled" | "expired";
 	sizeMatched: number;
 	lastChecked: number;
 	orderType?: "GTD" | "FOK"; // Track order type for heartbeat management
@@ -149,11 +149,11 @@ export class OrderManager {
 	}
 
 	getActiveOrders(): TrackedOrder[] {
-		return [...this.orders.values()].filter((o) => o.status === "placed" || o.status === "live");
+		return [...this.orders.values()].filter((o) => o.status === "placed");
 	}
 
 	getFilledOrders(): TrackedOrder[] {
-		return [...this.orders.values()].filter((o) => o.status === "filled" || o.status === "matched");
+		return [...this.orders.values()].filter((o) => o.status === "filled");
 	}
 
 	async pollOrders(): Promise<void> {
@@ -174,9 +174,6 @@ export class OrderManager {
 					order.status = "filled";
 					order.sizeMatched = sizeMatched;
 					log.info(`Order ${order.orderId.slice(0, 8)} FILLED: ${sizeMatched} / ${order.size}`);
-				} else if (status === "live") {
-					order.status = "live";
-					order.sizeMatched = sizeMatched;
 				} else if (status === "unmatched" || status === "cancelled") {
 					order.status = "cancelled";
 					log.info(`Order ${order.orderId.slice(0, 8)} CANCELLED`);
@@ -184,6 +181,7 @@ export class OrderManager {
 					order.status = "expired";
 					log.info(`Order ${order.orderId.slice(0, 8)} EXPIRED`);
 				}
+				// Note: "live" status from API is ignored - order stays "placed" until filled/cancelled/expired
 
 				order.lastChecked = Date.now();
 
@@ -235,10 +233,7 @@ export class OrderManager {
 			if (
 				order.marketId === marketId &&
 				order.windowSlug === windowSlug &&
-				(order.status === "placed" ||
-					order.status === "live" ||
-					order.status === "filled" ||
-					order.status === "matched")
+				(order.status === "placed" || order.status === "filled")
 			) {
 				return true;
 			}
@@ -250,11 +245,11 @@ export class OrderManager {
 		return this.getActiveOrders().length + this.getFilledOrders().length;
 	}
 
-	/** Sum of price * size for all placed/live orders (USDC reserved for pending GTD) */
+	/** Sum of price * size for all placed orders (USDC reserved for pending GTD) */
 	totalPendingCost(): number {
 		let cost = 0;
 		for (const order of this.orders.values()) {
-			if (order.status === "placed" || order.status === "live") {
+			if (order.status === "placed") {
 				cost += order.price * order.size;
 			}
 		}

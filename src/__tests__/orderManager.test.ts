@@ -88,9 +88,8 @@ describe("OrderManager.pollOrders", () => {
 		await manager.pollOrders();
 		await manager.pollOrders();
 
-		expect(events).toEqual([
-			{ status: "live", previousStatus: "placed" },
-			{ status: "filled", previousStatus: "live" },
-		]);
+		// "live" status from API is ignored - order stays "placed"
+		// Only transition to "filled" triggers callback
+		expect(events).toEqual([{ status: "filled", previousStatus: "placed" }]);
 	});
 });
