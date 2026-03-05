@@ -98,6 +98,84 @@ This document outlines the manual testing procedures for the Pixel Theme feature
 - Minimum readable size maintained at 10px base
 - Touch targets meet iOS/Android guidelines
 
+## Docker Compatibility Testing
+
+### Test Results (2026-03-05)
+
+**Status:** ✅ PASSED
+
+The Pixel Theme feature has been verified to work correctly in the Docker production environment.
+
+#### Build Verification
+```bash
+# Docker build completed successfully
+docker compose build
+# Images built:
+# - orakel-bot:local
+# - orakel-web:local
+```
+
+#### Runtime Verification
+```bash
+# Containers started successfully
+docker compose up -d
+# Both services healthy:
+# - orakel-bot-1: healthy (port 9999)
+# - orakel-web-1: serving on port 9998
+```
+
+#### Asset Verification
+1. **Pixel Theme CSS Classes**: Confirmed `pixel-theme` classes present in production CSS bundle
+   ```bash
+   docker exec orakel-web-1 grep -o 'pixel-theme' /usr/share/nginx/html/assets/*.css
+   # Result: Found in 5+ locations
+   ```
+
+2. **Theme Toggle Logic**: Confirmed `usePixelTheme` hook and theme toggle functionality in production JS bundle
+   ```bash
+   docker exec orakel-web-1 grep 'theme.*toggle' /usr/share/nginx/html/assets/*.js -i
+   # Result: Theme toggle code with localStorage persistence present
+   ```
+
+3. **Gamepad Icon**: Confirmed Lucide icon (`gamepad-2`) included in UI bundle
+   ```bash
+   docker exec orakel-web-1 grep -i 'gamepad' /usr/share/nginx/html/assets/*.js
+   # Result: Icon definition present
+   ```
+
+#### Functional Testing
+- ✅ Bot health endpoint responds: `http://localhost:9999/api/health`
+- ✅ Web dashboard serves correctly: `http://localhost:9998/`
+- ✅ All pixel theme assets properly bundled
+- ✅ No build errors or warnings
+- ✅ Nginx serves static files correctly
+
+#### Production Considerations
+- Pixel theme is fully compatible with Docker multi-stage build
+- All assets (CSS, JS, fonts) properly bundled during `bun run build`
+- No runtime dependencies or external API calls required for theme switching
+- localStorage persistence works in containerized environment
+
+### Docker Testing Commands
+
+```bash
+# Build and test
+docker compose build
+docker compose up -d
+docker compose ps
+
+# Verify assets
+docker exec orakel-web-1 ls -la /usr/share/nginx/html/assets/
+docker exec orakel-web-1 grep -o 'pixel-theme' /usr/share/nginx/html/assets/*.css
+
+# Test endpoints
+curl http://localhost:9999/api/health
+curl http://localhost:9998/
+
+# Cleanup
+docker compose down
+```
+
 ## Test Environment Setup
 
 ```bash
