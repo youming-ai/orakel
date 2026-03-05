@@ -3,6 +3,13 @@
  * Retro gaming aesthetic with sharp edges, vibrant colors, and pixel fonts
  */
 
+/* Font loading optimization with display:swap */
+@font-face {
+	font-family: "Press Start 2P";
+	font-display: swap;
+	src: local("Press Start 2P"), local("Courier New");
+}
+
 @import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
 
 /* ============================================
