@@ -59,8 +59,8 @@ export interface StrategyConfig {
 	minProbEarly: number;
 	minProbMid: number;
 	minProbLate: number;
-	blendWeights: { vol: number; ta: number };
-	regimeMultipliers: {
+	blendWeights?: { vol: number; ta: number };
+	regimeMultipliers?: {
 		CHOP: number;
 		RANGE: number;
 		TREND_ALIGNED: number;
