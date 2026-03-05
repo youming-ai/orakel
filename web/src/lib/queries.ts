@@ -69,11 +69,14 @@ export function useTrades(mode: ViewMode) {
 	const previousModeRef = useRef<ViewMode>(mode);
 
 	useEffect(() => {
-		// 当 mode 从 live 切换到 paper，或从 paper 切换到 live 时
-		// 清除所有 trades 相关的缓存，确保显示正确的数据
 		if (previousModeRef.current !== mode) {
-			queryClient.invalidateQueries({ queryKey: ["trades"] });
+			const oldMode = previousModeRef.current;
 			previousModeRef.current = mode;
+			// Remove the old mode's trade cache entirely so stale data
+			// from e.g. "live" can never leak into the "paper" view.
+			queryClient.removeQueries({ queryKey: ["trades", oldMode] });
+			// Force a fresh fetch for the newly-active mode.
+			queryClient.invalidateQueries({ queryKey: ["trades", mode] });
 		}
 	}, [mode, queryClient]);
 
