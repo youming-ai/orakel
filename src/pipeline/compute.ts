@@ -1,12 +1,6 @@
 import { createLogger } from "../core/logger.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
-import {
-	applyAdaptiveTimeDecay,
-	blendProbabilities,
-	computeRealizedVolatility,
-	computeVolatilityImpliedProb,
-	scoreDirection,
-} from "../engines/probability.ts";
+import { applyTimeAwareness, computeRealizedVolatility, scoreDirection } from "../engines/probability.ts";
 import { detectRegime } from "../engines/regime.ts";
 import { computeHeikenAshi, countConsecutive } from "../indicators/heikenAshi.ts";
 import { computeMacd } from "../indicators/macd.ts";
@@ -35,7 +29,7 @@ function countVwapCrosses(closes: number[], vwapSeries: number[], lookback: numb
 
 export function computeMarketDecision(
 	data: RawMarketData,
-	priceToBeat: number | null,
+	_priceToBeat: number | null,
 	config: AppConfig,
 ): ComputeResult {
 	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin } = data;
@@ -65,7 +59,6 @@ export function computeMarketDecision(
 	const rsiForSlope: number[] = [];
 	for (let offset = 2; offset >= 0; offset--) {
 		if (offset === 0) {
-			// Reuse the already-computed current RSI
 			if (rsiNow !== null) rsiForSlope.push(rsiNow);
 		} else {
 			const subLen = closes.length - offset;
@@ -143,28 +136,9 @@ export function computeMarketDecision(
 	}
 	const orderbookImbalance = netImbalance;
 
-	const volImplied = computeVolatilityImpliedProb({
-		currentPrice,
-		priceToBeat,
-		volatility15m,
-		timeLeftMin,
-		windowMin: config.candleWindowMinutes,
-	});
-
-	const blended = blendProbabilities({
-		volImpliedUp: volImplied,
-		taRawUp: scored.rawUp,
-		binanceLeadSignal: binanceChainlinkDelta,
-		orderbookImbalance,
-		weights: config.strategy.blendWeights,
-	});
-
-	const finalUp =
-		blended.source === "blended"
-			? blended.blendedUp
-			: applyAdaptiveTimeDecay(scored.rawUp, effectiveTimeLeftMin, config.candleWindowMinutes, volatility15m)
-					.adjustedUp;
-	const finalDown = 1 - finalUp;
+	const timeAware = applyTimeAwareness(scored.rawUp, effectiveTimeLeftMin, config.candleWindowMinutes);
+	const finalUp = timeAware.adjustedUp;
+	const finalDown = timeAware.adjustedDown;
 
 	const marketUp = poly.ok ? (poly.prices?.up ?? null) : null;
 	const marketDown = poly.ok ? (poly.prices?.down ?? null) : null;
@@ -173,39 +147,18 @@ export function computeMarketDecision(
 		modelDown: finalDown,
 		marketYes: marketUp,
 		marketNo: marketDown,
-		orderbookImbalance,
-		orderbookSpreadUp: upBookSummary?.spread ?? null,
-		orderbookSpreadDown: downBookSummary?.spread ?? null,
 	});
 
-	const rec = edge.vigTooHigh
-		? ({
-				action: "NO_TRADE",
-				side: null,
-				phase: null,
-				regime: regimeInfo.regime,
-				reason: `vig_too_high_${edge.rawSum?.toFixed(3)}`,
-			} as unknown as TradeDecision)
-		: decide({
-				remainingMinutes: effectiveTimeLeftMin,
-				edgeUp: edge.edgeUp,
-				edgeDown: edge.edgeDown,
-				effectiveEdgeUp: edge.effectiveEdgeUp,
-				effectiveEdgeDown: edge.effectiveEdgeDown,
-				modelUp: finalUp,
-				modelDown: finalDown,
-				regime: regimeInfo.regime,
-				modelSource: blended.source,
-				strategy: config.strategy,
-				marketId: market.id,
-				volatility15m,
-				orderbookImbalance,
-				vwapSlope,
-				rsi: rsiNow,
-				macdHist: macd?.hist ?? null,
-				haColor: consec.color,
-				minConfidence: config.strategy.minConfidence ?? 0.5,
-			});
+	const rec: TradeDecision = decide({
+		remainingMinutes: effectiveTimeLeftMin,
+		edgeUp: edge.edgeUp,
+		edgeDown: edge.edgeDown,
+		modelUp: finalUp,
+		modelDown: finalDown,
+		regime: regimeInfo.regime,
+		strategy: config.strategy,
+		marketId: market.id,
+	});
 
 	const pLong = Number.isFinite(finalUp) ? (finalUp * 100).toFixed(0) : "-";
 	const pShort = Number.isFinite(finalDown) ? (finalDown * 100).toFixed(0) : "-";
@@ -230,11 +183,9 @@ export function computeMarketDecision(
 		marketDown,
 		edge,
 		scored,
-		blended,
 		regimeInfo,
 		finalUp,
 		finalDown,
-		volImplied,
 		pLong,
 		pShort,
 		predictNarrative,

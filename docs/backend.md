@@ -1,5 +1,7 @@
 # Backend Architecture
 
+> For system architecture, data flow pipeline, trading engines, and decision logic, see [Core Logic](./core-logic.md).
+
 ## 1. Backend Overview
 
 Orakel backend is a single-process trading bot built with Bun Runtime, TypeScript, Hono, and SQLite. The backend hosts both the trading logic and the API server in one process, supporting both Paper Trading and Live Trading modes.
@@ -102,7 +104,6 @@ Zod-validated configuration loader with hot-reload capability.
 |-------------|---------|------------|
 | RiskConfig | Position sizing, daily limits, risk parameters | Yes |
 | StrategyConfig | Edge thresholds, probability weights, decision parameters | Yes |
-| MarketPerformance | Per-market performance tracking and adaptive multipliers | Yes |
 
 **Key Exports**
 
@@ -428,254 +429,7 @@ Polygon on-chain events adapter for transfer tracking.
 
 ---
 
-## 5. Engine Layer (src/engines/)
-
-### probability.ts
-
-Computes probability estimates by fusing technical analysis scoring with volatility-implied probability.
-
-**Key Functions**
-
-| Function | Purpose |
-|----------|---------|
-| `scoreDirection(data, direction)` | Technical analysis scoring (6 indicators) |
-| `computeVolatilityImpliedProb(currentPrice, priceToBeat, volatility, timeLeft)` | Black-Scholes-style probability with fat-tail dampening |
-| `applyTimeDecay(prob, timeLeftMin)` | S-curve time decay adjustment |
-| `blendProbabilities(volImplied, taRaw, adjustments)` | 50/50 blend with adjustments |
-
-**Blending Adjustments**
-
-- Binance lead effect: ±2% if price leads by >0.1%
-- Orderbook imbalance: ±2% if imbalance >0.2
-
-For detailed formulas and thresholds, see [Trading Strategy](./trading-strategy.md#2-probability-engine-srcenginesprobabilityts).
-
-**Key Exports**
-
-- `computeProbability()`: Main probability computation function
-
-### edge.ts
-
-Calculates edge (model probability minus market price) and makes trading decisions.
-
-**Key Functions**
-
-| Function | Purpose |
-|----------|---------|
-| `computeEdge(modelProb, marketPrice, orderbookData)` | Edge calculation with slippage and fee adjustments |
-| `computeConfidence(data, direction, regime)` | 5-factor weighted confidence score |
-| `decide(data, marketConfig)` | Complete trading decision pipeline |
-
-**Decision Logic**
-
-17 sequential checks including:
-- Data validation
-- Skip markets filter
-- Edge threshold (phase-based)
-- Min probability check
-- Overconfidence protection (soft cap 0.25, hard cap 0.40)
-- Regime multipliers
-- Confidence scoring
-
-For detailed decision flow, see [Trading Strategy](./trading-strategy.md#6-trading-decision-decide).
-
-**Key Exports**
-
-- `computeEdge()`, `computeConfidence()`, `decide()`
-
-### regime.ts
-
-Detects current market regime (trend, range, or choppy).
-
-**Decision Tree**
-
-1. Missing data → CHOP
-2. Low volume + near VWAP → CHOP
-3. Price > VWAP + rising slope → TREND_UP
-4. Price < VWAP + falling slope → TREND_DOWN
-5. VWAP cross count >= 3 → CHOP
-6. Default → RANGE
-
-**Regime Implications**
-
-| Regime | Multiplier (Aligned) | Multiplier (Opposed) |
-|--------|----------------------|----------------------|
-| TREND_UP (UP) | 0.75 | 1.3 |
-| TREND_DOWN (DOWN) | 0.75 | 1.3 |
-| RANGE | 1.0 | 1.0 |
-| CHOP | 1.4 | 1.4 |
-
-For detailed regime detection logic, see [Trading Strategy](./trading-strategy.md#3-market-regime-engine-srcenginesregimets).
-
-**Key Exports**
-
-- `detectRegime(data, window)`: Returns regime (TREND_UP, TREND_DOWN, RANGE, CHOP)
-
-### arbitrage.ts
-
-Detects arbitrage opportunities between UP and DOWN contracts.
-
-**Detection Logic**
-
-- `rawSum < 0.98`: Arbitrage opportunity (UP + DOWN quotes sum below 1)
-- `rawSum > 1.04`: Vig too high, skip market
-
-**Key Exports**
-
-- `detectArbitrage(marketData)`: Returns arbitrage opportunity data
-
----
-
-## 6. Indicators Layer (src/indicators/)
-
-### rsi.ts
-
-Computes Relative Strength Index with SMA and slope.
-
-**Parameters**
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| Period | 14 | RSI lookback period |
-| SMA Period | 3 | SMA period for RSI |
-
-**Outputs**
-
-- RSI value (0-100)
-- RSI SMA
-- RSI slope (change over time)
-
-**Key Exports**
-
-- `computeRsi(prices, period = 14)`
-- `computeRsiSma(rsiValues, period = 3)`
-- `computeSlope(values)`
-
-### macd.ts
-
-Computes MACD (Moving Average Convergence Divergence) indicator.
-
-**Parameters**
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| Fast Period | 12 | Fast EMA period |
-| Slow Period | 26 | Slow EMA period |
-| Signal Period | 9 | Signal line EMA period |
-
-**Outputs**
-
-- MACD line
-- Signal line
-- Histogram (MACD - Signal)
-- Histogram delta (change over time)
-
-**Key Exports**
-
-- `computeMacd(prices, fast = 12, slow = 26, signal = 9)`
-
-### vwap.ts
-
-Computes Volume Weighted Average Price and session VWAP series.
-
-**Outputs**
-
-| Output | Description |
-|--------|-------------|
-| Current VWAP | Session VWAP value |
-| VWAP Series | Array of VWAP values over time |
-| VWAP Slope | Rate of change of VWAP |
-
-**Key Exports**
-
-- `computeVwap(candles)`: Returns current VWAP and series
-- `computeVwapSlope(vwapSeries)`: Returns VWAP slope
-
-### heikenAshi.ts
-
-Computes Heiken Ashi smoothed candles.
-
-**Formula**
-
-- Close = (Open + High + Low + Close) / 4
-- Open = (Previous Open + Previous Close) / 2
-- High = max(High, Open, Close)
-- Low = min(Low, Open, Close)
-
-**Outputs**
-
-| Output | Description |
-|--------|-------------|
-| HA Candles | Heiken Ashi candle data |
-| Consecutive Green | Count of consecutive green candles |
-| Consecutive Red | Count of consecutive red candles |
-
-**Key Exports**
-
-- `computeHeikenAshi(candles)`: Returns HA candles and consecutive counts
-
----
-
-## 7. Pipeline Layer (src/pipeline/)
-
-### fetch.ts
-
-Orchestrates data fetching from multiple external sources in parallel.
-
-**Fetch Strategy**
-
-| Data Source | Fetch Method | Cache | Parallel |
-|-------------|--------------|-------|----------|
-| Binance Klines | REST | 60s | Yes |
-| Binance Price | WS (streaming) | N/A | N/A |
-| Polymarket Market | REST | 30s | Yes |
-| Polymarket Price | REST | 3s | Yes |
-| Polymarket Orderbook | WS (streaming) | N/A | N/A |
-| Chainlink Price | RPC | 2s min | Yes |
-| Chainlink Price | WS (streaming) | N/A | N/A |
-
-**Key Exports**
-
-- `fetchMarketData(marketConfig)`: Returns aggregated market data
-
-### compute.ts
-
-Orchestrates indicator calculation and engine orchestration to produce trade decisions.
-
-**Pipeline Flow**
-
-1. Compute Heiken Ashi candles
-2. Compute RSI with SMA and slope
-3. Compute MACD with histogram and delta
-4. Compute VWAP with series and slope
-5. Compute realized volatility
-6. Compute probability (TA + vol-implied blend)
-7. Detect market regime
-8. Compute edge and confidence
-9. Make trading decision
-
-**Key Exports**
-
-- `computeDecision(marketData)`: Returns TradeDecision object
-
-### processMarket.ts
-
-Per-market entry point that orchestrates fetch → compute → signal flow.
-
-**Execution Flow**
-
-1. Call `fetchMarketData()` to get latest data
-2. Call `computeDecision()` to get trade decision
-3. If ENTER decision, emit `signal:new` event
-4. Update market snapshot in shared state
-
-**Key Exports**
-
-- `processMarket(marketConfig)`: Main per-market processing function
-
----
-
-## 8. Trading Layer (src/trading/)
+## 5. Trading Layer (src/trading/)
 
 ### trader.ts
 
@@ -823,7 +577,7 @@ Formats terminal output for logging and debugging.
 
 ---
 
-## 9. Blockchain Layer (src/blockchain/)
+## 6. Blockchain Layer (src/blockchain/)
 
 ### contracts.ts
 
@@ -917,7 +671,7 @@ Handles automatic redemption of CTF tokens for settled markets.
 
 ---
 
-## 10. API Server (src/api.ts)
+## 7. API Server (src/api.ts)
 
 Hono-based HTTP server providing REST endpoints and WebSocket interface.
 
@@ -1001,66 +755,7 @@ Hono-based HTTP server providing REST endpoints and WebSocket interface.
 
 ---
 
-## 11. Main Loop (src/index.ts)
-
-System entry point that drives the entire trading flow.
-
-### Startup Sequence
-
-Executes sequentially on startup:
-
-1. Initialize logger
-2. Load configuration (config.json)
-3. Load environment variables (.env)
-4. Initialize SQLite database
-5. Initialize shared state
-6. Start Hono API server
-7. Initialize OrderManager
-8. Load active markets
-9. Initialize WebSocket streams:
-   - Binance price stream
-   - Polymarket live price stream
-   - Polymarket CLOB stream
-   - Chainlink price stream
-10. Enter main loop
-
-### Main Loop Execution
-
-Executes every `CONFIG.pollIntervalMs` milliseconds (default 1000ms):
-
-1. Check running state (paper/live)
-2. Detect 15-minute window boundary
-3. Process pending start/stop transitions (if at boundary)
-4. Settle previous window's paper trades (if at boundary)
-5. Process all markets in parallel:
-   - Fetch data
-   - Compute indicators
-   - Run engines
-   - Generate signals
-6. Filter candidates:
-   - ENTER decision
-   - Valid price data
-   - Proper window timing
-7. Sort candidates by edge DESC, rawSum ASC
-8. Execute trades (subject to position limits)
-9. Emit state snapshot (`state:snapshot` event)
-10. Sleep for pollIntervalMs
-
-### Safe Mode
-
-After 3 consecutive all-market failures, enters safe mode:
-
-- Skips trade execution
-- Continues processing markets
-- Exits safe mode when at least one market processes successfully
-
-### Key Exports
-
-- None (main entry point)
-
----
-
-## 12. Dependencies
+## 8. Dependencies
 
 ### Key npm Packages
 
@@ -1081,9 +776,8 @@ After 3 consecutive all-market failures, enters safe mode:
 
 ---
 
-## 13. Related Documentation
+## Related Documentation
 
-- [System Architecture](./architecture.md) — Overall system design and data flow
-- [Trading Strategy](./trading-strategy.md) — Detailed probability, edge, and decision formulas
+- [Core Logic](./core-logic.md) — Architecture, data flow, trading strategy, decision logic
 - [Deployment Guide](./deployment.md) — Docker setup and environment configuration
-- [Flowcharts](./FLOWCHARTS.md) — Visual diagrams of system and decision flows
+- [Frontend Documentation](./frontend.md) — React components, state management, WebSocket integration

@@ -47,11 +47,6 @@ export interface RiskConfig {
 	maxTradesPerWindow: number;
 }
 
-export interface MarketPerformance {
-	winRate: number;
-	edgeMultiplier: number;
-}
-
 export interface StrategyConfig {
 	edgeThresholdEarly: number;
 	edgeThresholdMid: number;
@@ -59,16 +54,8 @@ export interface StrategyConfig {
 	minProbEarly: number;
 	minProbMid: number;
 	minProbLate: number;
-	blendWeights: { vol: number; ta: number };
-	regimeMultipliers: {
-		CHOP: number;
-		RANGE: number;
-		TREND_ALIGNED: number;
-		TREND_OPPOSED: number;
-	};
+	maxGlobalTradesPerWindow: number;
 	skipMarkets?: string[];
-	minConfidence?: number;
-	marketPerformance?: Record<string, MarketPerformance>;
 	// P1: Safety gates (optional with defaults in decide())
 	minTimeLeftMin?: number;
 	maxVolatility15m?: number;
@@ -116,8 +103,6 @@ export interface EdgeResult {
 	marketDown: number | null;
 	edgeUp: number | null;
 	edgeDown: number | null;
-	effectiveEdgeUp: number | null;
-	effectiveEdgeDown: number | null;
 	rawSum: number | null;
 	arbitrage: boolean;
 	overpriced: boolean;
@@ -132,21 +117,6 @@ export type Strength = "STRONG" | "GOOD" | "OPTIONAL";
 export type Side = "UP" | "DOWN";
 export type StorageBackend = "csv" | "dual" | "sqlite";
 
-// Confidence scoring
-export interface ConfidenceFactors {
-	indicatorAlignment: number;
-	volatilityScore: number;
-	orderbookScore: number;
-	timingScore: number;
-	regimeScore: number;
-}
-
-export interface ConfidenceResult {
-	score: number;
-	factors: ConfidenceFactors;
-	level: "HIGH" | "MEDIUM" | "LOW";
-}
-
 export interface TradeDecision {
 	action: "ENTER" | "NO_TRADE";
 	side: Side | null;
@@ -155,7 +125,6 @@ export interface TradeDecision {
 	strength?: Strength;
 	edge?: number;
 	reason?: string;
-	confidence?: ConfidenceResult;
 }
 
 export interface RegimeResult {
@@ -174,12 +143,6 @@ export interface ScoreResult {
 	upScore: number;
 	downScore: number;
 	rawUp: number;
-}
-
-export interface BlendResult {
-	blendedUp: number;
-	blendedDown: number;
-	source: "blended" | "ta_only";
 }
 
 export interface CandleWindowTiming {
@@ -315,11 +278,9 @@ export interface ComputeResult {
 	marketDown: number | null;
 	edge: EdgeResult;
 	scored: ScoreResult;
-	blended: BlendResult;
 	regimeInfo: RegimeResult;
 	finalUp: number;
 	finalDown: number;
-	volImplied: number | null;
 	pLong: string;
 	pShort: string;
 	predictNarrative: string;
@@ -366,7 +327,6 @@ export interface MarketSnapshot {
 	volImpliedUp: number | null;
 	binanceChainlinkDelta: number | null;
 	orderbookImbalance: number | null;
-	confidence?: ConfidenceResult;
 }
 
 export interface PaperTradeEntry {

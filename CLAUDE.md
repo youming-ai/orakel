@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Orakel is a production-grade automated trading bot for Polymarket's 15-minute binary options (Up/Down) markets on cryptocurrencies (BTC, ETH, SOL, XRP). It combines real-time data fusion from Binance, Polymarket, and Chainlink with technical analysis, probabilistic modeling, and regime-aware strategy.
+Orakel is a production-grade automated trading bot for Polymarket's 15-minute binary options (Up/Down) markets on cryptocurrencies (BTC, ETH, SOL, XRP). It combines real-time data fusion from Binance, Polymarket, and Chainlink with technical analysis and regime-aware strategy.
 
 **Tech Stack:** Bun Runtime, TypeScript, Hono API, SQLite, React 19, Vite, shadcn/ui
 
@@ -81,12 +81,11 @@ Executed every 1 second per market:
    ├─ VWAP: Volume-weighted price + slope
    └─ Realized Volatility: 60-candle annualized × √15
 
-3. Probability Fusion (via src/engines/probability.ts)
-   ├─ Volatility-Implied: Φ(log(P/PTB) / (vol × √(t/15)))
+3. Probability Scoring (via src/engines/probability.ts)
    ├─ TA Direction Score: Weighted indicator alignment
-   └─ Blend: 50% vol + 50% TA (configurable)
+   └─ Time Awareness: Linear decay based on time remaining
 
-4. Market Regime Detection (via src/engines/regime.ts)
+4. Market Regime Detection (via src/engines/regime.ts) - Informational only
    ├─ TREND_UP: Price > VWAP, VWAP↑, volume > mean
    ├─ TREND_DOWN: Price < VWAP, VWAP↓, volume > mean
    ├─ CHOP: VWAP crosses >3 times in 20 candles
@@ -94,15 +93,13 @@ Executed every 1 second per market:
 
 5. Edge Computation (via src/engines/edge.ts)
    ├─ Edge = ModelProb - MarketPrice
-   ├─ Adjust for orderbook imbalance & spread
    └─ Detect arbitrage (sum < 0.98) & high vig (sum > 1.04)
 
 6. Trade Decision (via src/engines/edge.ts → src/trading/trader.ts)
    ├─ Phase detection: EARLY (>10min), MID (5-10min), LATE (<5min)
-   ├─ Apply regime multipliers to thresholds
-   ├─ Apply market-specific edge multipliers
-   ├─ Check confidence score (5 factors)
-   └─ Execute if edge ≥ threshold AND prob ≥ minProb
+   ├─ Check market skip list
+   ├─ Execute if edge ≥ threshold AND prob ≥ minProb
+   └─ Strength: STRONG (≥20%), GOOD (≥10%), OPTIONAL (<10%)
 ```
 
 ### Unified Settlement System
@@ -119,23 +116,21 @@ Both paper and live trades settle at 15-min window boundary (finalPrice > priceT
 
 **Probability Engine** ([`src/engines/probability.ts`](src/engines/probability.ts))
 - `scoreDirection()` - Computes TA-based directional score from price vs VWAP, VWAP slope, RSI + slope, MACD histogram + delta, Heiken Ashi color + consecutive count, failed VWAP reclaim
-- `computeVolatilityImpliedProb()` - Black-Scholes style probability using normal CDF with fat-tail dampening for |z| > 2 (crypto adjustments)
-- `blendProbabilities()` - Fuses vol and TA signals with optional Binance lead signal and orderbook imbalance adjustments
-- `applyAdaptiveTimeDecay()` - S-curve time awareness (preserves >60% remaining, smoothstep 30-60%, fast decay <30%) with volatility adjustment (high vol → slower decay)
+- `applyTimeAwareness()` - Linear time decay (clamped to 0-1) based on remaining minutes
 - `computeRealizedVolatility()` - 60-candle annualized volatility × √15 for 15-min windows
 
 **Edge Engine** ([`src/engines/edge.ts`](src/engines/edge.ts))
-- `computeEdge()` - Calculates edge = modelProb - marketPrice with confidence scoring, orderbook adjustments (imbalance, spread), arbitrage detection (sum < 0.98), and high vig detection (sum > 1.04)
-- `computeConfidence()` - 5-factor weighted score: Indicator Alignment (25%), Volatility Score (15%), Orderbook Score (15%), Timing Score (25%), Regime Score (20%)
-- `decide()` - Main decision logic with phase-based thresholds, regime multipliers, market-specific adjustments, and overconfidence protection (SOFT_CAP_EDGE: 0.25, HARD_CAP_EDGE: 0.4)
-- `regimeMultiplier()` - Returns regime-based threshold multiplier from config (CHOP: 1.4, RANGE: 1.0, TREND_ALIGNED: 0.75, TREND_OPPOSED: 1.3)
+- `computeEdge()` - Calculates edge = modelProb - marketPrice with arbitrage detection (sum < 0.98) and high vig detection (sum > 1.04)
+- `decide()` - Simple threshold-based decision logic: check edge threshold, check probability threshold, return trade decision
+- No confidence scoring, no regime multipliers, no overconfidence caps (simplified architecture)
 
 **Regime Detection** ([`src/engines/regime.ts`](src/engines/regime.ts))
 - `detectRegime()` - Classifies market as TREND_UP/TREND_DOWN/CHOP/RANGE based on VWAP relationship, slope, and crossover frequency
+- **Note:** Regime is informational only and does not affect trade thresholds in the simplified architecture
 
 ### Market-Specific Adjustments
 
-All markets use `edgeMultiplier: 1.0` (conservative branch — uniform edge requirements). Market performance data is configurable via `strategy.marketPerformance` in `config.json` but currently all set to 1.0×.
+All markets use identical trading strategy (no per-market edge multipliers or performance adjustments). Markets can be skipped via `strategy.skipMarkets` in `config.json`.
 
 ## Configuration System
 
@@ -163,12 +158,9 @@ All markets use `edgeMultiplier: 1.0` (conservative branch — uniform edge requ
 2. **Strategy Config** ([`config.json`](config.json), validated in [`src/core/config.ts`](src/core/config.ts)):
    - `paper.risk` / `live.risk` - Per-account risk settings (maxTradeSizeUsdc, dailyMaxLossUsdc, limitDiscount, maxOpenPositions, minLiquidity, maxTradesPerWindow)
    - `paper.initialBalance` - Initial paper balance
-   - `strategy.edgeThresholdEarly/Mid/Late` - Phase-based edge thresholds (default: 0.06/0.08/0.10)
-   - `strategy.minProbEarly/Mid/Late` - Phase-based probability thresholds (default: 0.52/0.55/0.60)
-   - `strategy.blendWeights` - Vol vs TA probability weights (default: vol 0.50, ta 0.50)
-   - `strategy.regimeMultipliers` - CHOP (1.4), RANGE (1.0), TREND_ALIGNED (0.75), TREND_OPPOSED (1.3)
+   - `strategy.edgeThresholdEarly/Mid/Late` - Phase-based edge thresholds (default: 0.05/0.1/0.2)
+   - `strategy.minProbEarly/Mid/Late` - Phase-based probability thresholds (default: 0.55/0.6/0.65)
    - `strategy.maxGlobalTradesPerWindow` - Max trades across all markets per window
-   - `strategy.minConfidence` - Minimum confidence score (default: 0.50)
    - `strategy.skipMarkets` - Markets to skip entirely (array of market IDs)
 
 Config changes are auto-reloaded on next cycle - no restart needed.
@@ -222,21 +214,15 @@ New code should use SQLite prepared statements from [`src/core/db.ts`](src/core/
 
 1. **Multi-Sensor Fusion** - 4 independent price sources with fallback chain (Binance WS > Polymarket WS > Chainlink WS > Chainlink RPC > Binance REST)
 
-2. **Regime-Aware Strategy** - Market state detection adapts thresholds dynamically (TREND_ALIGNED gets 25% discount, CHOP gets 40% penalty)
+2. **Simplified Strategy Engine** - Recent refactoring removed: regime multipliers, confidence scoring, volatility-implied probability blending, overconfidence caps. Now uses simple TA-based scoring with linear time decay.
 
-3. **Confidence Scoring** - 5-factor weighted score gates trades even if edge looks good (indicator alignment, volatility, orderbook, timing, regime)
+3. **Unified Market Strategy** - All markets use identical trading logic (no per-market performance adjustments or edge multipliers).
 
-4. **Uniform Edge Requirements** - All markets use edgeMultiplier 1.0× (conservative branch)
+4. **Cycle-Aware State** - Pending start/stop states for graceful 15-min window boundary transitions.
 
-5. **Cycle-Aware State** - Pending start/stop states for graceful 15-min window boundary transitions
+5. **Conservative Live Spending** - Daily loss limit acts as spending cap, full trade cost debited immediately.
 
-6. **Conservative Live Spending** - Daily loss limit acts as spending cap, full trade cost debited immediately
-
-7. **Time-Aware Probability Decay** - S-curve decay preserves early confidence, volatility-adjusted time remaining (high vol → slower decay)
-
-8. **Overconfidence Protection** - Soft cap (0.25) and hard cap (0.4) on edge to prevent trades when model appears too confident
-
-9. **Unified Settlement** - Paper and live trades settle using same logic in main loop (`resolveTrades()`), LiveSettler only redeems on-chain winnings
+6. **Unified Settlement** - Paper and live trades settle using same logic in main loop (`resolveTrades()`), LiveSettler only redeems on-chain winnings.
 
 ## Critical Insights for Development
 
@@ -244,29 +230,25 @@ New code should use SQLite prepared statements from [`src/core/db.ts`](src/core/
 
 2. **Paper vs Live state is separate** - `paperRisk` and `liveRisk` configs, separate daily state tracking, different spending models.
 
-3. **All markets use uniform edge multiplier (1.0×)** - Configured in `strategy.marketPerformance` in `config.json`. Conservative branch treats all markets equally.
+3. **Strategy simplification (current branch)** - The trading engine has been simplified: no regime multipliers, no confidence scoring, no volatility-implied probability. Only TA-based directional scoring with linear time decay.
 
-4. **CHOP regime gets 1.4× threshold penalty** - Configured via `strategy.regimeMultipliers.CHOP` in `config.json`. All markets participate in CHOP (no per-market skip).
+4. **All markets use uniform strategy** - No per-market edge multipliers or performance adjustments. Markets can only be skipped via `strategy.skipMarkets`.
 
-5. **Edge overconfidence is the #1 killer** - High edge (≥20%) had 43.6% win rate vs low edge (<10%) at 57.9%. The model is overconfident when edge looks too good. Protected by SOFT_CAP_EDGE (0.25) and HARD_CAP_EDGE (0.4).
+5. **WebSocket is single-source of truth** - Dashboard connects to `/ws` WS endpoint and receives `state:snapshot` events. Don't poll REST endpoints in the frontend.
 
-6. **WebSocket is single-source of truth** - Dashboard connects to `/ws` WS endpoint and receives `state:snapshot` events. Don't poll REST endpoints in the frontend.
+6. **15-min windows are sacred** - All paper trades keyed by `windowStartMs`. Settlement happens exactly at window boundary. Never start/stop mid-window (use pending states).
 
-7. **15-min windows are sacred** - All paper trades keyed by `windowStartMs`. Settlement happens exactly at window boundary. Never start/stop mid-window (use pending states).
+7. **SQLite is primary, CSV is legacy** - New code should use `statements` from [`src/core/db.ts`](src/core/db.ts). CSV backend exists for migration compatibility.
 
-8. **SQLite is primary, CSV is legacy** - New code should use `statements` from [`src/core/db.ts`](src/core/db.ts). CSV backend exists for migration compatibility.
+8. **Price source priority matters** - Binance WS > Polymarket WS > Chainlink RPC > Binance REST. The [`src/pipeline/fetch.ts`](src/pipeline/fetch.ts) function tries each in order.
 
-9. **Price source priority matters** - Binance WS > Polymarket WS > Chainlink RPC > Binance REST. The [`src/pipeline/fetch.ts`](src/pipeline/fetch.ts) function tries each in order.
+9. **Code style is enforced by Biome** - Tabs (width 2), 120 char line width, double quotes, semicolons always, trailing commas all, arrow parentheses always. Run `bun run lint:fix` before committing.
 
-10. **Confidence score is gatekeeper** - Even if edge and probability pass thresholds, low confidence (<0.5) rejects the trade.
+10. **Imports must use `.ts` extensions** - Required by `verbatimModuleSyntax` in tsconfig. Use `import type` for type-only imports.
 
-11. **Code style is enforced by Biome** - Tabs (width 2), 120 char line width, double quotes, semicolons always, trailing commas all, arrow parentheses always. Run `bun run lint:fix` before committing.
+11. **Settlement vs Redemption** - Settlement (determining won/lost) happens in main loop via `resolveTrades()`. Redemption (claiming on-chain) is handled by `src/trading/liveSettler.ts` (pure redeemer).
 
-12. **Imports must use `.ts` extensions** - Required by `verbatimModuleSyntax` in tsconfig. Use `import type` for type-only imports.
-
-13. **Settlement vs Redemption** - Settlement (determining won/lost) happens in main loop via `resolveTrades()`. Redemption (claiming on-chain) is handled by `src/trading/liveSettler.ts` (pure redeemer).
-
-14. **New file locations** - Many files moved to `src/core/`, `src/blockchain/`, `src/trading/`, `src/pipeline/` directories for better organization.
+12. **New file locations** - Many files moved to `src/core/`, `src/blockchain/`, `src/trading/`, `src/pipeline/` directories for better organization.
 
 ## API Endpoints
 

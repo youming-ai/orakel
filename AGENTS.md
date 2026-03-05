@@ -10,7 +10,8 @@ bun install                          # Install backend dependencies
 cd web && bun install                # Install frontend dependencies
 
 bun run start                        # Start bot (src/index.ts, port 9999)
-cd web && bun run dev                # Start frontend dev server (Vite default port)
+bun run dev                          # Start bot + web dashboard concurrently
+cd web && bun run dev                # Start frontend dev server only (Vite, port 5173)
 
 bun run typecheck                    # Typecheck all src/ (includes tests)
 bun run typecheck:ci                 # Typecheck src/ excluding test files
@@ -38,63 +39,22 @@ Always run `bun run lint && bun run typecheck && bun run test` before pushing.
 ```
 src/                           # Backend (Bun runtime)
 ├── index.ts                   # Entry point, main loop startup
-├── api.ts                     # Hono API server + WebSocket (~800 lines)
+├── api.ts                     # Hono API server + WebSocket
 ├── types.ts                   # ALL shared TypeScript interfaces/types
-├── core/                      # Foundational modules
-│   ├── config.ts              # Zod-validated config loader (auto-reloads)
-│   ├── env.ts                 # Zod-validated environment variables
-│   ├── logger.ts              # Logger factory (createLogger)
-│   ├── state.ts               # Shared runtime state (singletons + EventEmitter)
-│   ├── db.ts                  # SQLite setup + prepared statements
-│   ├── cache.ts               # Caching utilities
-│   ├── markets.ts             # Market definitions (BTC, ETH, SOL, XRP)
-│   └── utils.ts               # Pure utility functions
-├── trading/                   # Trade execution & account management
-│   ├── trader.ts              # Trade execution, wallet management
-│   ├── accountStats.ts        # Paper/live account tracking + settlement
-│   ├── orderManager.ts        # Live order polling lifecycle
-│   ├── liveGuards.ts          # Pre-trade safety checks for live mode
-│   ├── liveSettler.ts         # Live trade settlement
-│   ├── persistence.ts         # Trade/signal persistence layer
-│   ├── strategyRefinement.ts  # Backtest insights + market adjustments
-│   └── terminal.ts            # Terminal output formatting
-├── pipeline/                  # Per-market processing pipeline
-│   ├── processMarket.ts       # Main per-market loop (runs every 1s)
-│   ├── fetch.ts               # Parallel data fetching from all sources
-│   └── compute.ts             # Indicator + probability computation
-├── blockchain/                # On-chain operations
-│   ├── accountState.ts        # On-chain account/position queries
-│   ├── contracts.ts           # Contract interaction helpers
-│   ├── reconciler.ts          # On-chain vs local state reconciliation
-│   ├── reconciler-utils.ts    # Reconciliation utilities
-│   └── redeemer.ts            # Position redemption
-├── engines/                   # Core trading logic
-│   ├── edge.ts                # Edge computation + confidence scoring + decisions
-│   ├── probability.ts         # TA scoring + vol-implied prob + blending
-│   ├── regime.ts              # Market state detection (TREND/RANGE/CHOP)
-│   └── arbitrage.ts           # Arbitrage detection
-├── indicators/                # Technical analysis (pure functions)
-│   ├── rsi.ts, macd.ts, vwap.ts, heikenAshi.ts
-├── data/                      # External data source adapters
-│   ├── binance.ts/binanceWs.ts            # Binance REST + WebSocket
-│   ├── polymarket.ts/polymarketLiveWs.ts  # Gamma + CLOB API + live WS
-│   ├── polymarketClobWs.ts                # CLOB WebSocket client
-│   ├── chainlink.ts/chainlinkWs.ts        # On-chain RPC + WebSocket
-│   └── polygonBalance.ts/polygonEvents.ts # Polygon chain queries
+├── core/                      # Config, DB, env, logger, state, utils, cache, markets
+├── trading/                   # Trade execution, account stats, order management, settlement
+├── pipeline/                  # Per-market processing: fetch → compute → processMarket (1s loop)
+├── blockchain/                # On-chain: account state, contracts, reconciliation, redemption
+├── engines/                   # Core logic: edge, probability, regime detection, arbitrage
+├── indicators/                # Technical analysis: RSI, MACD, VWAP, Heiken Ashi (pure functions)
+├── data/                      # External adapters: Binance, Polymarket, Chainlink, Polygon
 └── __tests__/                 # All test files (centralized, not co-located)
-    ├── rsi.test.ts, edge.test.ts, probability.test.ts, ...
 
 web/                           # Frontend (Vite + React 19)
-├── src/
-│   ├── components/            # Dashboard, MarketCard, Header, TradeTable, etc.
-│   │   ├── ui/                # shadcn/ui primitives
-│   │   ├── analytics/         # Charts and analytics components
-│   │   ├── market/            # Market-specific components
-│   │   └── trades/            # Trade display components
-│   ├── lib/                   # API client, Zustand stores, types, utils
-│   ├── hooks/                 # Custom React hooks
-│   ├── pages/                 # Page-level components
-│   └── styles/                # Global styles
+├── src/components/            # Dashboard, MarketCard, Header, TradeTable + ui/ (shadcn)
+├── src/lib/                   # API client, Zustand stores, types, utils
+├── src/hooks/                 # Custom React hooks
+└── src/pages/                 # Page-level components
 ```
 
 ## Code Style
@@ -115,6 +75,7 @@ web/                           # Frontend (Vite + React 19)
 - `useConst`: error · `noNonNullAssertion`: warn
 - `noParameterAssign`: off · `noForEach`: off
 - **Test overrides**: `noExplicitAny` and `noNonNullAssertion` are OFF in `src/__tests__/`
+- **Logger override**: `noConsole` is OFF in `src/core/logger.ts`
 
 ### Imports
 

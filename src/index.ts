@@ -35,7 +35,7 @@ import { processMarket as processMarketPipeline } from "./pipeline/processMarket
 import { getAccount, initAccountStats, liveAccount, paperAccount } from "./trading/accountStats.ts";
 import { LiveSettler } from "./trading/liveSettler.ts";
 import { OrderManager, type TrackedOrder } from "./trading/orderManager.ts";
-import { shouldTakeTrade } from "./trading/strategyRefinement.ts";
+
 import { renderDashboard } from "./trading/terminal.ts";
 import {
 	connectWallet,
@@ -793,9 +793,7 @@ async function main(): Promise<void> {
 			clobWs.subscribe(newTokenIds);
 		}
 
-		const maxGlobalTrades = Number(
-			(CONFIG.strategy as { maxGlobalTradesPerWindow?: number }).maxGlobalTradesPerWindow ?? 1,
-		);
+		const maxGlobalTrades = CONFIG.strategy.maxGlobalTradesPerWindow;
 		const candidates = results
 			.filter((r) => r.ok && r.rec?.action === "ENTER" && r.signalPayload)
 			.filter((r) => {
@@ -812,19 +810,6 @@ async function main(): Promise<void> {
 				if (elapsed < 3) return false;
 				if (tl < 3) return false;
 				return true;
-			})
-			.filter((r) => {
-				const sig = r.signalPayload;
-				if (!sig) return false;
-				const result = shouldTakeTrade({
-					market: r.market.id,
-					regime: r.rec?.regime ?? null,
-					volatility: r.volatility15m ?? 0,
-				});
-				if (!result.shouldTrade) {
-					log.info(`Skip ${r.market.id}: ${result.reason}`);
-				}
-				return result.shouldTrade;
 			})
 			.sort((a, b) => {
 				const edgeA = Number(a.rec?.edge ?? 0);
@@ -969,7 +954,6 @@ async function main(): Promise<void> {
 				volImpliedUp: r.volImpliedUp ?? null,
 				binanceChainlinkDelta: r.binanceChainlinkDelta ?? null,
 				orderbookImbalance: r.orderbookImbalance ?? null,
-				confidence: r.rec?.confidence ?? undefined,
 			}),
 		);
 		updateMarkets(snapshots);

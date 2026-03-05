@@ -268,6 +268,7 @@ bun run test
 ```
 ✓ 17 passed (313 tests)
 Duration: ~500ms
+```
 
 ### 6.2 Watch Mode
 
@@ -361,6 +362,6 @@ expect(result).toBeTruthy();
 
 ## 9. Related Documentation
 
-- [Development & Deployment Guide](./deployment.md) — Test commands
-- [System Architecture](./architecture.md) — Module relationships
-- [Trading Strategy](./trading-strategy.md) — Strategy logic
+- [Core Logic](./core-logic.md) — Architecture, data flow, trading strategy, decision logic
+- [Backend Reference](./backend.md) — Backend modules, API endpoints, DB schema
+- [Deployment Guide](./deployment.md) — Docker, CI/CD, test commands

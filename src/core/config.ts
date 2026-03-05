@@ -40,21 +40,17 @@ const STRATEGY_DEFAULTS: {
 	minProbEarly: number;
 	minProbMid: number;
 	minProbLate: number;
-	blendWeights: { vol: number; ta: number };
-	regimeMultipliers: { CHOP: number; RANGE: number; TREND_ALIGNED: number; TREND_OPPOSED: number };
+	maxGlobalTradesPerWindow: number;
 	skipMarkets: string[];
-	minConfidence: number;
 } = {
-	edgeThresholdEarly: 0.06,
-	edgeThresholdMid: 0.08,
-	edgeThresholdLate: 0.1,
-	minProbEarly: 0.52,
-	minProbMid: 0.55,
-	minProbLate: 0.6,
-	blendWeights: { vol: 0.5, ta: 0.5 },
-	regimeMultipliers: { CHOP: 1.3, RANGE: 1.0, TREND_ALIGNED: 0.8, TREND_OPPOSED: 1.2 },
+	edgeThresholdEarly: 0.05,
+	edgeThresholdMid: 0.1,
+	edgeThresholdLate: 0.2,
+	minProbEarly: 0.55,
+	minProbMid: 0.6,
+	minProbLate: 0.65,
+	maxGlobalTradesPerWindow: 1,
 	skipMarkets: [],
-	minConfidence: 0.5,
 };
 
 const RiskConfigSchema = z
@@ -77,42 +73,14 @@ const StrategyConfigSchema = z
 		minProbEarly: z.coerce.number().min(0).max(1).optional(),
 		minProbMid: z.coerce.number().min(0).max(1).optional(),
 		minProbLate: z.coerce.number().min(0).max(1).optional(),
-		blendWeights: z
-			.object({
-				vol: z.coerce.number().min(0).max(1).optional(),
-				ta: z.coerce.number().min(0).max(1).optional(),
-			})
-			.partial()
-			.optional(),
-		regimeMultipliers: z
-			.object({
-				CHOP: z.coerce.number().optional(),
-				RANGE: z.coerce.number().optional(),
-				TREND_ALIGNED: z.coerce.number().optional(),
-				TREND_OPPOSED: z.coerce.number().optional(),
-			})
-			.partial()
-			.optional(),
+		maxGlobalTradesPerWindow: z.coerce.number().int().min(1).optional(),
 		skipMarkets: z.array(z.string()).optional(),
-		minConfidence: z.coerce.number().min(0).max(1).optional(),
-		marketPerformance: z
-			.record(
-				z.string(),
-				z.object({
-					winRate: z.coerce.number(),
-					edgeMultiplier: z.coerce.number(),
-				}),
-			)
-			.optional(),
 	})
 	.partial()
 	.transform((value) => ({
 		...STRATEGY_DEFAULTS,
 		...value,
-		blendWeights: { ...STRATEGY_DEFAULTS.blendWeights, ...value.blendWeights },
-		regimeMultipliers: { ...STRATEGY_DEFAULTS.regimeMultipliers, ...value.regimeMultipliers },
 		skipMarkets: value.skipMarkets ?? [],
-		marketPerformance: value.marketPerformance ?? {},
 	}));
 
 const ConfigFileSchema = z
@@ -264,11 +232,8 @@ export const CONFIG: AppConfig = {
 		minProbEarly: FILE_STRATEGY.minProbEarly,
 		minProbMid: FILE_STRATEGY.minProbMid,
 		minProbLate: FILE_STRATEGY.minProbLate,
-		blendWeights: FILE_STRATEGY.blendWeights,
-		regimeMultipliers: FILE_STRATEGY.regimeMultipliers,
+		maxGlobalTradesPerWindow: FILE_STRATEGY.maxGlobalTradesPerWindow,
 		skipMarkets: FILE_STRATEGY.skipMarkets,
-		minConfidence: FILE_STRATEGY.minConfidence,
-		marketPerformance: FILE_STRATEGY.marketPerformance,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -287,9 +252,6 @@ export function reloadConfig(): AppConfig {
 	const filePaperRisk = fileConfig.paper.risk;
 	const fileLiveRisk = fileConfig.live.risk;
 
-	// P1-7: Preserve runtime-only fields that are not in config.json
-	const prevMarketPerformance = CONFIG.strategy.marketPerformance;
-
 	CONFIG.strategy = {
 		edgeThresholdEarly: fileStrategy.edgeThresholdEarly,
 		edgeThresholdMid: fileStrategy.edgeThresholdMid,
@@ -297,11 +259,8 @@ export function reloadConfig(): AppConfig {
 		minProbEarly: fileStrategy.minProbEarly,
 		minProbMid: fileStrategy.minProbMid,
 		minProbLate: fileStrategy.minProbLate,
-		blendWeights: fileStrategy.blendWeights,
-		regimeMultipliers: fileStrategy.regimeMultipliers,
+		maxGlobalTradesPerWindow: fileStrategy.maxGlobalTradesPerWindow,
 		skipMarkets: fileStrategy.skipMarkets,
-		minConfidence: fileStrategy.minConfidence,
-		marketPerformance: prevMarketPerformance ?? fileStrategy.marketPerformance,
 	};
 
 	CONFIG.risk = buildRiskConfig(filePaperRisk);
