@@ -273,7 +273,7 @@ describe("computeVolatilityImpliedProb", () => {
 		expect(computeVolatilityImpliedProb(input)).toBeNull();
 	});
 
-	it("returns null when time elapsed (no useful prediction)", () => {
+	it("should return null when time elapsed (no useful prediction)", () => {
 		expect(
 			computeVolatilityImpliedProb({
 				currentPrice: 101,
@@ -284,7 +284,7 @@ describe("computeVolatilityImpliedProb", () => {
 		).toBeNull();
 	});
 
-	it("returns null when time is negative (expired market)", () => {
+	it("should return null when time is negative (expired market)", () => {
 		expect(
 			computeVolatilityImpliedProb({
 				currentPrice: 99,

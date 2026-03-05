@@ -458,6 +458,22 @@ export class AccountStatsManager {
 		if (db) {
 			db.run("BEGIN IMMEDIATE");
 		}
+
+		const prevWins = this.state.wins;
+		const prevLosses = this.state.losses;
+		const prevBalance = this.state.currentBalance;
+		const prevMaxDrawdown = this.state.maxDrawdown;
+		const prevTotalPnl = this.state.totalPnl;
+		const prevDailyPnl = this.state.dailyPnl.map((d) => ({ ...d }));
+		const prevDailyCountedTradeIds = [...this.state.dailyCountedTradeIds];
+		const mutatedTrades: Array<{
+			trade: TradeEntry;
+			prevResolved: boolean;
+			prevWon: boolean | null;
+			prevPnl: number | null;
+			prevSettlePrice: number | null;
+		}> = [];
+
 		try {
 			for (const trade of this.state.trades) {
 				if (trade.resolved) continue;
@@ -465,6 +481,14 @@ export class AccountStatsManager {
 
 				const finalPrice = finalPrices.get(trade.marketId);
 				if (finalPrice === undefined || trade.priceToBeat <= 0) continue;
+
+				mutatedTrades.push({
+					trade,
+					prevResolved: trade.resolved,
+					prevWon: trade.won,
+					prevPnl: trade.pnl,
+					prevSettlePrice: trade.settlePrice,
+				});
 
 				// Unified settlement rule: price <= PTB → DOWN wins (standard Polymarket rule)
 				const upWon = finalPrice > trade.priceToBeat;
@@ -487,7 +511,6 @@ export class AccountStatsManager {
 				if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
 				this.state.totalPnl += trade.pnl;
 
-				// Update daily PnL tracking (with deduplication)
 				this.updateDailyPnl(trade.id, trade.pnl);
 
 				this.upsertTrade(trade);
@@ -506,6 +529,20 @@ export class AccountStatsManager {
 			if (db) {
 				db.run("ROLLBACK");
 			}
+			for (const snap of mutatedTrades) {
+				snap.trade.resolved = snap.prevResolved;
+				snap.trade.won = snap.prevWon;
+				snap.trade.pnl = snap.prevPnl;
+				snap.trade.settlePrice = snap.prevSettlePrice;
+			}
+			this.state.wins = prevWins;
+			this.state.losses = prevLosses;
+			this.state.currentBalance = prevBalance;
+			this.state.maxDrawdown = prevMaxDrawdown;
+			this.state.totalPnl = prevTotalPnl;
+			this.state.dailyPnl = prevDailyPnl;
+			this.state.dailyCountedTradeIds = prevDailyCountedTradeIds;
+			this.dailyCountedTradeIdSet = new Set(prevDailyCountedTradeIds);
 			throw err;
 		}
 		return resolved;

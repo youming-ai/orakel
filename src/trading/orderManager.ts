@@ -47,7 +47,7 @@ export class OrderManager {
 				(statements.getAllLivePendingOrders?.()?.all() as Array<{
 					order_id: string;
 					market_id: string;
-					window_slug?: string;
+					window_start_ms: number;
 					side: string;
 					price: number;
 					size: number;
@@ -63,7 +63,7 @@ export class OrderManager {
 				this.orders.set(row.order_id, {
 					orderId: row.order_id,
 					marketId: row.market_id,
-					windowSlug: row.window_slug ?? "",
+					windowSlug: row.window_start_ms ? String(row.window_start_ms) : "",
 					side: row.side,
 					price: row.price,
 					size: row.size,
@@ -90,7 +90,7 @@ export class OrderManager {
 			statements.upsertLivePendingOrder().run({
 				$orderId: order.orderId,
 				$marketId: order.marketId,
-				$windowStartMs: 0,
+				$windowStartMs: Number(order.windowSlug) || 0,
 				$side: order.side,
 				$price: order.price,
 				$size: order.size,

@@ -16,6 +16,11 @@ export function computeMacd(closes: (number | null)[], fast: number, slow: numbe
 	}
 	let fastEma = fastSum / fast;
 	let slowEma = slowSum / slow;
+	// Warm up fast EMA through the gap between fast and slow periods
+	for (let i = fast; i < slow; i += 1) {
+		const val = Number(closes[i]);
+		fastEma = val * kFast + fastEma * (1 - kFast);
+	}
 
 	const macdSeries: number[] = [];
 	for (let i = slow; i < closes.length; i += 1) {
