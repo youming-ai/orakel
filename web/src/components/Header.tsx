@@ -1,6 +1,7 @@
-import { Activity, Clock, Loader2, Play, Zap } from "lucide-react";
+import { Activity, Clock, Gamepad2, Loader2, Play, Zap } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { useCycleCountdown } from "@/hooks/useCycleCountdown";
+import { usePixelTheme } from "@/hooks/usePixelTheme";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -86,6 +87,7 @@ export function Header({
 	const isPending = status === "starting" || status === "stopping";
 	const mutationPending = viewMode === "paper" ? paperMutationPending : liveMutationPending;
 	const timeLeft = useCycleCountdown();
+	const { isPixel, togglePixel } = usePixelTheme();
 
 	const handleToggle = viewMode === "paper" ? onPaperToggle : onLiveToggle;
 	const cfg = statusConfig[status];
@@ -117,7 +119,7 @@ export function Header({
 				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
 					<div className="flex items-center gap-1.5 shrink-0" title="Time until next 15-minute cycle boundary">
 						<Clock className="size-3 text-muted-foreground" />
-						<span className="font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
+						<span className="header-countdown font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
 					</div>
 
 					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
@@ -165,6 +167,22 @@ export function Header({
 							Live
 						</button>
 					</div>
+
+					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
+
+					<button
+						type="button"
+						onClick={togglePixel}
+						className={cn(
+							"flex items-center justify-center size-7 rounded-md transition-all shrink-0 border outline-none",
+							"bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted",
+							isPixel && "bg-pixel-accent/20 text-pixel-accent border-pixel-accent/30",
+						)}
+						title={isPixel ? "Switch to Modern" : "Switch to Pixel"}
+						aria-label="Toggle pixel theme"
+					>
+						<Gamepad2 className="size-3.5" />
+					</button>
 				</div>
 			</header>
 		</div>

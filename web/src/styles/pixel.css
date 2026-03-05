@@ -1,0 +1,337 @@
+/**
+ * Pixel Theme CSS
+ * Retro gaming aesthetic with sharp edges, vibrant colors, and pixel fonts
+ */
+
+/* Font loading optimization with display:swap */
+@font-face {
+	font-family: "Press Start 2P";
+	font-display: swap;
+	src: local("Press Start 2P"), local("Courier New");
+}
+
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap");
+
+/* ============================================
+   PIXEL THEME CSS VARIABLES
+   ============================================ */
+.pixel-theme {
+	--pixel-bg: #1a1c2c;
+	--pixel-card: #29366f;
+	--pixel-border: #4b692a;
+	--pixel-text: #f4f4f4;
+	--pixel-accent: #ff004d;
+	--pixel-highlight: #ffcc00;
+	--pixel-success: #00e436;
+	--pixel-warning: #ff8700;
+	font-family: "Press Start 2P", "Courier New", monospace;
+}
+
+/* ============================================
+   RESET ROUNDED CORNERS
+   ============================================ */
+.pixel-theme * {
+	border-radius: 0 !important;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Pixel Card - 3D shadow effect */
+.pixel-card {
+	background-color: var(--pixel-card);
+	border: 4px solid var(--pixel-border);
+	box-shadow:
+		4px 4px 0 #0d0e1a,
+		8px 8px 0 rgba(0, 0, 0, 0.3);
+	padding: 1rem;
+	color: var(--pixel-text);
+}
+
+/* Pixel Button - 3D effect with hover/active states */
+.pixel-btn {
+	background-color: var(--pixel-accent);
+	color: var(--pixel-text);
+	border: 4px solid #000;
+	box-shadow: 4px 4px 0 #000;
+	padding: 0.75rem 1.5rem;
+	font-family: "Press Start 2P", "Courier New", monospace;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	cursor: pointer;
+	transition: transform 0.1s ease, box-shadow 0.1s ease;
+	position: relative;
+	top: 0;
+	left: 0;
+}
+
+.pixel-btn:hover {
+	transform: translate(-1px, -1px);
+	box-shadow: 5px 5px 0 #000;
+	background-color: var(--pixel-highlight);
+	color: #000;
+}
+
+.pixel-btn:active {
+	transform: translate(2px, 2px);
+	box-shadow: 2px 2px 0 #000;
+}
+
+/* ============================================
+   BUTTON OVERRIDES
+   ============================================ */
+.pixel-theme button {
+	border: 4px solid var(--pixel-border) !important;
+	box-shadow:
+		4px 4px 0 rgba(0, 0, 0, 0.5),
+		inset -2px -2px 0 rgba(0, 0, 0, 0.3) !important;
+	background-color: var(--pixel-card) !important;
+	color: var(--pixel-text) !important;
+	padding: 0.75rem 1.5rem !important;
+	font-family: "Press Start 2P", "Courier New", monospace !important;
+	font-size: 0.75rem !important;
+	text-transform: uppercase !important;
+	cursor: pointer !important;
+	transition: transform 0.1s ease, box-shadow 0.1s ease !important;
+}
+
+.pixel-theme button:hover:not(:disabled) {
+	transform: translate(-2px, -2px) !important;
+	box-shadow:
+		6px 6px 0 rgba(0, 0, 0, 0.5),
+		inset -2px -2px 0 rgba(0, 0, 0, 0.3) !important;
+	background-color: var(--pixel-highlight) !important;
+	color: #000 !important;
+}
+
+.pixel-theme button:active:not(:disabled) {
+	transform: translate(2px, 2px) !important;
+	box-shadow:
+		2px 2px 0 rgba(0, 0, 0, 0.5),
+		inset 2px 2px 0 rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Primary button variant */
+.pixel-theme button:where([class*="primary"]) {
+	background-color: var(--pixel-accent) !important;
+}
+
+/* Success button variant */
+.pixel-theme button:where([class*="success"]) {
+	background-color: var(--pixel-success) !important;
+	color: #000 !important;
+}
+
+/* Destructive button variant */
+.pixel-theme button:where([class*="destructive"]) {
+	background-color: var(--pixel-accent) !important;
+}
+
+/* ============================================
+   CARD OVERRIDES
+   ============================================ */
+.pixel-theme [class*="card"],
+.pixel-theme article,
+.pixel-theme section {
+	border: 4px solid var(--pixel-border) !important;
+	box-shadow:
+		4px 4px 0 rgba(0, 0, 0, 0.5),
+		inset -2px -2px 0 rgba(0, 0, 0, 0.2) !important;
+	background-color: var(--pixel-card) !important;
+}
+
+/* Card headers and footers */
+.pixel-theme [class*="card"] header,
+.pixel-theme [class*="card"] footer,
+.pixel-theme [class*="card"] [class*="header"],
+.pixel-theme [class*="card"] [class*="footer"] {
+	border-bottom: 4px solid var(--pixel-border) !important;
+	border-top: 4px solid var(--pixel-border) !important;
+	background-color: rgba(0, 0, 0, 0.2) !important;
+	padding: 1rem !important;
+}
+
+/* ============================================
+   RESPONSIVE MOBILE STYLES
+   ============================================ */
+@media (max-width: 768px) {
+	.pixel-theme {
+		font-size: 10px;
+	}
+
+	.pixel-theme button {
+		border-width: 2px !important;
+		padding: 0.5rem 1rem !important;
+		font-size: 0.625rem !important;
+	}
+
+	.pixel-card,
+	.pixel-theme [class*="card"],
+	.pixel-theme article,
+	.pixel-theme section {
+		border-width: 2px !important;
+		box-shadow:
+			2px 2px 0 rgba(0, 0, 0, 0.5),
+			inset -1px -1px 0 rgba(0, 0, 0, 0.2) !important;
+		padding: 0.75rem !important;
+	}
+
+	.pixel-theme [class*="card"] header,
+	.pixel-theme [class*="card"] footer,
+	.pixel-theme [class*="card"] [class*="header"],
+	.pixel-theme [class*="card"] [class*="footer"] {
+		border-width: 2px !important;
+		padding: 0.75rem !important;
+	}
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+
+/* Focus styles - dashed outline for keyboard navigation */
+.pixel-theme button:focus-visible,
+.pixel-theme a:focus-visible,
+.pixel-theme input:focus-visible,
+.pixel-theme textarea:focus-visible,
+.pixel-theme select:focus-visible {
+	outline: 3px dashed var(--pixel-highlight) !important;
+	outline-offset: 2px !important;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+	.pixel-theme {
+		--pixel-bg: #000;
+		--pixel-card: #000;
+		--pixel-border: #fff;
+		--pixel-text: #fff;
+		--pixel-accent: #ff0;
+		--pixel-highlight: #0ff;
+		--pixel-success: #0f0;
+		--pixel-warning: #f80;
+	}
+
+	.pixel-theme button,
+	.pixel-theme [class*="card"] {
+		border-width: 4px !important;
+	}
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+	.pixel-theme button,
+	.pixel-btn {
+		transition: none !important;
+	}
+}
+
+/* ============================================
+   IMAGE AND SVG STYLES
+   ============================================ */
+.pixel-theme img,
+.pixel-theme svg {
+	image-rendering: pixelated;
+	image-rendering: crisp-edges;
+	shape-rendering: crispEdges;
+}
+
+/* ============================================
+   ADDITIONAL PIXEL UTILITIES
+   ============================================ */
+
+/* Pixel border utility */
+.pixel-border {
+	border: 4px solid var(--pixel-border) !important;
+	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Pixel text utility */
+.pixel-text {
+	font-family: "Press Start 2P", "Courier New", monospace;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+/* Pixel shadow utility */
+.pixel-shadow {
+	box-shadow:
+		4px 4px 0 rgba(0, 0, 0, 0.5),
+		inset -2px -2px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Input styling */
+.pixel-theme input,
+.pixel-theme textarea,
+.pixel-theme select {
+	border: 4px solid var(--pixel-border) !important;
+	background-color: var(--pixel-bg) !important;
+	color: var(--pixel-text) !important;
+	font-family: "Press Start 2P", "Courier New", monospace !important;
+	box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.3) !important;
+}
+
+.pixel-theme input::placeholder,
+.pixel-theme textarea::placeholder {
+	color: rgba(244, 244, 244, 0.5) !important;
+}
+
+/* ============================================
+   COMPONENT-SPECIFIC STYLES
+   ============================================ */
+
+/* Task 6: Badge component */
+.pixel-theme .badge {
+	border-radius: 0 !important;
+	border: 2px solid currentColor;
+	padding: 4px 8px !important;
+	font-family: "Press Start 2P", monospace;
+	font-size: 0.625rem;
+	text-transform: uppercase;
+	font-weight: normal;
+}
+
+/* Task 9: Header-specific styles */
+.pixel-theme header {
+	border-radius: 0 !important;
+	border: 4px solid var(--pixel-border);
+	box-shadow: 4px 4px 0 #000;
+}
+.pixel-theme .header-countdown {
+	font-family: "Press Start 2P", monospace;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Task 10: StatCard component */
+.pixel-theme .stat-card {
+	border-radius: 0 !important;
+	border: 4px solid var(--pixel-border);
+	box-shadow: 4px 4px 0 #000;
+}
+.pixel-theme .stat-value {
+	font-family: "Press Start 2P", monospace;
+	font-variant-numeric: tabular-nums;
+}
+
+/* Task 11: MarketCard component */
+.pixel-theme .market-card {
+	border-radius: 0 !important;
+	border: 4px solid var(--pixel-border);
+	box-shadow: 4px 4px 0 #000;
+}
+
+/* Task 12: TradeTable component */
+.pixel-theme table {
+	border-radius: 0 !important;
+	border: 4px solid var(--pixel-border);
+}
+.pixel-theme th {
+	font-family: "Press Start 2P", monospace;
+	font-size: 0.5rem;
+}
+.pixel-theme td {
+	border: 2px solid var(--pixel-border);
+	font-family: "Courier New", monospace;
+}
