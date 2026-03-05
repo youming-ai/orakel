@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import { CONFIG, LIVE_INITIAL_BALANCE, PAPER_INITIAL_BALANCE } from "../core/config.ts";
-import { PERSIST_BACKEND, resetLiveDbData, resetPaperDbData, statements } from "../core/db.ts";
+import { getDb, PERSIST_BACKEND, resetLiveDbData, resetPaperDbData, statements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
 import type { AccountMode, RiskConfig, Side } from "../types.ts";
 
@@ -426,8 +426,22 @@ export class AccountStatsManager {
 		this.state.trades.push(trade);
 		this.state.currentBalance -= entry.size * entry.price;
 		try {
-			this.upsertTrade(trade);
-			this.save();
+			const shouldUseTransaction = PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite";
+			const db = shouldUseTransaction ? getDb() : null;
+			if (db) {
+				db.run("BEGIN IMMEDIATE");
+				try {
+					this.upsertTrade(trade);
+					this.save();
+					db.run("COMMIT");
+				} catch (innerErr) {
+					db.run("ROLLBACK");
+					throw innerErr;
+				}
+			} else {
+				this.upsertTrade(trade);
+				this.save();
+			}
 		} catch (err) {
 			// Rollback in-memory state on DB write failure
 			this.state.trades.pop();
@@ -439,45 +453,60 @@ export class AccountStatsManager {
 
 	resolveTrades(windowStartMs: number, finalPrices: Map<string, number>): number {
 		let resolved = 0;
-		for (const trade of this.state.trades) {
-			if (trade.resolved) continue;
-			if (trade.windowStartMs !== windowStartMs) continue;
+		const shouldUseTransaction = PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite";
+		const db = shouldUseTransaction ? getDb() : null;
+		if (db) {
+			db.run("BEGIN IMMEDIATE");
+		}
+		try {
+			for (const trade of this.state.trades) {
+				if (trade.resolved) continue;
+				if (trade.windowStartMs !== windowStartMs) continue;
 
-			const finalPrice = finalPrices.get(trade.marketId);
-			if (finalPrice === undefined || trade.priceToBeat <= 0) continue;
+				const finalPrice = finalPrices.get(trade.marketId);
+				if (finalPrice === undefined || trade.priceToBeat <= 0) continue;
 
-			// Unified settlement rule: price <= PTB → DOWN wins (standard Polymarket rule)
-			const upWon = finalPrice > trade.priceToBeat;
-			const downWon = finalPrice <= trade.priceToBeat;
-			trade.won = trade.side === "UP" ? upWon : downWon;
+				// Unified settlement rule: price <= PTB → DOWN wins (standard Polymarket rule)
+				const upWon = finalPrice > trade.priceToBeat;
+				const downWon = finalPrice <= trade.priceToBeat;
+				trade.won = trade.side === "UP" ? upWon : downWon;
 
-			trade.settlePrice = finalPrice;
-			trade.resolved = true;
+				trade.settlePrice = finalPrice;
+				trade.resolved = true;
 
-			if (trade.won) {
-				trade.pnl = trade.size * (1 - trade.price);
-				this.state.wins++;
-			} else {
-				trade.pnl = -(trade.size * trade.price);
-				this.state.losses++;
+				if (trade.won) {
+					trade.pnl = trade.size * (1 - trade.price);
+					this.state.wins++;
+				} else {
+					trade.pnl = -(trade.size * trade.price);
+					this.state.losses++;
+				}
+
+				this.state.currentBalance += trade.size * trade.price + trade.pnl;
+				const drawdown = this.state.initialBalance - this.state.currentBalance;
+				if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
+				this.state.totalPnl += trade.pnl;
+
+				// Update daily PnL tracking (with deduplication)
+				this.updateDailyPnl(trade.id, trade.pnl);
+
+				this.upsertTrade(trade);
+				this.syncTradeLog(trade);
+				resolved++;
 			}
 
-			this.state.currentBalance += trade.size * trade.price + trade.pnl;
-			const drawdown = this.state.initialBalance - this.state.currentBalance;
-			if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
-			this.state.totalPnl += trade.pnl;
-
-			// Update daily PnL tracking (with deduplication)
-			this.updateDailyPnl(trade.id, trade.pnl);
-
-			this.upsertTrade(trade);
-			this.syncTradeLog(trade);
-			resolved++;
-		}
-
-		if (resolved > 0) {
-			this.checkAndTriggerStopLoss();
-			this.save();
+			if (resolved > 0) {
+				this.checkAndTriggerStopLoss();
+				this.save();
+			}
+			if (db) {
+				db.run("COMMIT");
+			}
+		} catch (err) {
+			if (db) {
+				db.run("ROLLBACK");
+			}
+			throw err;
 		}
 		return resolved;
 	}

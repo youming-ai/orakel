@@ -1021,6 +1021,8 @@ export function pruneDatabase(): { pruned: Record<string, number>; vacuumed: boo
 		}
 	}
 
+	// Clear prepared statement and query caches after pruning to ensure subsequent queries
+	// don't reference stale row IDs or cached results from deleted rows
 	stmtCache.clear();
 	queryCache.clear();
 	return { pruned, vacuumed };

@@ -1,4 +1,5 @@
 import type { ClobClient } from "@polymarket/clob-client";
+import { statements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
 
 const log = createLogger("orders");
@@ -34,6 +35,79 @@ export class OrderManager {
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private onStatusChange: OrderStatusCallback | null = null;
 
+	constructor() {
+		this.loadFromDb();
+	}
+
+	loadFromDb(): number {
+		if (!statements.getAllLivePendingOrders) return 0;
+
+		try {
+			const rows =
+				(statements.getAllLivePendingOrders?.()?.all() as Array<{
+					order_id: string;
+					market_id: string;
+					window_slug?: string;
+					side: string;
+					price: number;
+					size: number;
+					placed_at: number;
+					status: string;
+					token_id?: string;
+					price_to_beat?: number | null;
+					current_price_at_entry?: number | null;
+				}>) ?? [];
+			let loaded = 0;
+			for (const row of rows) {
+				if (this.orders.has(row.order_id)) continue;
+				this.orders.set(row.order_id, {
+					orderId: row.order_id,
+					marketId: row.market_id,
+					windowSlug: row.window_slug ?? "",
+					side: row.side,
+					price: row.price,
+					size: row.size,
+					placedAt: row.placed_at,
+					status: (row.status as TrackedOrder["status"]) ?? "placed",
+					sizeMatched: 0,
+					lastChecked: Date.now(),
+					tokenId: row.token_id ?? undefined,
+					priceToBeat: row.price_to_beat ?? null,
+					currentPriceAtEntry: row.current_price_at_entry ?? null,
+				});
+				loaded++;
+			}
+			if (loaded > 0) log.info(`Loaded ${loaded} pending orders from database`);
+			return loaded;
+		} catch (err) {
+			log.warn("Failed to load pending orders from DB:", err instanceof Error ? err.message : String(err));
+			return 0;
+		}
+	}
+
+	private syncToDb(order: TrackedOrder): void {
+		try {
+			statements.upsertLivePendingOrder().run({
+				$orderId: order.orderId,
+				$marketId: order.marketId,
+				$windowStartMs: 0,
+				$side: order.side,
+				$price: order.price,
+				$size: order.size,
+				$priceToBeat: order.priceToBeat ?? null,
+				$currentPriceAtEntry: order.currentPriceAtEntry ?? null,
+				$tokenId: order.tokenId ?? "",
+				$placedAt: order.placedAt,
+				$status: order.status,
+			});
+		} catch (err) {
+			log.warn(
+				`Failed to sync order ${order.orderId.slice(0, 8)} to DB:`,
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+	}
+
 	setClient(client: ClobClient | null): void {
 		this.client = client;
 	}
@@ -44,12 +118,14 @@ export class OrderManager {
 	}
 
 	addOrder(order: Omit<TrackedOrder, "status" | "sizeMatched" | "lastChecked">): void {
-		this.orders.set(order.orderId, {
+		const trackedOrder: TrackedOrder = {
 			...order,
 			status: "placed",
 			sizeMatched: 0,
 			lastChecked: Date.now(),
-		});
+		};
+		this.orders.set(order.orderId, trackedOrder);
+		this.syncToDb(trackedOrder);
 	}
 
 	/** Add order with type tracking (GTD orders need heartbeat, FOK orders don't) */
@@ -57,13 +133,15 @@ export class OrderManager {
 		order: Omit<TrackedOrder, "status" | "sizeMatched" | "lastChecked" | "orderType">,
 		isGtdOrder: boolean,
 	): void {
-		this.orders.set(order.orderId, {
+		const trackedOrder: TrackedOrder = {
 			...order,
 			status: "placed",
 			sizeMatched: 0,
 			lastChecked: Date.now(),
 			orderType: isGtdOrder ? "GTD" : "FOK",
-		});
+		};
+		this.orders.set(order.orderId, trackedOrder);
+		this.syncToDb(trackedOrder);
 	}
 
 	getOrder(orderId: string): TrackedOrder | undefined {
@@ -110,8 +188,11 @@ export class OrderManager {
 				order.lastChecked = Date.now();
 
 				// Notify callback if status changed (for heartbeat tracking)
-				if (this.onStatusChange && order.status !== previousStatus) {
-					this.onStatusChange(order, order.status, previousStatus);
+				if (order.status !== previousStatus) {
+					if (this.onStatusChange) {
+						this.onStatusChange(order, order.status, previousStatus);
+					}
+					this.syncToDb(order);
 				}
 			} catch (err: unknown) {
 				const msg = err instanceof Error ? err.message : String(err);

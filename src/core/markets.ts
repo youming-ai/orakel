@@ -77,5 +77,13 @@ export function getActiveMarkets(): MarketConfig[] {
 	if (active.length === 0) return MARKETS;
 	const wanted = new Set(active.map((s) => s.toUpperCase()));
 	const filtered = MARKETS.filter((m) => wanted.has(m.id));
-	return filtered.length > 0 ? filtered : MARKETS;
+	if (filtered.length === 0) {
+		// All specified markets are invalid — warn and use all
+		// biome-ignore lint/suspicious/noConsole: logger may not be available at import time (top-level module init)
+		console.warn(
+			`[markets] No valid ACTIVE_MARKETS=[${active.join(",")}]. Valid: ${MARKETS.map((m) => m.id).join(", ")}. Using all.`,
+		);
+		return MARKETS;
+	}
+	return filtered;
 }

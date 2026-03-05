@@ -22,7 +22,7 @@ export function detectRegime({
 	const above = price > vwap;
 
 	const lowVolume = volumeRecent !== null && volumeAvg !== null ? volumeRecent < 0.6 * volumeAvg : false;
-	if (lowVolume && Math.abs((price - vwap) / vwap) < 0.001) {
+	if (lowVolume && vwap !== 0 && Math.abs((price - vwap) / vwap) < 0.001) {
 		return { regime: "CHOP", reason: "low_volume_flat" };
 	}
 

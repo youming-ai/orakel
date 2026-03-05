@@ -71,16 +71,16 @@ const RiskConfigSchema = z
 
 const StrategyConfigSchema = z
 	.object({
-		edgeThresholdEarly: z.coerce.number().optional(),
-		edgeThresholdMid: z.coerce.number().optional(),
-		edgeThresholdLate: z.coerce.number().optional(),
-		minProbEarly: z.coerce.number().optional(),
-		minProbMid: z.coerce.number().optional(),
-		minProbLate: z.coerce.number().optional(),
+		edgeThresholdEarly: z.coerce.number().min(0).max(1).optional(),
+		edgeThresholdMid: z.coerce.number().min(0).max(1).optional(),
+		edgeThresholdLate: z.coerce.number().min(0).max(1).optional(),
+		minProbEarly: z.coerce.number().min(0).max(1).optional(),
+		minProbMid: z.coerce.number().min(0).max(1).optional(),
+		minProbLate: z.coerce.number().min(0).max(1).optional(),
 		blendWeights: z
 			.object({
-				vol: z.coerce.number().optional(),
-				ta: z.coerce.number().optional(),
+				vol: z.coerce.number().min(0).max(1).optional(),
+				ta: z.coerce.number().min(0).max(1).optional(),
 			})
 			.partial()
 			.optional(),
@@ -94,7 +94,7 @@ const StrategyConfigSchema = z
 			.partial()
 			.optional(),
 		skipMarkets: z.array(z.string()).optional(),
-		minConfidence: z.coerce.number().optional(),
+		minConfidence: z.coerce.number().min(0).max(1).optional(),
 		marketPerformance: z
 			.record(
 				z.string(),
@@ -206,14 +206,10 @@ const FILE_CONFIG = readJsonConfig();
 const FILE_STRATEGY = FILE_CONFIG.strategy;
 const FILE_PAPER_RISK = FILE_CONFIG.paper.risk;
 const FILE_LIVE_RISK = FILE_CONFIG.live.risk;
-const FILE_LEGACY_RISK = FILE_CONFIG.risk;
 
 const DEFAULT_MARKET = MARKETS.find((m) => m.id === "BTC") ?? MARKETS[0] ?? null;
 
-function buildRiskConfig(
-	primary: z.infer<typeof RiskConfigSchema>,
-	_fallback?: z.infer<typeof RiskConfigSchema>,
-): RiskConfig {
+function buildRiskConfig(primary: z.infer<typeof RiskConfigSchema>): RiskConfig {
 	return {
 		maxTradeSizeUsdc: primary.maxTradeSizeUsdc,
 		limitDiscount: primary.limitDiscount,
@@ -276,10 +272,10 @@ export const CONFIG: AppConfig = {
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
-	risk: buildRiskConfig(FILE_PAPER_RISK, FILE_LEGACY_RISK),
+	risk: buildRiskConfig(FILE_PAPER_RISK),
 
-	paperRisk: buildRiskConfig(FILE_PAPER_RISK, FILE_LEGACY_RISK),
-	liveRisk: buildRiskConfig(FILE_LIVE_RISK, FILE_LEGACY_RISK),
+	paperRisk: buildRiskConfig(FILE_PAPER_RISK),
+	liveRisk: buildRiskConfig(FILE_LIVE_RISK),
 };
 
 export const PAPER_INITIAL_BALANCE: number = FILE_CONFIG.paper.initialBalance;
@@ -290,7 +286,6 @@ export function reloadConfig(): AppConfig {
 	const fileStrategy = fileConfig.strategy;
 	const filePaperRisk = fileConfig.paper.risk;
 	const fileLiveRisk = fileConfig.live.risk;
-	const fileRisk = fileConfig.risk;
 
 	// P1-7: Preserve runtime-only fields that are not in config.json
 	const prevMarketPerformance = CONFIG.strategy.marketPerformance;
@@ -309,9 +304,9 @@ export function reloadConfig(): AppConfig {
 		marketPerformance: prevMarketPerformance ?? fileStrategy.marketPerformance,
 	};
 
-	CONFIG.risk = buildRiskConfig(filePaperRisk, fileRisk);
-	CONFIG.paperRisk = buildRiskConfig(filePaperRisk, fileRisk);
-	CONFIG.liveRisk = buildRiskConfig(fileLiveRisk, fileRisk);
+	CONFIG.risk = buildRiskConfig(filePaperRisk);
+	CONFIG.paperRisk = buildRiskConfig(filePaperRisk);
+	CONFIG.liveRisk = buildRiskConfig(fileLiveRisk);
 
 	// Notify all listeners that config has been reloaded
 	for (const listener of reloadListeners) {
@@ -331,16 +326,21 @@ export function startConfigWatcher(): void {
 	if (configWatcherInitialized) return;
 	configWatcherInitialized = true;
 
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 	try {
 		fs.watch("./config.json", { persistent: false }, (eventType) => {
 			if (eventType === "change") {
-				log.info("config.json changed, reloading...");
-				try {
-					reloadConfig();
-					log.info("Config reloaded successfully");
-				} catch (err) {
-					log.error("Failed to reload config:", err);
-				}
+				if (debounceTimer) clearTimeout(debounceTimer);
+				debounceTimer = setTimeout(() => {
+					log.info("config.json changed, reloading...");
+					try {
+						reloadConfig();
+						log.info("Config reloaded successfully");
+					} catch (err) {
+						log.error("Failed to reload config:", err);
+					}
+				}, 300);
 			}
 		});
 		log.info("Config watcher started for config.json");

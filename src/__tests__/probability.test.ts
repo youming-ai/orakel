@@ -273,7 +273,7 @@ describe("computeVolatilityImpliedProb", () => {
 		expect(computeVolatilityImpliedProb(input)).toBeNull();
 	});
 
-	it("returns 0.99 when time elapsed and current price is above target", () => {
+	it("returns null when time elapsed (no useful prediction)", () => {
 		expect(
 			computeVolatilityImpliedProb({
 				currentPrice: 101,
@@ -281,10 +281,10 @@ describe("computeVolatilityImpliedProb", () => {
 				volatility15m: 0.01,
 				timeLeftMin: 0,
 			}),
-		).toBe(0.99);
+		).toBeNull();
 	});
 
-	it("returns 0.01 when time elapsed and current price is below target", () => {
+	it("returns null when time is negative (expired market)", () => {
 		expect(
 			computeVolatilityImpliedProb({
 				currentPrice: 99,
@@ -292,7 +292,7 @@ describe("computeVolatilityImpliedProb", () => {
 				volatility15m: 0.01,
 				timeLeftMin: -1,
 			}),
-		).toBe(0.01);
+		).toBeNull();
 	});
 
 	it("is dampened to max 0.85 when current price is far above target (crypto fat tail protection)", () => {

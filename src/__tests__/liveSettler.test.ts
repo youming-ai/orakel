@@ -1,5 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("node:fs", () => ({
+	default: {
+		existsSync: vi.fn().mockReturnValue(false),
+		readFileSync: vi.fn().mockReturnValue("[]"),
+		writeFileSync: vi.fn(),
+		mkdirSync: vi.fn(),
+	},
+	existsSync: vi.fn().mockReturnValue(false),
+	readFileSync: vi.fn().mockReturnValue("[]"),
+	writeFileSync: vi.fn(),
+	mkdirSync: vi.fn(),
+}));
+
 vi.mock("../core/db.ts", () => ({
 	onchainStatements: {
 		upsertKnownCtfToken: () => ({ run: vi.fn() }),

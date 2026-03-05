@@ -22,7 +22,8 @@ export function computeVwapSeries(candles: Candle[]): number[] {
 		const tp = (Number(c.high) + Number(c.low) + Number(c.close)) / 3;
 		pv += tp * Number(c.volume);
 		v += Number(c.volume);
-		series.push(v === 0 ? 0 : pv / v);
+		const prev = series[series.length - 1];
+		series.push(v === 0 ? (prev === undefined ? 0 : prev) : pv / v);
 	}
 	return series;
 }

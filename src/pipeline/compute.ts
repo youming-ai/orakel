@@ -1,3 +1,4 @@
+import { createLogger } from "../core/logger.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
 import {
 	applyAdaptiveTimeDecay,
@@ -12,6 +13,8 @@ import { computeMacd } from "../indicators/macd.ts";
 import { computeRsi, slopeLast } from "../indicators/rsi.ts";
 import { computeVwapSeries } from "../indicators/vwap.ts";
 import type { AppConfig, ComputeResult, MacdResult, RawMarketData, TradeDecision } from "../types.ts";
+
+const log = createLogger("pipeline-compute");
 
 function countVwapCrosses(closes: number[], vwapSeries: number[], lookback: number): number | null {
 	if (closes.length < lookback || vwapSeries.length < lookback) return null;
@@ -36,8 +39,18 @@ export function computeMarketDecision(
 	config: AppConfig,
 ): ComputeResult {
 	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin } = data;
+	if (poly.ok && poly.degraded) {
+		log.warn(`Polymarket snapshot degraded for ${market.id}; using fallback orderbook/price data`);
+	}
 	const effectiveTimeLeftMin = timeLeftMin ?? config.candleWindowMinutes;
 	const closes: number[] = candles.map((c) => Number(c.close));
+	const fallbackClose = Number.isFinite(lastPrice) ? lastPrice : 0;
+	for (let i = 0; i < closes.length; i += 1) {
+		if (!Number.isFinite(closes[i])) {
+			const prevClose = i > 0 ? closes[i - 1] : undefined;
+			closes[i] = typeof prevClose === "number" && Number.isFinite(prevClose) ? prevClose : fallbackClose;
+		}
+	}
 	const vwapSeries = computeVwapSeries(candles);
 	const vwapNowRaw = vwapSeries[vwapSeries.length - 1];
 	const vwapNow = vwapNowRaw === undefined ? null : vwapNowRaw;
@@ -51,10 +64,15 @@ export function computeMarketDecision(
 	const rsiNow = computeRsi(closes, config.rsiPeriod);
 	const rsiForSlope: number[] = [];
 	for (let offset = 2; offset >= 0; offset--) {
-		const subLen = closes.length - offset;
-		if (subLen >= config.rsiPeriod + 1) {
-			const r = computeRsi(closes.slice(0, subLen), config.rsiPeriod);
-			if (r !== null) rsiForSlope.push(r);
+		if (offset === 0) {
+			// Reuse the already-computed current RSI
+			if (rsiNow !== null) rsiForSlope.push(rsiNow);
+		} else {
+			const subLen = closes.length - offset;
+			if (subLen >= config.rsiPeriod + 1) {
+				const r = computeRsi(closes.slice(0, subLen), config.rsiPeriod);
+				if (r !== null) rsiForSlope.push(r);
+			}
 		}
 	}
 	const rsiSlope = slopeLast(rsiForSlope, 3);

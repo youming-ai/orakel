@@ -1,38 +1,53 @@
 import type { MacdResult } from "../types.ts";
 
 export function computeMacd(closes: (number | null)[], fast: number, slow: number, signal: number): MacdResult | null {
+	if (fast <= 0 || slow <= 0 || signal <= 0 || fast >= slow) return null;
 	if (!Array.isArray(closes) || closes.length < slow + signal) return null;
 
 	const kFast = 2 / (fast + 1);
 	const kSlow = 2 / (slow + 1);
 
-	let fastEma = Number(closes[0]);
-	let slowEma = Number(closes[0]);
-	const macdSeries: number[] = [];
+	let fastSum = 0;
+	let slowSum = 0;
+	for (let i = 0; i < slow; i += 1) {
+		const val = Number(closes[i]);
+		if (i < fast) fastSum += val;
+		slowSum += val;
+	}
+	let fastEma = fastSum / fast;
+	let slowEma = slowSum / slow;
 
-	for (let i = 1; i < closes.length; i += 1) {
+	const macdSeries: number[] = [];
+	for (let i = slow; i < closes.length; i += 1) {
 		const val = Number(closes[i]);
 		fastEma = val * kFast + fastEma * (1 - kFast);
 		slowEma = val * kSlow + slowEma * (1 - kSlow);
-		if (i >= slow - 1) {
-			macdSeries.push(fastEma - slowEma);
-		}
+		macdSeries.push(fastEma - slowEma);
 	}
 
-	const macdLine = fastEma - slowEma;
-
 	if (macdSeries.length < signal) return null;
+	const macdLine = macdSeries[macdSeries.length - 1];
+	if (macdLine === undefined) return null;
 
 	const kSignal = 2 / (signal + 1);
-	let signalEma = Number(macdSeries[0]);
+	let signalSmaSum = 0;
+	for (let i = 0; i < signal; i += 1) {
+		const value = macdSeries[i];
+		if (value === undefined) return null;
+		signalSmaSum += value;
+	}
+	let signalEma = signalSmaSum / signal;
 	let prevSignalEma = signalEma;
-	for (let i = 1; i < macdSeries.length; i += 1) {
+	for (let i = signal; i < macdSeries.length; i += 1) {
+		const value = macdSeries[i];
+		if (value === undefined) return null;
 		prevSignalEma = signalEma;
-		signalEma = Number(macdSeries[i]) * kSignal + signalEma * (1 - kSignal);
+		signalEma = value * kSignal + signalEma * (1 - kSignal);
 	}
 
 	const hist = macdLine - signalEma;
-	const prevMacd = macdSeries.length >= 2 ? Number(macdSeries[macdSeries.length - 2]) : null;
+	const prevMacdValue = macdSeries.length >= 2 ? macdSeries[macdSeries.length - 2] : undefined;
+	const prevMacd = prevMacdValue === undefined ? null : prevMacdValue;
 	const prevHist = prevMacd !== null ? prevMacd - prevSignalEma : null;
 
 	return {
