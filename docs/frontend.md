@@ -115,37 +115,6 @@ App
                 └── MarketComparisonTable
 ```
 
-```
-App
-├── AlertDialog (confirm actions)
-├── Toaster (notifications)
-└── Layout
-    ├── Header
-    │   ├── Status indicators (paper/live running states)
-    │   ├── 15-minute window countdown timer
-    │   ├── View mode toggle (paper/live)
-    │   └── Navigation links (Dashboard / Trades)
-    └── <Outlet>
-        ├── Dashboard
-        │   └── Tabs
-        │       ├── OverviewTab
-        │       │   ├── StatCard[] (win rate, P&L, positions)
-        │       │   ├── P&L Chart (Recharts)
-        │       │   └── MarketCard[]
-        │       │       └── MarketIndicators (RSI, MACD, edge, confidence)
-        │       └── TradesTab
-        │           ├── TradeTable
-        │           │   ├── TradeTableDesktop
-        │           │   └── TradeTableMobile
-        │           └── MarketComparisonTable
-        └── Trades
-            └── TradesTab
-                ├── TradeTable
-                │   ├── TradeTableDesktop
-                │   └── TradeTableMobile
-                └── MarketComparisonTable
-```
-
 **Error Boundaries**
 
 - AppErrorBoundary: Catches unhandled errors at application level
@@ -430,8 +399,9 @@ Production deployment: Frontend served from backend port 9999, proxy not used.
 
 | Document | Description |
 |----------|-------------|
-| [System Architecture](./architecture.md) | Overall system architecture, backend modules, data flow |
-| [Backend Documentation](./backend.md) | Backend API endpoints, WebSocket protocol, data structures |
-| [Trading Strategy](./trading-strategy.md) | Probability model, edge calculation, decision logic |
+| [Core Logic](./core-logic.md) | Architecture, data flow, trading strategy, decision logic |
+| [Backend Reference](./backend.md) | Backend modules, API endpoints, DB schema, data layer |
+| [Deployment Guide](./deployment.md) | Docker, CI/CD, environment setup |
+| [Testing](./testing.md) | Test coverage, organization, running tests |
 
 For complete project structure and development commands, see [README.md](../README.md).
