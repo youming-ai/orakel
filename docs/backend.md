@@ -104,7 +104,6 @@ Zod-validated configuration loader with hot-reload capability.
 |-------------|---------|------------|
 | RiskConfig | Position sizing, daily limits, risk parameters | Yes |
 | StrategyConfig | Edge thresholds, probability weights, decision parameters | Yes |
-| MarketPerformance | Per-market performance tracking and adaptive multipliers | Yes |
 
 **Key Exports**
 

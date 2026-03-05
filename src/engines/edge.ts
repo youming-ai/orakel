@@ -18,6 +18,7 @@ export function computeEdge(params: {
 			rawSum: null,
 			arbitrage: false,
 			overpriced: false,
+			vigTooHigh: false,
 		};
 	}
 
@@ -37,6 +38,7 @@ export function computeEdge(params: {
 			rawSum,
 			arbitrage,
 			overpriced,
+			vigTooHigh: overpriced,
 		};
 	}
 
@@ -51,6 +53,7 @@ export function computeEdge(params: {
 		rawSum,
 		arbitrage,
 		overpriced,
+		vigTooHigh: overpriced,
 	};
 }
 

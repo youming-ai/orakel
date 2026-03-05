@@ -40,18 +40,18 @@ const STRATEGY_DEFAULTS: {
 	minProbEarly: number;
 	minProbMid: number;
 	minProbLate: number;
+	maxGlobalTradesPerWindow: number;
 	skipMarkets: string[];
 } = {
-	edgeThresholdEarly: 0.06,
-	edgeThresholdMid: 0.08,
-	edgeThresholdLate: 0.1,
-	minProbEarly: 0.52,
-	minProbMid: 0.55,
-	minProbLate: 0.6,
+	edgeThresholdEarly: 0.05,
+	edgeThresholdMid: 0.1,
+	edgeThresholdLate: 0.2,
+	minProbEarly: 0.55,
+	minProbMid: 0.6,
+	minProbLate: 0.65,
+	maxGlobalTradesPerWindow: 1,
 	skipMarkets: [],
 };
-
-
 
 const RiskConfigSchema = z
 	.object({
@@ -73,6 +73,7 @@ const StrategyConfigSchema = z
 		minProbEarly: z.coerce.number().min(0).max(1).optional(),
 		minProbMid: z.coerce.number().min(0).max(1).optional(),
 		minProbLate: z.coerce.number().min(0).max(1).optional(),
+		maxGlobalTradesPerWindow: z.coerce.number().int().min(1).optional(),
 		skipMarkets: z.array(z.string()).optional(),
 	})
 	.partial()
@@ -231,6 +232,7 @@ export const CONFIG: AppConfig = {
 		minProbEarly: FILE_STRATEGY.minProbEarly,
 		minProbMid: FILE_STRATEGY.minProbMid,
 		minProbLate: FILE_STRATEGY.minProbLate,
+		maxGlobalTradesPerWindow: FILE_STRATEGY.maxGlobalTradesPerWindow,
 		skipMarkets: FILE_STRATEGY.skipMarkets,
 	},
 
@@ -257,6 +259,7 @@ export function reloadConfig(): AppConfig {
 		minProbEarly: fileStrategy.minProbEarly,
 		minProbMid: fileStrategy.minProbMid,
 		minProbLate: fileStrategy.minProbLate,
+		maxGlobalTradesPerWindow: fileStrategy.maxGlobalTradesPerWindow,
 		skipMarkets: fileStrategy.skipMarkets,
 	};
 

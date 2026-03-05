@@ -47,10 +47,6 @@ export interface RiskConfig {
 	maxTradesPerWindow: number;
 }
 
-export interface MarketPerformance {
-	winRate: number;
-}
-
 export interface StrategyConfig {
 	edgeThresholdEarly: number;
 	edgeThresholdMid: number;
@@ -58,6 +54,7 @@ export interface StrategyConfig {
 	minProbEarly: number;
 	minProbMid: number;
 	minProbLate: number;
+	maxGlobalTradesPerWindow: number;
 	skipMarkets?: string[];
 	// P1: Safety gates (optional with defaults in decide())
 	minTimeLeftMin?: number;

@@ -18,8 +18,8 @@ Automated trading bot for Polymarket **15-minute Up/Down** cryptocurrency market
 - **Paper Trading** -- Simulate with real-time data, no real money
 - **Live Trading** -- Polymarket CLOB orders (GTD + FOK), on-chain settlement
 - **Technical Analysis** -- Heiken Ashi, RSI, MACD, VWAP, Realized Volatility
-- **Probability Model** -- Volatility-implied probability fused with TA scoring
-- **Market Regime** -- TREND / RANGE / CHOP detection with dynamic thresholds
+- **Probability Model** -- TA-scored probability with configurable edge thresholds
+- **Market Regime** -- TREND / RANGE / CHOP detection (informational)
 - **Web Dashboard** -- Real-time monitoring, P&L charts, trade history
 - **Docker Deployment** -- One-command `docker compose up`
 
