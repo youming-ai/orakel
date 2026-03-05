@@ -442,7 +442,7 @@ async function main(): Promise<void> {
 	const orderTracker: SimpleOrderTracker = {
 		orders: new Map<string, number>(),
 		lastTradeMs: 0,
-		cooldownMs: 30_000,
+		cooldownMs: 0,
 		windowStartMs: 0,
 		keyFor(marketId: string, windowSlug: string): string {
 			return `${marketId}:${windowSlug}`;
