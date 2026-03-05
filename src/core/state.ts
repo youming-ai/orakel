@@ -33,7 +33,7 @@ export interface DashboardState {
 		winRate: number;
 		totalPnl: number;
 	} | null;
-	paperBalance: { initial: number; current: number; maxDrawdown: number } | null;
+	paperBalance: { initial: number; current: number; maxDrawdown: number; reserved?: number } | null;
 	liveWallet: { address: string | null; connected: boolean; clientReady: boolean };
 	// Cycle-aware pending start/stop states
 	paperPendingStart: boolean;

@@ -11,12 +11,8 @@
     "strict": true,
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "isolatedModules": true
+    "resolveJsonModule": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
