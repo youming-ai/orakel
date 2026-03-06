@@ -21,6 +21,7 @@ import {
 	setPaperRunning,
 	updateMarkets,
 } from "./core/state.ts";
+import { createTradeTracker } from "./core/tradeTracker.ts";
 import { getCandleWindowTiming, sleep } from "./core/utils.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
@@ -60,44 +61,13 @@ interface SimpleOrderTracker {
 	orders: Map<string, number>;
 	lastTradeMs: number;
 	cooldownMs: number;
-	windowStartMs: number;
 	keyFor(marketId: string, windowSlug: string): string;
 	hasOrder(marketId: string, windowSlug: string): boolean;
 	totalActive(): number;
 	record(marketId: string, windowSlug: string, recordedAtMs?: number): void;
 	clear(): void;
-	setWindow(startMs: number): void;
 	prune(): void;
 	onCooldown(): boolean;
-}
-
-function createTradeTracker() {
-	return {
-		markets: new Set<string>(),
-		windowStartMs: 0,
-		globalCount: 0,
-		clear() {
-			this.markets.clear();
-			this.globalCount = 0;
-			this.windowStartMs = 0;
-		},
-		setWindow(startMs: number) {
-			if (this.windowStartMs !== startMs) {
-				this.clear();
-				this.windowStartMs = startMs;
-			}
-		},
-		has(marketId: string, startMs: number): boolean {
-			return this.markets.has(`${marketId}:${startMs}`);
-		},
-		record(marketId: string, startMs: number) {
-			this.markets.add(`${marketId}:${startMs}`);
-			this.globalCount++;
-		},
-		canTradeGlobally(maxGlobal: number): boolean {
-			return this.globalCount < maxGlobal;
-		},
-	};
 }
 
 const paperTracker = createTradeTracker();
@@ -354,7 +324,8 @@ async function main(): Promise<void> {
 
 	function ensureLiveSettler(): void {
 		if (liveSettlerInstance?.isRunning()) return;
-		if (!isLiveRunning()) return;
+		const hasWonTrades = liveAccount.getWonTrades().length > 0;
+		if (!isLiveRunning() && !hasWonTrades) return;
 
 		liveSettlerInstance = new LiveSettler({
 			clobWs,
@@ -382,7 +353,6 @@ async function main(): Promise<void> {
 		orders: new Map<string, number>(),
 		lastTradeMs: 0,
 		cooldownMs: 0,
-		windowStartMs: 0,
 		keyFor(marketId: string, windowSlug: string): string {
 			return `${marketId}:${windowSlug}`;
 		},
@@ -402,12 +372,6 @@ async function main(): Promise<void> {
 		clear(): void {
 			this.orders.clear();
 			this.lastTradeMs = 0;
-		},
-		setWindow(startMs: number): void {
-			if (this.windowStartMs !== startMs) {
-				this.clear();
-				this.windowStartMs = startMs;
-			}
 		},
 		prune(): void {
 			const cutoff = Date.now() - 16 * 60_000;
@@ -694,6 +658,9 @@ async function main(): Promise<void> {
 			continue;
 		}
 
+// Settlement uses the previous tick's price (prevCurrentPrice) by design.
+// The settlement window closes BEFORE the new tick processes, so the last
+// known price at window-end is the correct settle price. (BUG 7 audit: accepted)
 		const latestPrices = collectLatestPrices(markets, states);
 
 		for (const market of markets) {
@@ -701,13 +668,21 @@ async function main(): Promise<void> {
 			const prevStart = prevWindowStartMs.get(market.id);
 
 			if (latestPrices.size > 0) {
-				const paperRecovered = await paperAccount.resolveExpiredTrades(latestPrices, market.candleWindowMinutes);
+				const paperRecovered = await paperAccount.resolveExpiredTrades(
+					latestPrices,
+					market.candleWindowMinutes,
+					market.id,
+				);
 				if (paperRecovered > 0) {
 					log.info(`[${market.id}] Recovered expired paper trades: ${paperRecovered}`);
 				}
 				// Live settlement runs regardless of isLiveRunning() — pending trades must
 				// settle even after live trading is stopped (fix: issue 2.1)
-				const liveRecovered = await liveAccount.resolveExpiredTrades(latestPrices, market.candleWindowMinutes);
+				const liveRecovered = await liveAccount.resolveExpiredTrades(
+					latestPrices,
+					market.candleWindowMinutes,
+					market.id,
+				);
 				if (liveRecovered > 0) {
 					log.info(`[${market.id}] Recovered expired live trades: ${liveRecovered}`);
 				}
@@ -715,11 +690,11 @@ async function main(): Promise<void> {
 
 			if (prevStart !== undefined && prevStart !== timing.startMs) {
 				if (latestPrices.size > 0) {
-					const paperResolved = await paperAccount.resolveTrades(prevStart, latestPrices);
+					const paperResolved = await paperAccount.resolveTrades(prevStart, latestPrices, market.id);
 					if (paperResolved > 0) {
 						log.info(`[${market.id}] Paper window settled: ${paperResolved}`);
 					}
-					const liveResolved = await liveAccount.resolveTrades(prevStart, latestPrices);
+					const liveResolved = await liveAccount.resolveTrades(prevStart, latestPrices, market.id);
 					if (liveResolved > 0) {
 						log.info(`[${market.id}] Live window settled: ${liveResolved}`);
 					}
@@ -731,12 +706,17 @@ async function main(): Promise<void> {
 
 		// Force-resolve trades stuck beyond 1 hour — safety net for issue 7.2
 		const FORCE_RESOLVE_MAX_AGE_MS = 60 * 60_000;
-		const paperForced = await paperAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS);
+		const paperForced = await paperAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS, latestPrices);
 		if (paperForced > 0) log.warn(`Force-resolved ${paperForced} stuck paper trade(s)`);
-		const liveForced = await liveAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS);
+		const liveForced = await liveAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS, latestPrices);
 		if (liveForced > 0) log.warn(`Force-resolved ${liveForced} stuck live trade(s)`);
 
 		ensureLiveSettler();
+
+		const oldestActiveWindow = Math.min(...markets.map((m) => getCandleWindowTiming(m.candleWindowMinutes).startMs));
+		paperTracker.prune(oldestActiveWindow);
+		liveTracker.prune(oldestActiveWindow);
+		orderTracker.prune();
 
 		const results: ProcessMarketResult[] = await Promise.all(
 			markets.map(async (market) => {
@@ -746,9 +726,6 @@ async function main(): Promise<void> {
 						throw new Error(`missing_state_${market.id}`);
 					}
 					const timing = getCandleWindowTiming(market.candleWindowMinutes);
-					orderTracker.setWindow(timing.startMs);
-					paperTracker.setWindow(timing.startMs);
-					liveTracker.setWindow(timing.startMs);
 					return await processMarket({
 						market,
 						timing,

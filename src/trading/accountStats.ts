@@ -246,10 +246,11 @@ export class AccountStatsManager {
 		}
 	}
 
-	async resolveTrades(windowStartMs: number, latestPrices: Map<string, number>): Promise<number> {
+	async resolveTrades(windowStartMs: number, latestPrices: Map<string, number>, marketId?: string): Promise<number> {
 		let resolvedCount = 0;
 		for (const trade of this.state.trades) {
 			if (trade.resolved || trade.windowStartMs !== windowStartMs) continue;
+			if (marketId && trade.marketId !== marketId) continue;
 			const settlePrice = latestPrices.get(trade.marketId);
 			if (settlePrice === undefined) continue;
 			this.resolveSingle(trade, settlePrice);
@@ -261,12 +262,17 @@ export class AccountStatsManager {
 		return resolvedCount;
 	}
 
-	async resolveExpiredTrades(latestPrices: Map<string, number>, candleWindowMinutes: number): Promise<number> {
+	async resolveExpiredTrades(
+		latestPrices: Map<string, number>,
+		candleWindowMinutes: number,
+		marketId?: string,
+	): Promise<number> {
 		const now = Date.now();
 		const windowMs = candleWindowMinutes * 60 * 1000;
 		let resolvedCount = 0;
 		for (const trade of this.state.trades) {
 			if (trade.resolved) continue;
+			if (marketId && trade.marketId !== marketId) continue;
 			const elapsed = now - trade.windowStartMs;
 			if (elapsed < windowMs * 1.5) continue;
 			const settlePrice = latestPrices.get(trade.marketId);
@@ -280,31 +286,40 @@ export class AccountStatsManager {
 		return resolvedCount;
 	}
 
-	async forceResolveStuckTrades(maxAgeMs: number): Promise<number> {
+	async forceResolveStuckTrades(maxAgeMs: number, latestPrices?: Map<string, number>): Promise<number> {
 		const cutoff = Date.now() - maxAgeMs;
 		let resolvedCount = 0;
 		for (const trade of this.state.trades) {
 			if (trade.resolved) continue;
 			if (trade.windowStartMs > cutoff) continue;
-			trade.resolved = true;
-			trade.won = false;
-			trade.pnl = -trade.price * trade.size;
-			trade.settlePrice = 0.5;
-			this.state.currentBalance += trade.size * trade.price + trade.pnl;
-			if (trade.pnl > 0) this.state.wins++;
-			else this.state.losses++;
-			this.state.totalPnl += trade.pnl;
+
+			const settlePrice = latestPrices?.get(trade.marketId);
+			if (settlePrice !== undefined) {
+				this.resolveSingle(trade, settlePrice);
+			} else {
+				trade.resolved = true;
+				trade.won = false;
+				trade.pnl = -trade.price * trade.size;
+				trade.settlePrice = 0.5;
+				this.state.currentBalance += trade.size * trade.price + trade.pnl;
+				if (trade.pnl > 0) this.state.wins++;
+				else this.state.losses++;
+				this.state.totalPnl += trade.pnl;
+				this.updateDailyPnl(trade, trade.pnl);
+				this.persistTrade(trade);
+			}
 			resolvedCount++;
 			this.log.warn(`Force-resolved stuck trade \${trade.id}`);
 		}
 		if (resolvedCount > 0) {
+			this.syncTradeLog();
 			await this.save();
 		}
 		return resolvedCount;
 	}
 
 	private resolveSingle(trade: TradeEntry, settlePrice: number): void {
-		const won = settlePrice > trade.priceToBeat;
+		const won = trade.side === "UP" ? settlePrice > trade.priceToBeat : settlePrice <= trade.priceToBeat;
 		const pnl = won ? trade.size * (1 - trade.price) : -trade.size * trade.price;
 		trade.resolved = true;
 		trade.won = won;
