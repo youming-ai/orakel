@@ -39,6 +39,7 @@ export const GammaMarketSchema = z
 		spread: z.coerce.number().optional(),
 		events: z.array(GammaMarketEventSchema).optional(),
 		seriesSlug: z.string().optional(),
+		conditionId: z.string().optional(),
 	})
 	.passthrough();
 

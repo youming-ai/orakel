@@ -228,6 +228,7 @@ export interface TradeSignal {
 	rawSum: number | null;
 	arbitrage: boolean;
 	tokens: { upTokenId: string; downTokenId: string } | null;
+	conditionId: string | null;
 }
 
 export interface TradeResult {

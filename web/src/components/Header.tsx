@@ -105,7 +105,7 @@ export function Header({
 					<Link
 						to="/logs"
 						className={cn(
-							"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline hidden sm:inline",
+							"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline",
 							isTradesActive && "text-foreground",
 						)}
 					>

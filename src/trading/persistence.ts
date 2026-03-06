@@ -187,6 +187,7 @@ export function persistSignal({
 		rawSum: edge.rawSum,
 		arbitrage: edge.arbitrage,
 		tokens: poly.ok ? (poly.tokens ?? null) : null,
+		conditionId: poly.ok && poly.market?.conditionId ? poly.market.conditionId : null,
 	};
 
 	writeLatestSignal(market.id, signalPayload);

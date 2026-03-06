@@ -699,7 +699,7 @@ async function executeTradeInternal(
 						$tokenId: tokenId,
 						$marketId: signal.marketId ?? "",
 						$side: side,
-						$conditionId: null,
+						$conditionId: signal.conditionId ?? null,
 					});
 					enrichPosition(tokenId, signal.marketId ?? "", side);
 				}

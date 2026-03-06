@@ -85,10 +85,8 @@ export class LiveSettler {
 					continue;
 				}
 
-				// Wait for Polymarket on-chain resolution before attempting redeem
-				if (!this.deps.clobWs.isResolved(tokenId)) {
-					continue;
-				}
+				// Skip WebSocket isResolved check - instead rely on payoutDenominator check in redeemFn
+				// This handles cases where WebSocket misses market_resolved events or connection issues
 
 				let conditionId = this.deps.lookupConditionId(tokenId);
 				if (!conditionId) {

@@ -60,10 +60,27 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 								</span>
 							</div>
 							<div className="flex flex-col bg-muted/50 border rounded-md p-2">
-								<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Price</span>
-								<span className="font-mono">{t.price}</span>
+								<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Entry</span>
+								<span className="font-mono">{t.price}¢</span>
 							</div>
 						</div>
+
+						{t.currentPriceAtEntry !== null && t.currentPriceAtEntry !== undefined && (
+							<div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+								<div className="flex flex-col bg-muted/50 border rounded-md p-2">
+									<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Spot</span>
+									<span className="font-mono">${Number(t.currentPriceAtEntry).toFixed(2)}</span>
+								</div>
+								{t.won !== null && t.pnl !== null && (
+									<div className="flex flex-col bg-muted/50 border rounded-md p-2">
+										<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">P&L</span>
+										<span className={`font-mono font-semibold ${t.won ? "text-emerald-400" : "text-red-400"}`}>
+											{t.won ? "+" : ""}{Number(t.pnl).toFixed(2)}
+										</span>
+									</div>
+								)}
+							</div>
+						)}
 
 						<div className="flex items-center gap-2 mt-3">
 							<Badge
