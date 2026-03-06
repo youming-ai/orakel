@@ -21,13 +21,15 @@
     }
   },
   "strategy": {
-    "edgeThresholdEarly": 0.05,
-    "edgeThresholdMid": 0.1,
-    "edgeThresholdLate": 0.2,
-    "minProbEarly": 0.55,
-    "minProbMid": 0.6,
-    "minProbLate": 0.65,
-    "maxGlobalTradesPerWindow": 4,
-    "skipMarkets": []
+    "default": {
+      "edgeThresholdEarly": 0.05,
+      "edgeThresholdMid": 0.1,
+      "edgeThresholdLate": 0.2,
+      "minProbEarly": 0.55,
+      "minProbMid": 0.6,
+      "minProbLate": 0.65,
+      "maxGlobalTradesPerWindow": 4,
+      "skipMarkets": []
+    }
   }
 }

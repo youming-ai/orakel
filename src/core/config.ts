@@ -19,7 +19,7 @@ export function offConfigReload(listener: ConfigReloadListener): void {
 	reloadListeners.delete(listener);
 }
 
-import type { AppConfig, RiskConfig } from "../types.ts";
+import type { AppConfig, RiskConfig, StrategyConfig } from "../types.ts";
 
 const RISK_DEFAULTS = {
 	maxTradeSizeUsdc: 1,
@@ -96,21 +96,39 @@ const ConfigFileSchema = z
 			})
 			.partial()
 			.optional(),
-		strategy: StrategyConfigSchema.optional(),
+		strategy: z.unknown().optional(),
 		risk: RiskConfigSchema.optional(),
 	})
-	.transform((value) => ({
-		paper: {
-			risk: RiskConfigSchema.parse(value.paper?.risk ?? {}),
-			initialBalance: value.paper?.initialBalance ?? 1000,
-		},
-		live: {
-			risk: RiskConfigSchema.parse(value.live?.risk ?? {}),
-			initialBalance: value.live?.initialBalance ?? 1000,
-		},
-		strategy: StrategyConfigSchema.parse(value.strategy ?? {}),
-		risk: value.risk,
-	}));
+	.transform((value) => {
+		const rawStrategy = value.strategy;
+		let defaultStrategy: z.infer<typeof StrategyConfigSchema>;
+		const perMarketStrategy: Record<string, z.infer<typeof StrategyConfigSchema>> = {};
+
+		if (isObject(rawStrategy) && "default" in rawStrategy) {
+			defaultStrategy = StrategyConfigSchema.parse(rawStrategy.default ?? {});
+			for (const [key, val] of Object.entries(rawStrategy)) {
+				if (key !== "default") {
+					perMarketStrategy[key] = StrategyConfigSchema.parse(val ?? {});
+				}
+			}
+		} else {
+			defaultStrategy = StrategyConfigSchema.parse(rawStrategy ?? {});
+		}
+
+		return {
+			paper: {
+				risk: RiskConfigSchema.parse(value.paper?.risk ?? {}),
+				initialBalance: value.paper?.initialBalance ?? 1000,
+			},
+			live: {
+				risk: RiskConfigSchema.parse(value.live?.risk ?? {}),
+				initialBalance: value.live?.initialBalance ?? 1000,
+			},
+			strategy: defaultStrategy,
+			perMarketStrategy,
+			risk: value.risk,
+		};
+	});
 
 type ConfigFile = z.infer<typeof ConfigFileSchema>;
 
@@ -243,6 +261,14 @@ export const LIVE_INITIAL_BALANCE: number = FILE_CONFIG.live.initialBalance;
 /** @deprecated Use market.candleWindowMinutes instead. Temporary bridge during multi-timeframe migration. */
 export const DEFAULT_CANDLE_WINDOW_MINUTES = 15;
 
+let perMarketStrategy: Record<string, z.infer<typeof StrategyConfigSchema>> = FILE_CONFIG.perMarketStrategy;
+
+export function getStrategyForMarket(marketId: string): StrategyConfig {
+	const overrides = perMarketStrategy[marketId];
+	if (!overrides) return CONFIG.strategy;
+	return { ...CONFIG.strategy, ...overrides };
+}
+
 export function reloadConfig(): AppConfig {
 	const fileConfig = readJsonConfig();
 	const fileStrategy = fileConfig.strategy;
@@ -259,6 +285,8 @@ export function reloadConfig(): AppConfig {
 		maxGlobalTradesPerWindow: fileStrategy.maxGlobalTradesPerWindow,
 		skipMarkets: fileStrategy.skipMarkets,
 	};
+
+	perMarketStrategy = fileConfig.perMarketStrategy;
 
 	CONFIG.risk = buildRiskConfig(filePaperRisk);
 	CONFIG.paperRisk = buildRiskConfig(filePaperRisk);
