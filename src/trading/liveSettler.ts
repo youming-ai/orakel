@@ -1,10 +1,10 @@
 import type { Wallet } from "ethers";
 import type { RedeemOneResult } from "../blockchain/redeemer.ts";
-import { fetchRedeemablePositions } from "../blockchain/redeemer.ts";
 import { createLogger } from "../core/logger.ts";
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
-import { kvQueries } from "../db/queries.ts";
 import type { AccountStatsManager } from "./accountStats.ts";
+import { resolveRedeemConditionId } from "./liveSettlerResolver.ts";
+import { loadRedeemedTradeIds, saveRedeemedTradeIds } from "./liveSettlerStore.ts";
 
 const log = createLogger("live-settler");
 
@@ -38,28 +38,11 @@ export class LiveSettler {
 	}
 
 	private async loadRedeemedIds(): Promise<void> {
-		try {
-			const json = await kvQueries.get("redeemed_trade_ids");
-			if (json) {
-				const data = JSON.parse(json) as unknown;
-				if (Array.isArray(data)) {
-					for (const id of data) {
-						this.redeemedIds.add(String(id));
-					}
-					log.info(`Loaded ${this.redeemedIds.size} redeemed trade IDs`);
-				}
-			}
-		} catch (err) {
-			log.warn("Failed to load redeemed IDs:", err instanceof Error ? err.message : String(err));
-		}
+		this.redeemedIds = await loadRedeemedTradeIds();
 	}
 
 	private async saveRedeemedIds(): Promise<void> {
-		try {
-			await kvQueries.set("redeemed_trade_ids", JSON.stringify([...this.redeemedIds]));
-		} catch (err) {
-			log.warn("Failed to save redeemed IDs:", err instanceof Error ? err.message : String(err));
-		}
+		await saveRedeemedTradeIds(this.redeemedIds);
 	}
 
 	/**
@@ -83,10 +66,11 @@ export class LiveSettler {
 					continue;
 				}
 
-				let conditionId = await this.deps.lookupConditionId(tokenId);
-				if (!conditionId) {
-					conditionId = await this.resolveConditionId(tokenId);
-				}
+				const conditionId = await resolveRedeemConditionId({
+					tokenId,
+					wallet: this.deps.wallet,
+					lookupConditionId: this.deps.lookupConditionId,
+				});
 				if (!conditionId) {
 					log.warn(`No conditionId for token ${tokenId.slice(0, 12)}..., skipping redeem`);
 					continue;
@@ -118,28 +102,6 @@ export class LiveSettler {
 
 		return redeemed;
 	}
-
-	private async resolveConditionId(tokenId: string): Promise<string | null> {
-		if (!this.deps.wallet) return null;
-		try {
-			const positions = await fetchRedeemablePositions(this.deps.wallet.address);
-			// Find first position with a conditionId
-			// Note: The API doesn't provide tokenIds, so we can't verify which position
-			// corresponds to which token. We use the first available conditionId as
-			// a best-effort approach, but don't persist it to avoid DB corruption.
-			for (const pos of positions) {
-				if (pos.conditionId) {
-					return pos.conditionId;
-				}
-			}
-			return null;
-		} catch (err) {
-			log.warn("Failed to resolve conditionId:", err instanceof Error ? err.message : String(err));
-			return null;
-		}
-	}
-
-
 
 	start(intervalMs?: number): void {
 		if (this.timer) return;
