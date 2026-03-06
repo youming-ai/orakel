@@ -75,6 +75,14 @@ const envSchema = z.object({
 
 	// CORS (optional — comma-separated list of allowed origins, * for wildcard)
 	CORS_ORIGIN: z.string().default("*"),
+
+	// PostgreSQL
+	PGHOST: z.string().default("localhost"),
+	PGPORT: z.coerce.number().default(5432),
+	PGUSER: z.string().default("orakel"),
+	PGPASSWORD: z.string().default(""),
+	PGDATABASE: z.string().default("orakel"),
+	PGSSL: z.stringbool().default(false),
 });
 
 // ── validate & export ────────────────────────────────────
