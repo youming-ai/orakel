@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, pgTable, primaryKey, real, serial, text, unique } from "drizzle-orm/pg-core";
+import { bigint, integer, pgTable, primaryKey, real, serial, text, unique } from "drizzle-orm/pg-core";
 
 export const schemaMigrations = pgTable("schema_migrations", {
 	version: integer("version").primaryKey(),
@@ -17,7 +17,7 @@ export const trades = pgTable("trades", {
 	orderId: text("order_id"),
 	status: text("status"),
 	mode: text("mode").notNull(),
-	windowStartMs: integer("window_start_ms"),
+	windowStartMs: bigint("window_start_ms", { mode: "number" }),
 	priceToBeat: real("price_to_beat"),
 	resolved: integer("resolved").default(0),
 	settlePrice: real("settle_price"),
@@ -33,6 +33,7 @@ export const trades = pgTable("trades", {
 	reconStatus: text("recon_status").default("unreconciled"),
 	reconConfidence: real("recon_confidence"),
 	currentPriceAtEntry: real("current_price_at_entry"),
+	marketSlug: text("market_slug"),
 });
 
 export const signals = pgTable("signals", {
@@ -114,14 +115,15 @@ export const kvStore = pgTable("kv_store", {
 export const livePendingOrders = pgTable("live_pending_orders", {
 	orderId: text("order_id").primaryKey(),
 	marketId: text("market_id").notNull(),
-	windowStartMs: integer("window_start_ms").notNull(),
+	marketSlug: text("market_slug"),
+	windowStartMs: bigint("window_start_ms", { mode: "number" }).notNull(),
 	side: text("side").notNull(),
 	price: real("price").notNull(),
 	size: real("size").notNull(),
 	priceToBeat: real("price_to_beat"),
 	currentPriceAtEntry: real("current_price_at_entry"),
 	tokenId: text("token_id"),
-	placedAt: integer("placed_at").notNull(),
+	placedAt: bigint("placed_at", { mode: "number" }).notNull(),
 	status: text("status").notNull().default("placed"),
 	createdAt: integer("created_at").default(sql`floor(extract(epoch from now()))`),
 });

@@ -27,6 +27,7 @@ interface PersistedAccountState {
 export interface TradeEntry {
 	id: string;
 	marketId: string;
+	marketSlug?: string;
 	windowStartMs: number;
 	side: Side;
 	price: number;
@@ -236,6 +237,7 @@ export class AccountStatsManager {
 				windowStartMs: entry.windowStartMs,
 				priceToBeat: entry.priceToBeat,
 				currentPriceAtEntry: entry.currentPriceAtEntry,
+				marketSlug: entry.marketSlug,
 				resolved: entry.resolved ? 1 : 0,
 				won: entry.won === null ? null : entry.won ? 1 : 0,
 				pnl: entry.pnl,
