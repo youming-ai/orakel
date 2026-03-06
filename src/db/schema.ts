@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, integer, pgTable, primaryKey, real, serial, text, unique } from "drizzle-orm/pg-core";
+import { integer, pgTable, primaryKey, real, serial, text, unique } from "drizzle-orm/pg-core";
 
 export const schemaMigrations = pgTable("schema_migrations", {
 	version: integer("version").primaryKey(),

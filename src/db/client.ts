@@ -6,16 +6,10 @@ import * as schema from "./schema.ts";
 
 const log = createLogger("db");
 
-export const client = postgres({
-	host: env.PGHOST,
-	port: env.PGPORT,
-	user: env.PGUSER,
-	password: env.PGPASSWORD,
-	database: env.PGDATABASE,
+export const client = postgres(env.DATABASE_URL, {
 	max: 10,
 	idle_timeout: 20,
 	connect_timeout: 30,
-	ssl: env.PGSSL ? { rejectUnauthorized: false } : undefined,
 });
 
 export const db = drizzle(client, { schema });
