@@ -309,8 +309,8 @@ async function main(): Promise<void> {
 	);
 
 	const markets = getActiveMarkets();
-	const binanceSymbols = markets.map((m) => m.binanceSymbol);
-	const polymarketSymbols = markets.map((m) => m.chainlink.wsSymbol);
+	const binanceSymbols = [...new Set(markets.map((m) => m.binanceSymbol))];
+	const polymarketSymbols = [...new Set(markets.map((m) => m.chainlink.wsSymbol))];
 
 	const streams: StreamHandles = {
 		binance: startMultiBinanceTradeStream(binanceSymbols),
@@ -318,14 +318,18 @@ async function main(): Promise<void> {
 		chainlink: new Map<string, WsStreamHandle>(),
 	};
 
+	const chainlinkStreamCache = new Map<string, WsStreamHandle>();
 	for (const market of markets) {
-		streams.chainlink.set(
-			market.id,
-			startChainlinkPriceStream({
+		const key = market.chainlink.aggregator;
+		let stream = chainlinkStreamCache.get(key);
+		if (!stream) {
+			stream = startChainlinkPriceStream({
 				aggregator: market.chainlink.aggregator,
 				decimals: market.chainlink.decimals,
-			}),
-		);
+			});
+			chainlinkStreamCache.set(key, stream);
+		}
+		streams.chainlink.set(market.id, stream);
 	}
 
 	const clobWs: ClobWsHandle = startClobMarketWs();
