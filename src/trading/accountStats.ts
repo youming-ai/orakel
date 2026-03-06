@@ -108,72 +108,38 @@ export class AccountStatsManager {
 
 	async init(): Promise<void> {
 		try {
-			if (this.mode === "paper") {
-				const stateRow = await queries.stateQueries.getPaperState();
-				const tradeRows = await queries.paperTradeQueries.getAll();
+			const stateRow =
+				this.mode === "paper" ? await queries.stateQueries.getPaperState() : await queries.stateQueries.getLiveState();
+			const tradeRows = await queries.unifiedTradeQueries.getAllByMode(this.mode);
 
-				if (stateRow) {
-					this.state = {
-						trades: tradeRows.map((r) => ({
-							id: r.id,
-							marketId: r.marketId,
-							windowStartMs: r.windowStartMs,
-							side: r.side as Side,
-							price: r.price,
-							size: r.size,
-							priceToBeat: r.priceToBeat,
-							currentPriceAtEntry: r.currentPriceAtEntry,
-							timestamp: r.timestamp,
-							resolved: Boolean(r.resolved),
-							won: r.won === null ? null : Boolean(r.won),
-							pnl: r.pnl,
-							settlePrice: r.settlePrice,
-						})),
-						wins: stateRow.wins,
-						losses: stateRow.losses,
-						totalPnl: stateRow.totalPnl,
-						initialBalance: stateRow.initialBalance,
-						currentBalance: stateRow.currentBalance,
-						maxDrawdown: stateRow.maxDrawdown,
-						dailyPnl: safeParseJson(stateRow.dailyPnl, []),
-						dailyCountedTradeIds: safeParseJson(stateRow.dailyCountedTradeIds, []),
-						stoppedAt: stateRow.stoppedAt,
-						stopReason: stateRow.stopReason,
-					};
-				}
-			} else {
-				const stateRow = await queries.stateQueries.getLiveState();
-				const tradeRows = await queries.liveTradeQueries.getAll();
-
-				if (stateRow) {
-					this.state = {
-						trades: tradeRows.map((r) => ({
-							id: r.id,
-							marketId: r.marketId,
-							windowStartMs: r.windowStartMs,
-							side: r.side as Side,
-							price: r.price,
-							size: r.size,
-							priceToBeat: r.priceToBeat,
-							currentPriceAtEntry: r.currentPriceAtEntry,
-							timestamp: r.timestamp,
-							resolved: Boolean(r.resolved),
-							won: r.won === null ? null : Boolean(r.won),
-							pnl: r.pnl,
-							settlePrice: r.settlePrice,
-						})),
-						wins: stateRow.wins,
-						losses: stateRow.losses,
-						totalPnl: stateRow.totalPnl,
-						initialBalance: stateRow.initialBalance,
-						currentBalance: stateRow.currentBalance,
-						maxDrawdown: stateRow.maxDrawdown,
-						dailyPnl: safeParseJson(stateRow.dailyPnl, []),
-						dailyCountedTradeIds: safeParseJson(stateRow.dailyCountedTradeIds, []),
-						stoppedAt: stateRow.stoppedAt,
-						stopReason: stateRow.stopReason,
-					};
-				}
+			if (stateRow) {
+				this.state = {
+					trades: tradeRows.map((r) => ({
+						id: r.tradeId ?? `legacy-${r.id}`,
+						marketId: r.market,
+						windowStartMs: r.windowStartMs ?? 0,
+						side: r.side as Side,
+						price: r.price,
+						size: r.amount,
+						priceToBeat: r.priceToBeat ?? 0,
+						currentPriceAtEntry: r.currentPriceAtEntry,
+						timestamp: r.timestamp,
+						resolved: Boolean(r.resolved),
+						won: r.won === null ? null : Boolean(r.won),
+						pnl: r.pnl,
+						settlePrice: r.settlePrice,
+					})),
+					wins: stateRow.wins,
+					losses: stateRow.losses,
+					totalPnl: stateRow.totalPnl,
+					initialBalance: stateRow.initialBalance,
+					currentBalance: stateRow.currentBalance,
+					maxDrawdown: stateRow.maxDrawdown,
+					dailyPnl: safeParseJson(stateRow.dailyPnl, []),
+					dailyCountedTradeIds: safeParseJson(stateRow.dailyCountedTradeIds, []),
+					stoppedAt: stateRow.stoppedAt,
+					stopReason: stateRow.stopReason,
+				};
 			}
 
 			for (const id of this.state.dailyCountedTradeIds) {
@@ -227,6 +193,7 @@ export class AccountStatsManager {
 	addTrade(
 		entry: Omit<TradeEntry, "id" | "resolved" | "won" | "pnl" | "settlePrice">,
 		exchangeOrderId?: string,
+		status?: string,
 	): string {
 		const id = exchangeOrderId ?? `${this.mode}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		if (this.state.trades.some((t) => t.id === id)) {
@@ -244,7 +211,7 @@ export class AccountStatsManager {
 		this.state.trades.push(trade);
 		this.state.currentBalance -= entry.size * entry.price;
 		this.syncTradeLog();
-		void this.persistTrade(trade)
+		void this.persistTrade(trade, status)
 			.then(() => this.save())
 			.catch((err) => {
 				this.state.trades.pop();
@@ -254,41 +221,26 @@ export class AccountStatsManager {
 		return id;
 	}
 
-	private async persistTrade(entry: TradeEntry): Promise<void> {
+	private async persistTrade(entry: TradeEntry, status?: string): Promise<void> {
 		try {
-			if (this.mode === "paper") {
-				await queries.paperTradeQueries.upsert({
-					id: entry.id,
-					marketId: entry.marketId,
-					windowStartMs: entry.windowStartMs,
-					side: entry.side,
-					price: entry.price,
-					size: entry.size,
-					priceToBeat: entry.priceToBeat,
-					currentPriceAtEntry: entry.currentPriceAtEntry,
-					timestamp: entry.timestamp,
-					resolved: entry.resolved ? 1 : 0,
-					won: entry.won === null ? null : entry.won ? 1 : 0,
-					pnl: entry.pnl,
-					settlePrice: entry.settlePrice,
-				});
-			} else {
-				await queries.liveTradeQueries.upsert({
-					id: entry.id,
-					marketId: entry.marketId,
-					windowStartMs: entry.windowStartMs,
-					side: entry.side,
-					price: entry.price,
-					size: entry.size,
-					priceToBeat: entry.priceToBeat,
-					currentPriceAtEntry: entry.currentPriceAtEntry,
-					timestamp: entry.timestamp,
-					resolved: entry.resolved ? 1 : 0,
-					won: entry.won === null ? null : entry.won ? 1 : 0,
-					pnl: entry.pnl,
-					settlePrice: entry.settlePrice,
-				});
-			}
+			await queries.unifiedTradeQueries.upsert({
+				tradeId: entry.id,
+				timestamp: entry.timestamp,
+				market: entry.marketId,
+				side: entry.side,
+				amount: entry.size,
+				price: entry.price,
+				orderId: entry.id,
+				status: status ?? (entry.resolved ? (entry.won ? "won" : "lost") : "open"),
+				mode: this.mode,
+				windowStartMs: entry.windowStartMs,
+				priceToBeat: entry.priceToBeat,
+				currentPriceAtEntry: entry.currentPriceAtEntry,
+				resolved: entry.resolved ? 1 : 0,
+				won: entry.won === null ? null : entry.won ? 1 : 0,
+				pnl: entry.pnl,
+				settlePrice: entry.settlePrice,
+			});
 		} catch (err) {
 			this.log.error(`Failed to persist trade \${entry.id}:`, err);
 		}

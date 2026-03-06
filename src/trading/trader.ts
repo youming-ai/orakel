@@ -8,7 +8,7 @@ import { env } from "../core/env.ts";
 import { createLogger } from "../core/logger.ts";
 import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
 import { getCandleWindowTiming } from "../core/utils.ts";
-import { onchainQueries, pendingOrderQueries, tradeQueries } from "../db/queries.ts";
+import { onchainQueries, pendingOrderQueries } from "../db/queries.ts";
 import type { MarketConfig, RiskConfig, TradeResult, TradeSignal } from "../types.ts";
 import { getAccount } from "./accountStats.ts";
 
@@ -335,36 +335,6 @@ function canTrade(mode: "paper" | "live"): boolean {
 	return true;
 }
 
-function logTrade(
-	trade: {
-		timestamp?: string;
-		market?: string;
-		side: string;
-		amount: number;
-		price: number;
-		orderId?: string;
-		status: string;
-		currentPriceAtEntry?: number | null;
-	},
-	marketId: string | null | undefined,
-	mode: "paper" | "live",
-): void {
-	const timestamp = trade.timestamp ?? new Date().toISOString();
-	void tradeQueries.insertTrade({
-		timestamp,
-		market: marketId ?? trade.market ?? "",
-		side: trade.side,
-		amount: trade.amount,
-		price: trade.price,
-		orderId: trade.orderId ?? "",
-		status: trade.status,
-		mode,
-		pnl: null,
-		won: null,
-		currentPriceAtEntry: trade.currentPriceAtEntry ?? null,
-	});
-}
-
 export async function executeTrade(
 	signal: TradeSignal,
 	options: { marketConfig?: MarketConfig | null; riskConfig: RiskConfig },
@@ -378,7 +348,7 @@ async function executeTradeInternal(
 	options: { marketConfig?: MarketConfig | null; riskConfig: RiskConfig },
 	mode: "paper" | "live" = "paper",
 ): Promise<TradeResult> {
-	const { marketConfig = null, riskConfig } = options;
+	const { riskConfig } = options;
 
 	if (mode === "paper") {
 		if (!canTrade("paper")) {
@@ -415,34 +385,23 @@ async function executeTradeInternal(
 			log.warn(`Insufficient balance for actual cost: ${actualCost.toFixed(2)} > ${paperBalance.toFixed(2)}`);
 			return { success: false, reason: "insufficient_balance_actual_cost" };
 		}
-		const tradeId = account.addTrade({
-			marketId: signal.marketId,
-			windowStartMs: timing.startMs,
-			side: signal.side,
-			price,
-			size: Number(riskConfig.maxTradeSizeUsdc || 0),
-			priceToBeat: signal.priceToBeat ?? 0,
-			currentPriceAtEntry: signal.currentPrice,
-			timestamp: new Date().toISOString(),
-		});
+		const paperTradeTimestamp = new Date().toISOString();
+		const tradeId = account.addTrade(
+			{
+				marketId: signal.marketId,
+				windowStartMs: timing.startMs,
+				side: signal.side,
+				price,
+				size: Number(riskConfig.maxTradeSizeUsdc || 0),
+				priceToBeat: signal.priceToBeat ?? 0,
+				currentPriceAtEntry: signal.currentPrice,
+				timestamp: paperTradeTimestamp,
+			},
+			undefined,
+			"paper_filled",
+		);
 
 		log.info(`Simulated fill: ${side} at ${price}¢ | ${marketSlug} (${tradeId})`);
-
-		const paperTradeTimestamp = new Date().toISOString();
-
-		logTrade(
-			{
-				market: marketSlug,
-				side: `BUY_${side}`,
-				amount: Number(riskConfig.maxTradeSizeUsdc || 0),
-				price,
-				orderId: tradeId,
-				status: "paper_filled",
-				currentPriceAtEntry: signal.currentPrice,
-			},
-			signal.marketId || marketConfig?.id,
-			mode,
-		);
 
 		emitTradeExecuted({
 			marketId: signal.marketId,
@@ -465,7 +424,7 @@ async function executeTradeInternal(
 		return { success: false, reason: "trading_disabled" };
 	}
 
-	const { side, marketUp, marketDown, marketSlug, tokens } = signal;
+	const { side, marketUp, marketDown, tokens } = signal;
 
 	const isUp = side === "UP";
 	const marketPrice = isUp ? parseFloat(String(marketUp)) : parseFloat(String(marketDown));
@@ -589,20 +548,6 @@ async function executeTradeInternal(
 		{
 			const finalOrderId = resultOrderId ?? resultId ?? "";
 
-			logTrade(
-				{
-					market: marketSlug,
-					side: `BUY_${side}`,
-					amount: Number(riskConfig.maxTradeSizeUsdc || 0),
-					price,
-					orderId: finalOrderId,
-					status: resultStatus || defaultStatus,
-					currentPriceAtEntry: signal.currentPrice,
-				},
-				signal.marketId || marketConfig?.id,
-				mode,
-			);
-
 			if (isGtdOrder) {
 				try {
 					void pendingOrderQueries.upsert({
@@ -655,7 +600,8 @@ async function executeTradeInternal(
 							currentPriceAtEntry: signal.currentPrice,
 							timestamp: liveTradeTimestamp,
 						},
-						finalOrderId, // Use exchange orderId so trades table can be matched for P&L updates
+						finalOrderId,
+						"filled",
 					);
 				}
 			} catch (recordErr) {
@@ -696,20 +642,6 @@ async function executeTradeInternal(
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.message : String(err);
 		log.error("Order error:", msg);
-
-		logTrade(
-			{
-				market: marketSlug,
-				side: `BUY_${side}`,
-				amount: Number(riskConfig.maxTradeSizeUsdc || 0),
-				price,
-				orderId: "error",
-				status: `error: ${msg}`,
-				currentPriceAtEntry: signal.currentPrice,
-			},
-			signal.marketId || marketConfig?.id,
-			mode,
-		);
 
 		return {
 			success: false,

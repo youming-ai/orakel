@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../db/queries.ts", () => ({
-	paperTradeQueries: { upsert: vi.fn().mockResolvedValue(undefined), getAll: vi.fn().mockResolvedValue([]) },
-	liveTradeQueries: { upsert: vi.fn().mockResolvedValue(undefined), getAll: vi.fn().mockResolvedValue([]) },
+	unifiedTradeQueries: { upsert: vi.fn().mockResolvedValue(undefined), getAllByMode: vi.fn().mockResolvedValue([]) },
 	stateQueries: {
 		getPaperState: vi.fn().mockResolvedValue(null),
 		getLiveState: vi.fn().mockResolvedValue(null),

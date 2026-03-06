@@ -254,6 +254,7 @@ async function main(): Promise<void> {
 								timestamp: new Date(order.placedAt).toISOString(),
 							},
 							order.orderId,
+							"filled",
 						);
 						log.info(`Recorded filled live trade ${order.orderId.slice(0, 12)}...`);
 						return true;
@@ -480,6 +481,7 @@ async function main(): Promise<void> {
 						timestamp: new Date(Number(row.placedAt ?? Date.now())).toISOString(),
 					},
 					orderId,
+					"filled",
 				);
 				recorded = true;
 			} catch (err) {
