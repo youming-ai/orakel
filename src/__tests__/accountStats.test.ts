@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../core/db.ts", () => ({
-	PERSIST_BACKEND: "csv",
-	statements: {},
-	onchainStatements: {},
-	resetPaperDbData: vi.fn(),
-	resetLiveDbData: vi.fn(),
+vi.mock("../db/queries.ts", () => ({
+	paperTradeQueries: { upsert: vi.fn().mockResolvedValue(undefined), getAll: vi.fn().mockResolvedValue([]) },
+	liveTradeQueries: { upsert: vi.fn().mockResolvedValue(undefined), getAll: vi.fn().mockResolvedValue([]) },
+	stateQueries: {
+		getPaperState: vi.fn().mockResolvedValue(null),
+		getLiveState: vi.fn().mockResolvedValue(null),
+		upsertPaperState: vi.fn().mockResolvedValue(undefined),
+		upsertLiveState: vi.fn().mockResolvedValue(undefined),
+	},
 }));
 
 vi.mock("../core/config.ts", () => ({
@@ -54,7 +57,7 @@ function addTestTrade(
 }
 
 describe("addTrade + resolveTrades", () => {
-	it("should add a trade and resolve it correctly", () => {
+	it("should add a trade and resolve it correctly", async () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { price: 0.4, size: 10 });
 
@@ -64,7 +67,7 @@ describe("addTrade + resolveTrades", () => {
 
 		// Resolve: UP side wins when finalPrice > priceToBeat
 		const prices = new Map([["BTC", 60000]]);
-		const resolved = mgr.resolveTrades(1000, prices);
+		const resolved = await mgr.resolveTrades(1000, prices);
 		expect(resolved).toBe(1);
 
 		const stats = mgr.getStats();
@@ -76,13 +79,13 @@ describe("addTrade + resolveTrades", () => {
 		expect(mgr.getBalance().current).toBeCloseTo(106, 2);
 	});
 
-	it("should resolve a losing trade correctly", () => {
+	it("should resolve a losing trade correctly", async () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { side: "UP", price: 0.4, size: 10 });
 
 		// Resolve: UP side loses when finalPrice <= priceToBeat
 		const prices = new Map([["BTC", 49000]]);
-		const resolved = mgr.resolveTrades(1000, prices);
+		const resolved = await mgr.resolveTrades(1000, prices);
 		expect(resolved).toBe(1);
 
 		const stats = mgr.getStats();
@@ -93,23 +96,23 @@ describe("addTrade + resolveTrades", () => {
 		expect(mgr.getBalance().current).toBeCloseTo(96, 2);
 	});
 
-	it("should not resolve trades from a different window", () => {
+	it("should not resolve trades from a different window", async () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr); // windowStartMs = 1000
 
 		const prices = new Map([["BTC", 60000]]);
 		// Pass a different windowStartMs
-		const resolved = mgr.resolveTrades(2000, prices);
+		const resolved = await mgr.resolveTrades(2000, prices);
 		expect(resolved).toBe(0);
 		expect(mgr.getStats().pending).toBe(1);
 	});
 
-	it("should track max drawdown on loss", () => {
+	it("should track max drawdown on loss", async () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { side: "UP", price: 0.5, size: 20 });
 
 		const prices = new Map([["BTC", 49000]]);
-		mgr.resolveTrades(1000, prices);
+		await mgr.resolveTrades(1000, prices);
 
 		const balance = mgr.getBalance();
 		// Lost: -(20 * 0.5) = -10, balance = 90
@@ -117,26 +120,26 @@ describe("addTrade + resolveTrades", () => {
 		expect(balance.maxDrawdown).toBeCloseTo(10, 2);
 	});
 
-	it("should update daily pnl tracking", () => {
+	it("should update daily pnl tracking", async () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { price: 0.4, size: 10 });
 
 		const prices = new Map([["BTC", 60000]]);
-		mgr.resolveTrades(1000, prices);
+		await mgr.resolveTrades(1000, prices);
 
 		const todayStats = mgr.getTodayStats();
 		expect(todayStats.pnl).toBeCloseTo(6.0, 2);
 		expect(todayStats.trades).toBe(1);
 	});
 
-	it("should return won trades via getWonTrades()", () => {
+	it("should return won trades via getWonTrades()", async () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { price: 0.4, size: 10 });
 
 		expect(mgr.getWonTrades()).toHaveLength(0);
 
 		const prices = new Map([["BTC", 60000]]);
-		mgr.resolveTrades(1000, prices);
+		await mgr.resolveTrades(1000, prices);
 
 		const won = mgr.getWonTrades();
 		expect(won).toHaveLength(1);

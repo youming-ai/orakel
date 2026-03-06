@@ -1,10 +1,12 @@
 import type { ClobClient } from "@polymarket/clob-client";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../core/db.ts", () => ({
-	statements: {
-		getAllLivePendingOrders: null,
-		upsertLivePendingOrder: () => ({ run: vi.fn() }),
+vi.mock("../db/queries.ts", () => ({
+	pendingOrderQueries: {
+		getAll: vi.fn().mockResolvedValue([]),
+		upsert: vi.fn().mockResolvedValue(undefined),
+		updateStatus: vi.fn().mockResolvedValue(undefined),
+		delete: vi.fn().mockResolvedValue(undefined),
 	},
 }));
 
@@ -47,11 +49,63 @@ describe("OrderManager.pollOrders", () => {
 		expect(updated?.sizeMatched).toBe(10);
 	});
 
+	it("should treat ORDER_STATUS_MATCHED as filled", async () => {
+		const manager = new OrderManager();
+		const fakeClient = {
+			getOrder: async () => ({ status: "ORDER_STATUS_MATCHED", size_matched: 10 }),
+		} as unknown as ClobClient;
+		manager.setClient(fakeClient);
+
+		manager.addOrderWithTracking(
+			{
+				orderId: "ord-prefixed-1",
+				marketId: "BTC",
+				windowSlug: "123",
+				side: "UP",
+				price: 0.5,
+				size: 10,
+				placedAt: Date.now(),
+			},
+			true,
+		);
+
+		await manager.pollOrders();
+
+		const updated = manager.getOrder("ord-prefixed-1");
+		expect(updated?.status).toBe("filled");
+		expect(updated?.sizeMatched).toBe(10);
+	});
+
+	it("should treat ORDER_STATUS_CANCELED as cancelled", async () => {
+		const manager = new OrderManager();
+		const fakeClient = {
+			getOrder: async () => ({ status: "ORDER_STATUS_CANCELED", size_matched: 0 }),
+		} as unknown as ClobClient;
+		manager.setClient(fakeClient);
+
+		manager.addOrderWithTracking(
+			{
+				orderId: "ord-canceled-1",
+				marketId: "ETH",
+				windowSlug: "456",
+				side: "DOWN",
+				price: 0.4,
+				size: 10,
+				placedAt: Date.now(),
+			},
+			true,
+		);
+
+		await manager.pollOrders();
+
+		expect(manager.getOrder("ord-canceled-1")?.status).toBe("cancelled");
+	});
+
 	it("should emit callback with status transitions and previous status", async () => {
 		const manager = new OrderManager();
 		const responses = [
-			{ status: "live", size_matched: 0 },
-			{ status: "filled", size_matched: 10 },
+			{ status: "ORDER_STATUS_LIVE", size_matched: 0 },
+			{ status: "ORDER_STATUS_MATCHED", size_matched: 10 },
 		];
 		let responseIdx = 0;
 		const fakeClient = {
@@ -88,8 +142,6 @@ describe("OrderManager.pollOrders", () => {
 		await manager.pollOrders();
 		await manager.pollOrders();
 
-		// "live" status from API is ignored - order stays "placed"
-		// Only transition to "filled" triggers callback
 		expect(events).toEqual([{ status: "filled", previousStatus: "placed" }]);
 	});
 });
