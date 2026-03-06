@@ -252,7 +252,7 @@ function marketHasSeriesSlug(market: unknown, seriesSlug: string): boolean {
 	return false;
 }
 
-export function filterBtcUpDown15mMarkets(
+export function filterMarketsBySlug(
 	markets: GammaValue[],
 	{ seriesSlug, slugPrefix }: { seriesSlug?: string; slugPrefix?: string } = {},
 ): GammaValue[] {

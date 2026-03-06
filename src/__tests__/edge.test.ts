@@ -180,8 +180,8 @@ describe("decide", () => {
 			edgeDown: 0.1,
 			modelUp: 0.7,
 			modelDown: 0.3,
-			strategy: makeStrategy({ skipMarkets: ["BTC"] }),
-			marketId: "BTC",
+			strategy: makeStrategy({ skipMarkets: ["BTC-15m"] }),
+			marketId: "BTC-15m",
 		});
 
 		expect(result.reason).toBe("market_skipped_by_config");

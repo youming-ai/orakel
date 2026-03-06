@@ -137,7 +137,7 @@ describe("isTradeRow", () => {
 	it("returns true for valid trade rows", () => {
 		const validRow = {
 			timestamp: "2024-01-01T00:00:00Z",
-			market: "BTC",
+			market: "BTC-15m",
 			side: "UP",
 			amount: 10.0,
 			price: 0.55,
@@ -151,7 +151,7 @@ describe("isTradeRow", () => {
 
 	it("returns false for rows missing required fields", () => {
 		const missingOrderId = {
-			market: "BTC",
+			market: "BTC-15m",
 			side: "UP",
 			amount: 10.0,
 			price: 0.55,

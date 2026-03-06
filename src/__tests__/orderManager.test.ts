@@ -86,7 +86,7 @@ describe("OrderManager.pollOrders", () => {
 		manager.addOrderWithTracking(
 			{
 				orderId: "ord-canceled-1",
-				marketId: "ETH",
+				marketId: "BTC-15m",
 				windowSlug: "456",
 				side: "DOWN",
 				price: 0.4,
@@ -120,7 +120,7 @@ describe("OrderManager.pollOrders", () => {
 		manager.addOrderWithTracking(
 			{
 				orderId: "ord-transition-1",
-				marketId: "ETH",
+				marketId: "BTC-15m",
 				windowSlug: "456",
 				side: "DOWN",
 				price: 0.43,

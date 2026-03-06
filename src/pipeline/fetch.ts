@@ -93,7 +93,7 @@ function parseJsonArray(value: unknown): unknown[] {
 
 const polymarketMarketCache: Map<string, { market: GammaMarket; fetchedAtMs: number }> = new Map();
 
-async function resolveCurrent15mMarket(marketDef: MarketConfig): Promise<GammaMarket | null> {
+async function resolveCurrentMarket(marketDef: MarketConfig): Promise<GammaMarket | null> {
 	if (!CONFIG.polymarket.autoSelectLatest) return null;
 
 	const now = Date.now();
@@ -116,7 +116,7 @@ async function resolveCurrent15mMarket(marketDef: MarketConfig): Promise<GammaMa
 }
 
 async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<PolymarketSnapshot> {
-	const market = await resolveCurrent15mMarket(marketDef);
+	const market = await resolveCurrentMarket(marketDef);
 	if (!market) return { ok: false, reason: "market_not_found" };
 
 	const outcomes = parseJsonArray(market.outcomes);

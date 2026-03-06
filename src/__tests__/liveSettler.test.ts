@@ -63,7 +63,7 @@ function makeFakeAccount(wonTrades: TradeEntry[] = []): {
 function makeWonTrade(overrides: Partial<TradeEntry> = {}): TradeEntry {
 	return {
 		id: "trade-1",
-		marketId: "BTC",
+		marketId: "BTC-15m",
 		windowStartMs: 1000,
 		side: "UP",
 		price: 0.4,
@@ -119,7 +119,7 @@ describe("LiveSettler.settle (redeemer-only)", () => {
 		const redeemed = await settler.settle();
 		expect(redeemed).toBe(1);
 		expect(redeemFn).toHaveBeenCalledWith(fakeWallet, "cond-123");
-		expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("Redeemed: BTC UP"));
+		expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("Redeemed: BTC-15m UP"));
 	});
 
 	it("should NOT redeem when redeem call fails", async () => {
@@ -183,12 +183,12 @@ describe("LiveSettler.settle (redeemer-only)", () => {
 			isResolved: vi.fn().mockImplementation((tid: string) => resolvedTokens.has(tid)),
 		});
 		const trades = [
-			makeWonTrade({ id: "t1", marketId: "BTC", side: "UP", price: 0.3, size: 10, pnl: 7.0 }),
-			makeWonTrade({ id: "t2", marketId: "ETH", side: "DOWN", price: 0.5, size: 10, pnl: 5.0 }),
+			makeWonTrade({ id: "t1", marketId: "BTC-15m", side: "UP", price: 0.3, size: 10, pnl: 7.0 }),
+			makeWonTrade({ id: "t2", marketId: "BTC-1h", side: "DOWN", price: 0.5, size: 10, pnl: 5.0 }),
 		];
 		const account = makeFakeAccount(trades);
 		const redeemFn = vi.fn().mockResolvedValue({ success: true, txHash: "0x111" });
-		const tokenMap: Record<string, string> = { "BTC-UP": "token-btc-up", "ETH-DOWN": "token-eth-down" };
+		const tokenMap: Record<string, string> = { "BTC-15m-UP": "token-btc-up", "BTC-1h-DOWN": "token-eth-down" };
 
 		const settler = new LiveSettler({
 			clobWs,

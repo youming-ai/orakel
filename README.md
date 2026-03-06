@@ -1,17 +1,17 @@
 # Orakel
 
-Automated trading bot for Polymarket **15-minute Up/Down** cryptocurrency markets. Paper trading, live trading, web dashboard, Docker deployment.
+Automated trading bot for Polymarket **BTC Up/Down** multi-timeframe markets. Paper trading, live trading, web dashboard, Docker deployment.
 
-**Tech Stack**: Bun + TypeScript + Hono + SQLite (backend), React 19 + Vite + shadcn/ui + Tailwind v4 (frontend)
+**Tech Stack**: Bun + TypeScript + Hono + PostgreSQL (backend), React 19 + Vite + shadcn/ui + Tailwind v4 (frontend)
 
 ## Supported Markets
 
-| Market | Binance Pair | Chainlink Aggregator |
-|--------|--------------|----------------------|
-| BTC | BTCUSDT | `0xc907E116...` |
-| ETH | ETHUSDT | `0x639Fe6ab...` |
-| SOL | SOLUSDT | `0x5d4316B4...` |
-| XRP | XRPUSDT | `0x8F62BF41...` |
+| Market | Timeframe | Binance Pair | Resolution Source | Polymarket Series |
+|--------|-----------|--------------|-------------------|-------------------|
+| BTC-5m | 5 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-5m` |
+| BTC-15m | 15 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-15m` |
+| BTC-1h | 1 hour | BTCUSDT | Binance BTC/USDT | `btc-up-or-down-hourly` |
+| BTC-4h | 4 hours | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-4h` |
 
 ## Features
 
@@ -67,7 +67,7 @@ Key env vars:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PAPER_MODE` | `true` | Start in paper trading mode |
-| `ACTIVE_MARKETS` | `BTC,ETH,SOL,XRP` | Enabled markets |
+| `ACTIVE_MARKETS` | `BTC-5m,BTC-15m,BTC-1h,BTC-4h` | Enabled markets |
 | `API_TOKEN` | `""` | Bearer token for API auth |
 | `PRIVATE_KEY` | `""` | Wallet key for live trading (auto-connects) |
 

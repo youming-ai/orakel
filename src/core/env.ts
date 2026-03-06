@@ -43,7 +43,7 @@ const envSchema = z.object({
 	POLYGON_RPC_URL: z.string().default("https://polygon-rpc.com"),
 	POLYGON_WSS_URLS: csvList,
 	POLYGON_WSS_URL: z.string().default(""),
-	CHAINLINK_BTC_USD_AGGREGATOR: z.string().default(""),
+	CHAINLINK_BTC_USD_AGGREGATOR: z.string().optional().default(""),
 
 	// Logging
 	LOG_LEVEL: z.enum(["debug", "info", "warn", "error", "silent"]).default("info"),

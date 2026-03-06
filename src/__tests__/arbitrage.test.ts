@@ -12,7 +12,7 @@ describe("detectArbitrage", () => {
 
 		it("should detect BUY_DOWN when polymarket down price is below binance implied down", () => {
 			// binanceUp=0.4 => binanceDown=0.6, polyDown=0.5 < 0.6-0.05=0.55
-			const result = detectArbitrage("ETH", 0.6, 0.5, 0.4, 0.05);
+			const result = detectArbitrage("BTC-15m", 0.6, 0.5, 0.4, 0.05);
 			expect(result).not.toBeNull();
 			expect(result?.direction).toBe("BUY_DOWN");
 		});
@@ -20,7 +20,7 @@ describe("detectArbitrage", () => {
 		it("should pick the larger spread when both sides have opportunities", () => {
 			// binanceUp=0.5, polyUp=0.3 => upSpread=0.2
 			// binanceDown=0.5, polyDown=0.35 => downSpread=0.15
-			const result = detectArbitrage("SOL", 0.3, 0.35, 0.5, 0.01);
+			const result = detectArbitrage("BTC-1h", 0.3, 0.35, 0.5, 0.01);
 			expect(result).not.toBeNull();
 			expect(result?.direction).toBe("BUY_UP");
 			expect(result?.spread).toBeCloseTo(0.2, 10);
@@ -29,7 +29,7 @@ describe("detectArbitrage", () => {
 		it("should pick BUY_DOWN when down spread is larger", () => {
 			// binanceUp=0.5, polyUp=0.4 => upSpread=0.1
 			// binanceDown=0.5, polyDown=0.3 => downSpread=0.2
-			const result = detectArbitrage("XRP", 0.4, 0.3, 0.5, 0.01);
+			const result = detectArbitrage("BTC-4h", 0.4, 0.3, 0.5, 0.01);
 			expect(result).not.toBeNull();
 			expect(result?.direction).toBe("BUY_DOWN");
 			expect(result?.spread).toBeCloseTo(0.2, 10);

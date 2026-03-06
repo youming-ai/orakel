@@ -30,10 +30,9 @@ export function fmtDate(ts: string): string {
 /** Format price based on market id */
 export function fmtPrice(id: string, price: number | null): string {
 	if (price === null) return "---";
-	if (id === "BTC") return `$${price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-	if (id === "ETH") return `$${price.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
-	if (id === "SOL") return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-	return `$${price.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
+	// All BTC timeframes use 0 decimals
+	if (id.startsWith("BTC")) return `$${price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+	return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /** Format cents (e.g. 0.65 -> "65c") */

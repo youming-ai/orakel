@@ -44,7 +44,7 @@ function addTestTrade(
 	}> = {},
 ): string {
 	return mgr.addTrade({
-		marketId: overrides.marketId ?? "BTC",
+		marketId: overrides.marketId ?? "BTC-15m",
 		windowStartMs: 1000,
 		side: overrides.side ?? "UP",
 		price: overrides.price ?? 0.4,
@@ -65,7 +65,7 @@ describe("addTrade + resolveTrades", () => {
 		expect(mgr.getStats().pending).toBe(1);
 
 		// Resolve: UP side wins when finalPrice > priceToBeat
-		const prices = new Map([["BTC", 60000]]);
+		const prices = new Map([["BTC-15m", 60000]]);
 		const resolved = await mgr.resolveTrades(1000, prices);
 		expect(resolved).toBe(1);
 
@@ -83,7 +83,7 @@ describe("addTrade + resolveTrades", () => {
 		addTestTrade(mgr, { side: "UP", price: 0.4, size: 10 });
 
 		// Resolve: UP side loses when finalPrice <= priceToBeat
-		const prices = new Map([["BTC", 49000]]);
+		const prices = new Map([["BTC-15m", 49000]]);
 		const resolved = await mgr.resolveTrades(1000, prices);
 		expect(resolved).toBe(1);
 
@@ -99,7 +99,7 @@ describe("addTrade + resolveTrades", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr); // windowStartMs = 1000
 
-		const prices = new Map([["BTC", 60000]]);
+		const prices = new Map([["BTC-15m", 60000]]);
 		// Pass a different windowStartMs
 		const resolved = await mgr.resolveTrades(2000, prices);
 		expect(resolved).toBe(0);
@@ -110,7 +110,7 @@ describe("addTrade + resolveTrades", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { side: "UP", price: 0.5, size: 20 });
 
-		const prices = new Map([["BTC", 49000]]);
+		const prices = new Map([["BTC-15m", 49000]]);
 		await mgr.resolveTrades(1000, prices);
 
 		const balance = mgr.getBalance();
@@ -123,7 +123,7 @@ describe("addTrade + resolveTrades", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { price: 0.4, size: 10 });
 
-		const prices = new Map([["BTC", 60000]]);
+		const prices = new Map([["BTC-15m", 60000]]);
 		await mgr.resolveTrades(1000, prices);
 
 		const todayStats = mgr.getTodayStats();
@@ -137,7 +137,7 @@ describe("addTrade + resolveTrades", () => {
 
 		expect(mgr.getWonTrades()).toHaveLength(0);
 
-		const prices = new Map([["BTC", 60000]]);
+		const prices = new Map([["BTC-15m", 60000]]);
 		await mgr.resolveTrades(1000, prices);
 
 		const won = mgr.getWonTrades();

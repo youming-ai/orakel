@@ -62,7 +62,7 @@ export function OverviewTab({
 	markets,
 }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {
-		const marketOrder = ["BTC", "ETH", "SOL", "XRP"];
+		const marketOrder = ["BTC-5m", "BTC-15m", "BTC-1h", "BTC-4h"];
 		return [...markets].sort((a, b) => {
 			const aIndex = marketOrder.indexOf(a.id);
 			const bIndex = marketOrder.indexOf(b.id);

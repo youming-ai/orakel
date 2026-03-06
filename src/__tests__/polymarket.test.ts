@@ -2,7 +2,7 @@ const BASE_NOW_MS = 1700000000000; // Fixed timestamp for tests
 
 import { describe, expect, it } from "vitest";
 import {
-	filterBtcUpDown15mMarkets,
+	filterMarketsBySlug,
 	flattenEventMarkets,
 	parseGammaMarket,
 	pickLatestLiveMarket,
@@ -173,20 +173,20 @@ describe("pickLatestLiveMarket", () => {
 	});
 });
 
-describe("filterBtcUpDown15mMarkets", () => {
+describe("filterMarketsBySlug", () => {
 	it("should return [] for empty array", () => {
-		expect(filterBtcUpDown15mMarkets([])).toEqual([]);
+		expect(filterMarketsBySlug([])).toEqual([]);
 	});
 
 	it("should return [] for non-array input", () => {
 		const nonArrayInput = { slug: "btc-updown-15m-test" } as unknown as unknown[];
-		expect(filterBtcUpDown15mMarkets(nonArrayInput, { slugPrefix: "btc-updown-15m" })).toEqual([]);
+		expect(filterMarketsBySlug(nonArrayInput, { slugPrefix: "btc-updown-15m" })).toEqual([]);
 	});
 
 	it("should match by slugPrefix only", () => {
 		const match = { slug: "btc-updown-15m-abc" };
 		const nonMatch = { slug: "eth-updown-15m-abc" };
-		expect(filterBtcUpDown15mMarkets([match, nonMatch], { slugPrefix: "btc-updown-15m" })).toEqual([match]);
+		expect(filterMarketsBySlug([match, nonMatch], { slugPrefix: "btc-updown-15m" })).toEqual([match]);
 	});
 
 	it("should match by seriesSlug from nested events.series slug", () => {
@@ -198,7 +198,7 @@ describe("filterBtcUpDown15mMarkets", () => {
 			slug: "other-market-2",
 			events: [{ series: [{ slug: "crypto-eth-up-down" }] }],
 		};
-		expect(filterBtcUpDown15mMarkets([match, nonMatch], { seriesSlug: "crypto-btc-up-down" })).toEqual([match]);
+		expect(filterMarketsBySlug([match, nonMatch], { seriesSlug: "crypto-btc-up-down" })).toEqual([match]);
 	});
 
 	it("should match by seriesSlug from event.seriesSlug and market.seriesSlug", () => {
@@ -206,7 +206,7 @@ describe("filterBtcUpDown15mMarkets", () => {
 		const marketSeriesMatch = { slug: "b", seriesSlug: "btc-15m-series" };
 		const nonMatch = { slug: "c", seriesSlug: "other-series" };
 		expect(
-			filterBtcUpDown15mMarkets([eventSeriesMatch, marketSeriesMatch, nonMatch], { seriesSlug: "btc-15m-series" }),
+			filterMarketsBySlug([eventSeriesMatch, marketSeriesMatch, nonMatch], { seriesSlug: "btc-15m-series" }),
 		).toEqual([eventSeriesMatch, marketSeriesMatch]);
 	});
 
@@ -216,7 +216,7 @@ describe("filterBtcUpDown15mMarkets", () => {
 		const both = { slug: "btc-updown-15m-y", seriesSlug: "btc-series" };
 		const none = { slug: "eth-updown-15m-z", seriesSlug: "eth-series" };
 		expect(
-			filterBtcUpDown15mMarkets([prefixOnly, seriesOnly, both, none], {
+			filterMarketsBySlug([prefixOnly, seriesOnly, both, none], {
 				slugPrefix: "btc-updown-15m",
 				seriesSlug: "btc-series",
 			}),
@@ -225,27 +225,27 @@ describe("filterBtcUpDown15mMarkets", () => {
 
 	it("should return [] when there are no matches", () => {
 		const markets = [{ slug: "eth-updown-15m-a" }, { slug: "sol-updown-15m-b" }];
-		expect(filterBtcUpDown15mMarkets(markets, { slugPrefix: "btc-updown-15m", seriesSlug: "btc-series" })).toEqual([]);
+		expect(filterMarketsBySlug(markets, { slugPrefix: "btc-updown-15m", seriesSlug: "btc-series" })).toEqual([]);
 	});
 
 	it("should perform case-insensitive matching for prefix and series", () => {
 		const byPrefix = { slug: "BTC-UpDown-15M-AAA" };
 		const bySeries = { slug: "x", seriesSlug: "BtC-SeRiEs" };
 		expect(
-			filterBtcUpDown15mMarkets([byPrefix, bySeries], { slugPrefix: "btc-updown-15m", seriesSlug: "btc-series" }),
+			filterMarketsBySlug([byPrefix, bySeries], { slugPrefix: "btc-updown-15m", seriesSlug: "btc-series" }),
 		).toEqual([byPrefix, bySeries]);
 	});
 
 	it("should return [] when both slugPrefix and seriesSlug options are missing", () => {
 		const markets = [{ slug: "btc-updown-15m-a", seriesSlug: "btc-series" }];
-		expect(filterBtcUpDown15mMarkets(markets)).toEqual([]);
+		expect(filterMarketsBySlug(markets)).toEqual([]);
 	});
 
 	it("should not match market without slug unless seriesSlug matches", () => {
 		const noSlug = { id: "x" };
 		const noSlugButSeriesMatch = { id: "y", seriesSlug: "btc-series" };
-		expect(filterBtcUpDown15mMarkets([noSlug, noSlugButSeriesMatch], { slugPrefix: "btc-updown-15m" })).toEqual([]);
-		expect(filterBtcUpDown15mMarkets([noSlug, noSlugButSeriesMatch], { seriesSlug: "btc-series" })).toEqual([
+		expect(filterMarketsBySlug([noSlug, noSlugButSeriesMatch], { slugPrefix: "btc-updown-15m" })).toEqual([]);
+		expect(filterMarketsBySlug([noSlug, noSlugButSeriesMatch], { seriesSlug: "btc-series" })).toEqual([
 			noSlugButSeriesMatch,
 		]);
 	});
@@ -258,7 +258,7 @@ describe("filterBtcUpDown15mMarkets", () => {
 		};
 		const noMatch = { slug: "xrp-updown-15m-1", seriesSlug: "xrp-series" };
 		expect(
-			filterBtcUpDown15mMarkets([matchPrefix, matchSeriesNested, noMatch], {
+			filterMarketsBySlug([matchPrefix, matchSeriesNested, noMatch], {
 				slugPrefix: "btc-updown-15m",
 				seriesSlug: "btc-series",
 			}),
