@@ -1,3 +1,4 @@
+import { DEFAULT_CANDLE_WINDOW_MINUTES } from "../core/config.ts";
 import { createLogger } from "../core/logger.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
 import { applyTimeAwareness, computeRealizedVolatility, scoreDirection } from "../engines/probability.ts";
@@ -36,7 +37,7 @@ export function computeMarketDecision(
 	if (poly.ok && poly.degraded) {
 		log.warn(`Polymarket snapshot degraded for ${market.id}; using fallback orderbook/price data`);
 	}
-	const effectiveTimeLeftMin = timeLeftMin ?? config.candleWindowMinutes;
+	const effectiveTimeLeftMin = timeLeftMin ?? DEFAULT_CANDLE_WINDOW_MINUTES;
 	const closes: number[] = candles.map((c) => Number(c.close));
 	const fallbackClose = Number.isFinite(lastPrice) ? lastPrice : 0;
 	for (let i = 0; i < closes.length; i += 1) {
@@ -136,7 +137,7 @@ export function computeMarketDecision(
 	}
 	const orderbookImbalance = netImbalance;
 
-	const timeAware = applyTimeAwareness(scored.rawUp, effectiveTimeLeftMin, config.candleWindowMinutes);
+	const timeAware = applyTimeAwareness(scored.rawUp, effectiveTimeLeftMin, DEFAULT_CANDLE_WINDOW_MINUTES);
 	const finalUp = timeAware.adjustedUp;
 	const finalDown = timeAware.adjustedDown;
 

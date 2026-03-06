@@ -2,7 +2,7 @@ import { startApiServer } from "./api.ts";
 import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } from "./blockchain/accountState.ts";
 import { startReconciler } from "./blockchain/reconciler.ts";
 import { fetchRedeemablePositions, redeemAll, redeemByConditionId } from "./blockchain/redeemer.ts";
-import { CONFIG, startConfigWatcher } from "./core/config.ts";
+import { CONFIG, DEFAULT_CANDLE_WINDOW_MINUTES, startConfigWatcher } from "./core/config.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
@@ -237,7 +237,7 @@ async function main(): Promise<void> {
 				const parsedWindowStartMs = Number(order.windowSlug);
 				const windowStartMs = Number.isFinite(parsedWindowStartMs)
 					? parsedWindowStartMs
-					: getCandleWindowTiming(CONFIG.candleWindowMinutes).startMs;
+					: getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES).startMs;
 				const effectiveSize = order.sizeMatched > 0 ? order.sizeMatched : order.size;
 
 				const recordFilledTrade = (): boolean => {
@@ -280,7 +280,7 @@ async function main(): Promise<void> {
 				}
 
 				if (recorded) {
-					const currentTiming = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+					const currentTiming = getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES);
 					if (windowStartMs < currentTiming.startMs) {
 						const prices = collectLatestPrices(markets, states);
 						if (prices.size > 0) {
@@ -418,7 +418,7 @@ async function main(): Promise<void> {
 
 	// Restore tracker state from DB to prevent duplicate orders after restart.
 	// Without this, a restart mid-window could allow re-placing orders.
-	const currentTiming = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+	const currentTiming = getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES);
 	const pendingLive = liveAccount.getPendingTrades();
 	let restoredCount = 0;
 	for (const trade of pendingLive) {
@@ -686,17 +686,17 @@ async function main(): Promise<void> {
 			continue;
 		}
 
-		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+		const timing = getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES);
 		const latestPrices = collectLatestPrices(markets, states);
 
 		if (latestPrices.size > 0) {
-			const paperRecovered = await paperAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
+			const paperRecovered = await paperAccount.resolveExpiredTrades(latestPrices, DEFAULT_CANDLE_WINDOW_MINUTES);
 			if (paperRecovered > 0) {
 				log.info(`Recovered expired paper trades: ${paperRecovered}`);
 			}
 			// Live settlement runs regardless of isLiveRunning() — pending trades must
 			// settle even after live trading is stopped (fix: issue 2.1)
-			const liveRecovered = await liveAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
+			const liveRecovered = await liveAccount.resolveExpiredTrades(latestPrices, DEFAULT_CANDLE_WINDOW_MINUTES);
 			if (liveRecovered > 0) {
 				log.info(`Recovered expired live trades: ${liveRecovered}`);
 			}
@@ -789,7 +789,7 @@ async function main(): Promise<void> {
 			})
 			.filter((r) => {
 				const tl = r.timeLeftMin ?? 0;
-				const windowMin = CONFIG.candleWindowMinutes ?? 15;
+				const windowMin = DEFAULT_CANDLE_WINDOW_MINUTES;
 				const elapsed = windowMin - tl;
 				if (elapsed < 3) return false;
 				if (tl < 3) return false;

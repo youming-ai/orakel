@@ -71,7 +71,6 @@ export interface AppConfig {
 	gammaBaseUrl: string;
 	clobBaseUrl: string;
 	pollIntervalMs: number;
-	candleWindowMinutes: number;
 	vwapSlopeLookbackMinutes: number;
 	rsiPeriod: number;
 	rsiMaPeriod: number;

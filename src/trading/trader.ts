@@ -3,7 +3,7 @@ import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
 import { enrichPosition } from "../blockchain/accountState.ts";
-import { CONFIG } from "../core/config.ts";
+import { CONFIG, DEFAULT_CANDLE_WINDOW_MINUTES } from "../core/config.ts";
 import { env } from "../core/env.ts";
 import { createLogger } from "../core/logger.ts";
 import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
@@ -377,7 +377,7 @@ async function executeTradeInternal(
 			return { success: false, reason: "market_too_confident" };
 		}
 
-		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+		const timing = getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES);
 		const account = getAccount("paper");
 		const actualCost = Number(riskConfig.maxTradeSizeUsdc || 0) * price;
 		const paperBalance = account.getBalance().current;
@@ -473,7 +473,7 @@ async function executeTradeInternal(
 		const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
 		const isLatePhase = signal.phase === "LATE";
 		const isHighConfidence = signal.strength === "STRONG" || signal.strength === "GOOD";
-		const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
+		const timing = getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES);
 
 		let result: unknown;
 

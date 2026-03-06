@@ -192,7 +192,6 @@ export const CONFIG: AppConfig = {
 	clobBaseUrl: "https://clob.polymarket.com",
 
 	pollIntervalMs: 1_000,
-	candleWindowMinutes: 15,
 
 	vwapSlopeLookbackMinutes: 5,
 	rsiPeriod: 14,
@@ -240,6 +239,9 @@ export const CONFIG: AppConfig = {
 
 export const PAPER_INITIAL_BALANCE: number = FILE_CONFIG.paper.initialBalance;
 export const LIVE_INITIAL_BALANCE: number = FILE_CONFIG.live.initialBalance;
+
+/** @deprecated Use market.candleWindowMinutes instead. Temporary bridge during multi-timeframe migration. */
+export const DEFAULT_CANDLE_WINDOW_MINUTES = 15;
 
 export function reloadConfig(): AppConfig {
 	const fileConfig = readJsonConfig();
