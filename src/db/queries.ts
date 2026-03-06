@@ -71,78 +71,45 @@ export const tradeQueries = {
 	},
 };
 
-// Paper trades queries
-export const paperTradeQueries = {
-	upsert: async (data: typeof schema.paperTrades.$inferInsert) => {
+// Unified trade queries (used by accountStats for insert/resolve/load)
+export const unifiedTradeQueries = {
+	upsert: async (data: typeof schema.trades.$inferInsert) => {
+		if (!data.tradeId) throw new Error("tradeId is required for upsert");
 		return await db
-			.insert(schema.paperTrades)
+			.insert(schema.trades)
 			.values(data)
 			.onConflictDoUpdate({
-				target: schema.paperTrades.id,
+				target: schema.trades.tradeId,
 				set: {
 					resolved: data.resolved,
 					won: data.won,
 					pnl: data.pnl,
 					settlePrice: data.settlePrice,
+					status: data.status,
 				},
 			});
 	},
 
-	getAll: async () => {
-		return await db.select().from(schema.paperTrades).orderBy(asc(schema.paperTrades.timestamp));
-	},
-
-	getUnresolved: async () => {
+	getAllByMode: async (mode: string) => {
 		return await db
 			.select()
-			.from(schema.paperTrades)
-			.where(eq(schema.paperTrades.resolved, 0))
-			.orderBy(desc(schema.paperTrades.timestamp));
+			.from(schema.trades)
+			.where(and(eq(schema.trades.mode, mode), sql`${schema.trades.tradeId} IS NOT NULL`))
+			.orderBy(asc(schema.trades.timestamp));
 	},
 
-	getRecent: async (limit: number) => {
-		return await db.select().from(schema.paperTrades).orderBy(desc(schema.paperTrades.timestamp)).limit(limit);
-	},
-};
-
-// Live trades queries
-export const liveTradeQueries = {
-	upsert: async (data: typeof schema.liveTrades.$inferInsert) => {
-		return await db
-			.insert(schema.liveTrades)
-			.values(data)
-			.onConflictDoUpdate({
-				target: schema.liveTrades.id,
-				set: {
-					resolved: data.resolved,
-					won: data.won,
-					pnl: data.pnl,
-					settlePrice: data.settlePrice,
-				},
-			});
-	},
-
-	getAll: async () => {
-		return await db.select().from(schema.liveTrades).orderBy(asc(schema.liveTrades.timestamp));
-	},
-
-	getUnresolved: async () => {
+	getWonTrades: async (mode: string) => {
 		return await db
 			.select()
-			.from(schema.liveTrades)
-			.where(eq(schema.liveTrades.resolved, 0))
-			.orderBy(desc(schema.liveTrades.timestamp));
-	},
-
-	getRecent: async (limit: number) => {
-		return await db.select().from(schema.liveTrades).orderBy(desc(schema.liveTrades.timestamp)).limit(limit);
-	},
-
-	getWonTrades: async () => {
-		return await db
-			.select()
-			.from(schema.liveTrades)
-			.where(and(eq(schema.liveTrades.resolved, 1), eq(schema.liveTrades.won, 1)));
+			.from(schema.trades)
+			.where(
+				and(
+					eq(schema.trades.mode, mode),
+					eq(schema.trades.resolved, 1),
+					eq(schema.trades.won, 1),
+					sql`${schema.trades.tradeId} IS NOT NULL`,
+				),
+			);
 	},
 };
 
@@ -323,14 +290,12 @@ export const signalQueries = {
 
 // Data reset functions
 export async function resetPaperDbData(): Promise<void> {
-	await db.delete(schema.paperTrades);
 	await db.delete(schema.paperState);
 	await db.delete(schema.trades).where(eq(schema.trades.mode, "paper"));
 	await db.delete(schema.dailyStats).where(eq(schema.dailyStats.mode, "paper"));
 }
 
 export async function resetLiveDbData(): Promise<void> {
-	await db.delete(schema.liveTrades);
 	await db.delete(schema.livePendingOrders);
 	await db.delete(schema.liveState);
 	await db.delete(schema.trades).where(eq(schema.trades.mode, "live"));
@@ -341,9 +306,7 @@ export async function resetLiveDbData(): Promise<void> {
 
 // Database pruning
 const PRUNE_LIMITS = {
-	trades: 100,
-	paperTrades: 100,
-	liveTrades: 100,
+	trades: 200,
 	signals: 500,
 	dailyStatsDays: 30,
 } as const;
@@ -351,7 +314,6 @@ const PRUNE_LIMITS = {
 export async function pruneDatabase(): Promise<{ pruned: Record<string, number> }> {
 	const pruned: Record<string, number> = {};
 
-	// Prune trades — keep newest PRUNE_LIMITS.trades
 	const keepTradeIds = db
 		.select({ id: schema.trades.id })
 		.from(schema.trades)
@@ -359,24 +321,6 @@ export async function pruneDatabase(): Promise<{ pruned: Record<string, number> 
 		.limit(PRUNE_LIMITS.trades);
 	const tradesResult = await db.delete(schema.trades).where(notInArray(schema.trades.id, keepTradeIds));
 	pruned.trades = tradesResult.length;
-
-	// Prune paper_trades
-	const keepPaperIds = db
-		.select({ id: schema.paperTrades.id })
-		.from(schema.paperTrades)
-		.orderBy(desc(schema.paperTrades.windowStartMs))
-		.limit(PRUNE_LIMITS.paperTrades);
-	const paperResult = await db.delete(schema.paperTrades).where(notInArray(schema.paperTrades.id, keepPaperIds));
-	pruned.paper_trades = paperResult.length;
-
-	// Prune live_trades
-	const keepLiveIds = db
-		.select({ id: schema.liveTrades.id })
-		.from(schema.liveTrades)
-		.orderBy(desc(schema.liveTrades.windowStartMs))
-		.limit(PRUNE_LIMITS.liveTrades);
-	const liveResult = await db.delete(schema.liveTrades).where(notInArray(schema.liveTrades.id, keepLiveIds));
-	pruned.live_trades = liveResult.length;
 
 	// Prune signals
 	const keepSignalIds = db

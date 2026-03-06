@@ -8,6 +8,7 @@ export const schemaMigrations = pgTable("schema_migrations", {
 
 export const trades = pgTable("trades", {
 	id: serial("id").primaryKey(),
+	tradeId: text("trade_id").unique(),
 	timestamp: text("timestamp").notNull(),
 	market: text("market").notNull(),
 	side: text("side").notNull(),
@@ -16,6 +17,10 @@ export const trades = pgTable("trades", {
 	orderId: text("order_id"),
 	status: text("status"),
 	mode: text("mode").notNull(),
+	windowStartMs: integer("window_start_ms"),
+	priceToBeat: real("price_to_beat"),
+	resolved: integer("resolved").default(0),
+	settlePrice: real("settle_price"),
 	pnl: real("pnl"),
 	won: integer("won"),
 	createdAt: integer("created_at").default(sql`floor(extract(epoch from now()))`),
@@ -56,38 +61,6 @@ export const signals = pgTable("signals", {
 	entryMinute: text("entry_minute"),
 	timeLeftMin: real("time_left_min"),
 	createdAt: integer("created_at").default(sql`floor(extract(epoch from now()))`),
-});
-
-export const paperTrades = pgTable("paper_trades", {
-	id: text("id").primaryKey(),
-	marketId: text("market_id").notNull(),
-	windowStartMs: integer("window_start_ms").notNull(),
-	side: text("side").notNull(),
-	price: real("price").notNull(),
-	size: real("size").notNull(),
-	priceToBeat: real("price_to_beat").notNull(),
-	currentPriceAtEntry: real("current_price_at_entry"),
-	timestamp: text("timestamp").notNull(),
-	resolved: integer("resolved").default(0),
-	won: integer("won"),
-	pnl: real("pnl"),
-	settlePrice: real("settle_price"),
-});
-
-export const liveTrades = pgTable("live_trades", {
-	id: text("id").primaryKey(),
-	marketId: text("market_id").notNull(),
-	windowStartMs: integer("window_start_ms").notNull(),
-	side: text("side").notNull(),
-	price: real("price").notNull(),
-	size: real("size").notNull(),
-	priceToBeat: real("price_to_beat").notNull(),
-	currentPriceAtEntry: real("current_price_at_entry"),
-	timestamp: text("timestamp").notNull(),
-	resolved: integer("resolved").default(0),
-	won: integer("won"),
-	pnl: real("pnl"),
-	settlePrice: real("settle_price"),
 });
 
 export const dailyStats = pgTable(

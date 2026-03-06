@@ -8,6 +8,13 @@
       "when": 1772785420210,
       "tag": "0000_magical_quasimodo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772798020611,
+      "tag": "0001_consolidate-trades",
+      "breakpoints": true
     }
   ]
 }
