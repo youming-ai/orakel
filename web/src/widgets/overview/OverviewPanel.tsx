@@ -35,7 +35,7 @@ export function OverviewPanel() {
 
 	return (
 		<AppErrorBoundary>
-			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
+			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-20 sm:pb-6">
 				<OverviewTab
 					stopLoss={stopLoss}
 					viewMode={viewMode}

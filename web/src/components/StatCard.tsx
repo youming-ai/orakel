@@ -21,7 +21,7 @@ export function StatCard({ label, value, color, suffix, icon, trend }: StatCardP
 				<span className={cn("font-mono text-xl font-bold tracking-tight block", color || "text-foreground")}>
 					{value}
 					{suffix && (
-						<span className="text-[10px] font-semibold text-muted-foreground ml-1.5 tracking-wide uppercase">
+						<span className="text-[11px] font-semibold text-muted-foreground ml-1.5 tracking-wide uppercase">
 							{suffix}
 						</span>
 					)}

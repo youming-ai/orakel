@@ -97,7 +97,7 @@ export function Header({
 
 	return (
 		<div className="sticky top-3 z-50 mb-0.5 flex justify-center px-3 pointer-events-none">
-			<header className="pointer-events-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full max-w-3xl overflow-hidden relative">
+			<header className="pointer-events-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full max-w-5xl overflow-hidden relative">
 				{/* Logo */}
 				<div className="flex items-center gap-2.5 cursor-default select-none min-w-0">
 					<Link to="/" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity no-underline shrink-0">
@@ -106,27 +106,28 @@ export function Header({
 						</div>
 						<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
 					</Link>
-					<span className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
-					<Link
-						to="/logs"
-						className={cn(
-							"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline shrink-0",
-							isTradesActive && "text-foreground",
-						)}
-					>
-						logs
-					</Link>
+					<div className="hidden sm:flex items-center gap-2.5 shrink-0">
+						<span className="h-4 w-px bg-border/60 shrink-0" />
+						<Link
+							to="/logs"
+							className={cn(
+								"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline shrink-0",
+								isTradesActive && "text-foreground",
+							)}
+						>
+							logs
+						</Link>
+					</div>
 				</div>
 
 				{/* Right: Status + Wallet + Mode + Theme */}
 				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-
 					{market?.ok && marketBase && marketSpotPrice && (
-						<div className="hidden md:flex items-end gap-2 px-1 py-0.5 shrink-0">
-							<span className="text-[10px] font-medium text-muted-foreground/90 tracking-[0.08em] uppercase">
+						<div className="flex items-end gap-2 px-1 py-0.5 shrink-0">
+							<span className="hidden sm:block text-[11px] font-medium text-muted-foreground/90 tracking-[0.08em] uppercase">
 								{marketBase}
 							</span>
-							<span className="text-base font-semibold tracking-tight tabular-nums text-foreground leading-none">
+							<span className="text-sm sm:text-base font-semibold tracking-tight tabular-nums text-foreground leading-none">
 								{marketSpotPrice}
 							</span>
 						</div>
@@ -136,7 +137,7 @@ export function Header({
 						onClick={handleToggle}
 						disabled={mutationPending}
 						className={cn(
-							"flex items-center justify-center size-7 rounded-md transition-all shrink-0 border outline-none",
+							"flex items-center justify-center size-9 sm:size-7 rounded-md transition-all shrink-0 border outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							cfg.className,
 							isPending && "animate-pulse",
 						)}
@@ -147,12 +148,12 @@ export function Header({
 
 					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
 
-					<div className="flex items-center rounded-md border overflow-hidden h-7 bg-muted/50 shrink-0">
+					<div className="flex items-center rounded-md border overflow-hidden min-h-9 sm:min-h-7 bg-muted/50 shrink-0">
 						<button
 							type="button"
 							onClick={() => onViewModeChange("paper")}
 							className={cn(
-								"px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
+								"px-2 sm:px-2.5 h-9 sm:h-7 text-[11px] font-semibold tracking-wide uppercase transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
 								viewMode === "paper"
 									? "bg-amber-500/20 text-amber-500"
 									: "bg-transparent text-muted-foreground hover:text-foreground",
@@ -160,12 +161,12 @@ export function Header({
 						>
 							Paper
 						</button>
-						<div className="w-px h-full bg-border" />
+						<div className="w-px self-stretch bg-border" />
 						<button
 							type="button"
 							onClick={() => onViewModeChange("live")}
 							className={cn(
-								"px-2 sm:px-2.5 h-full text-[10px] font-semibold tracking-wide uppercase transition-all outline-none",
+								"px-2 sm:px-2.5 h-9 sm:h-7 text-[11px] font-semibold tracking-wide uppercase transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
 								viewMode === "live"
 									? "bg-emerald-500/20 text-emerald-500"
 									: "bg-transparent text-muted-foreground hover:text-foreground",

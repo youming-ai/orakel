@@ -53,7 +53,7 @@ export function SimplifiedIndicators({ market: m }: SimplifiedIndicatorsProps) {
 	return (
 		<div className="flex items-center justify-between text-[11px]">
 			<div className="flex flex-col gap-1">
-				<span className="text-[10px] uppercase text-muted-foreground">HA</span>
+				<span className="text-[11px] uppercase text-muted-foreground">HA</span>
 				<div className="flex items-center gap-0.5">
 					{["ha-a", "ha-b", "ha-c"].map((dotKey, i) => (
 						<div
@@ -65,17 +65,17 @@ export function SimplifiedIndicators({ market: m }: SimplifiedIndicatorsProps) {
 			</div>
 
 			<div className="flex flex-col gap-1">
-				<span className="text-[10px] uppercase text-muted-foreground">RSI</span>
+				<span className="text-[11px] uppercase text-muted-foreground">RSI</span>
 				<span className={cn("font-mono font-medium", rsiColor)}>{rsiValue === null ? "-" : rsiValue.toFixed(1)}</span>
 			</div>
 
 			<div className="flex flex-col gap-1">
-				<span className="text-[10px] uppercase text-muted-foreground">VWAP</span>
+				<span className="text-[11px] uppercase text-muted-foreground">VWAP</span>
 				<span className="font-mono font-medium">{vwapPosition}</span>
 			</div>
 
 			<div className="flex flex-col gap-1">
-				<span className="text-[10px] uppercase text-muted-foreground">Imb</span>
+				<span className="text-[11px] uppercase text-muted-foreground">Imb</span>
 				<span className={cn("font-mono font-medium", imbalanceColor)}>
 					{imbalanceValue === null ? "-" : `${(imbalanceValue * 100).toFixed(0)}%`}
 				</span>
@@ -90,7 +90,7 @@ export function ConfidenceBar({ confidence }: { confidence?: ConfidenceResult })
 
 	return (
 		<div className="space-y-1">
-			<div className="flex items-center justify-between text-[10px]">
+			<div className="flex items-center justify-between text-[11px]">
 				<span className="text-muted-foreground">Confidence</span>
 				<span className={cn("font-mono font-medium", confidenceText({ level }))}>
 					{(confidence.score * 100).toFixed(0)}%

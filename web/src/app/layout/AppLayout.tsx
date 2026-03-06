@@ -1,4 +1,5 @@
 import { Outlet } from "react-router";
+import { BottomNav } from "@/components/BottomNav";
 import { Header } from "@/components/Header";
 
 export interface LayoutProps {
@@ -20,7 +21,10 @@ export function AppLayout(props: LayoutProps) {
 	return (
 		<div className="min-h-screen bg-background">
 			<Header {...props} />
-			<Outlet />
+			<div className="pb-16 sm:pb-0">
+				<Outlet />
+			</div>
+			<BottomNav />
 		</div>
 	);
 }

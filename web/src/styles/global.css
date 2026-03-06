@@ -43,7 +43,7 @@
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
 	--font-sans: "Open Sans", ui-sans-serif, system-ui, sans-serif;
-	--font-mono: "Open Sans", ui-monospace, SFMono-Regular, monospace;
+	--font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 :root {
@@ -88,6 +88,7 @@
 	body {
 		@apply bg-background text-foreground;
 		overflow-x: hidden;
+		overscroll-behavior-y: contain;
 	}
 }
 

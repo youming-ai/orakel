@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
-import type { TradeRecord } from "@/contracts/http";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import type { TradeRecord } from "@/contracts/http";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { modeBadge, sideBadge } from "@/lib/variants";
@@ -17,7 +17,7 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 		<div className="grid grid-cols-1 gap-3 sm:hidden">
 			{pageTrades.map((t) => {
 				const { text, isUp } = sideLabel(t.side);
-			const slug = getMarketCycleSlug(t.market, t.timestamp, t.marketSlug);
+				const slug = getMarketCycleSlug(t.market, t.timestamp, t.marketSlug);
 				return (
 					<Card key={t.orderId || `trade-${t.timestamp}-${t.market}`} className="p-3">
 						<div className="flex items-start justify-between">
@@ -44,7 +44,7 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 							<Badge
 								variant="secondary"
 								className={cn(
-									"text-[10px] px-1.5 shrink-0 uppercase tracking-widest",
+									"text-[11px] px-1.5 shrink-0 uppercase tracking-widest",
 									sideBadge({ side: isUp ? "up" : "down" }),
 								)}
 							>
@@ -54,13 +54,13 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 
 						<div className="grid grid-cols-2 gap-2 mt-3 text-xs">
 							<div className="flex flex-col bg-muted/50 border rounded-md p-2">
-								<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Amount</span>
+								<span className="text-muted-foreground mb-0.5 text-[11px] uppercase tracking-wide">Amount</span>
 								<span className="font-mono">
 									{t.amount} {isUp ? "YES" : "NO"}
 								</span>
 							</div>
 							<div className="flex flex-col bg-muted/50 border rounded-md p-2">
-								<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Entry</span>
+								<span className="text-muted-foreground mb-0.5 text-[11px] uppercase tracking-wide">Entry</span>
 								<span className="font-mono">{t.price}¢</span>
 							</div>
 						</div>
@@ -68,14 +68,15 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 						{t.currentPriceAtEntry !== null && t.currentPriceAtEntry !== undefined && (
 							<div className="grid grid-cols-2 gap-2 mt-2 text-xs">
 								<div className="flex flex-col bg-muted/50 border rounded-md p-2">
-									<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">Spot</span>
+									<span className="text-muted-foreground mb-0.5 text-[11px] uppercase tracking-wide">Spot</span>
 									<span className="font-mono">${Number(t.currentPriceAtEntry).toFixed(2)}</span>
 								</div>
 								{t.won !== null && t.pnl !== null && (
 									<div className="flex flex-col bg-muted/50 border rounded-md p-2">
-										<span className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wide">P&L</span>
+										<span className="text-muted-foreground mb-0.5 text-[11px] uppercase tracking-wide">P&L</span>
 										<span className={`font-mono font-semibold ${t.won ? "text-emerald-400" : "text-red-400"}`}>
-											{t.won ? "+" : ""}{Number(t.pnl).toFixed(2)}
+											{t.won ? "+" : ""}
+											{Number(t.pnl).toFixed(2)}
 										</span>
 									</div>
 								)}
@@ -85,14 +86,14 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 						<div className="flex items-center gap-2 mt-3">
 							<Badge
 								variant="outline"
-								className="text-[10px] px-1.5 font-normal bg-background/50 text-muted-foreground"
+								className="text-[11px] px-1.5 font-normal bg-background/50 text-muted-foreground"
 							>
 								status: {t.status || "placed"}
 							</Badge>
 							<Badge
 								variant="secondary"
 								className={cn(
-									"text-[10px] px-1.5",
+									"text-[11px] px-1.5",
 									modeBadge({ mode: getDisplayMode(t, paperMode) === "PAPER" ? "paper" : "live" }),
 								)}
 							>

@@ -25,12 +25,12 @@ export function MarketCard({ market: m }: MarketCardProps) {
 		<Card
 			className={cn(
 				"relative overflow-hidden transition-all duration-300",
-				"bg-muted/30 border-border/50",
-				"hover:bg-muted/50 hover:border-border/80 hover:-translate-y-0.5",
+				"bg-muted/30 border-border/50 shadow-sm",
+				"hover:bg-muted/50 hover:border-border/80 hover:-translate-y-0.5 hover:shadow-md",
 				"rounded-xl",
 			)}
 		>
-			<CardContent className="p-4 space-y-4">
+			<CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-4">
 				{/* Header: Signal + ID + Phase */}
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
@@ -40,21 +40,26 @@ export function MarketCard({ market: m }: MarketCardProps) {
 								isEntry ? (isLong ? "bg-emerald-500" : "bg-red-500") : "bg-muted-foreground/30",
 							)}
 						/>
-						<span className="font-semibold text-sm">{m.id}</span>
+						<span className="font-semibold text-xs sm:text-sm">{m.id}</span>
 					</div>
 					<div className="flex items-center gap-2">
 						{m.phase && (
-							<Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+							<Badge variant="secondary" className="text-[11px] px-1.5 py-0">
 								{m.phase}
 							</Badge>
 						)}
-						<span className="font-mono text-[10px] text-muted-foreground">{fmtMinSec(m.timeLeftMin)}</span>
+						<span className="font-mono text-[11px] text-muted-foreground">{fmtMinSec(m.timeLeftMin)}</span>
 					</div>
 				</div>
 
 				{/* Main Signal */}
-				<div className="text-center py-2">
-					<div className={cn("text-2xl font-light tracking-tight", isLong ? "text-emerald-500" : "text-red-500")}>
+				<div className="text-center py-1 sm:py-2">
+					<div
+						className={cn(
+							"text-lg sm:text-2xl font-light tracking-tight",
+							isLong ? "text-emerald-500" : "text-red-500",
+						)}
+					>
 						{isLong ? "LONG" : "SHORT"} {isLong ? m.predictLong : m.predictShort}%
 					</div>
 				</div>
@@ -75,19 +80,19 @@ export function MarketCard({ market: m }: MarketCardProps) {
 				{isEntry ? (
 					<div
 						className={cn(
-							"rounded-lg px-3 py-2 text-xs font-semibold text-center",
+							"rounded-lg px-2 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold text-center",
 							"bg-primary/10 text-primary border border-primary/30",
 							"animate-in fade-in slide-in-from-bottom-2 duration-500",
 						)}
 					>
-						<span className="flex items-center justify-center gap-2">
+						<span className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
 							<span>BUY {m.side}</span>
 							<span className="text-primary/40">|</span>
 							<span className="font-mono">Edge {((m.edge ?? 0) * 100).toFixed(1)}%</span>
 						</span>
 					</div>
 				) : (
-					<div className="text-center text-[11px] text-muted-foreground uppercase tracking-wide py-2">
+					<div className="text-center text-[11px] text-muted-foreground uppercase tracking-wide py-1 sm:py-2">
 						{m.reason ?? "NO TRADE"}
 					</div>
 				)}

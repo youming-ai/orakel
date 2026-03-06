@@ -1,9 +1,9 @@
 import { AlertTriangle, DollarSign, Hash, Target, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { MarketSnapshot, PaperStats, StopLossStatus, TodayStats } from "@/contracts/http";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import type { MarketSnapshot, PaperStats, StopLossStatus, TodayStats } from "@/contracts/http";
 import { CHART_COLORS, CHART_HEIGHT, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
 import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
 import type { ViewMode } from "@/lib/types";
@@ -83,7 +83,7 @@ export function OverviewTab({
 		<div className="space-y-4">
 			{/* Stop Loss Warning */}
 			{stopLoss?.stoppedAt && (
-				<Card className="border-red-500/30 bg-red-500/5">
+				<Card className="border-red-500/30 bg-red-500/5 shadow-sm">
 					<div className="p-3">
 						<div className="flex items-center gap-3">
 							<AlertTriangle className="size-5 text-red-400" />
@@ -109,11 +109,11 @@ export function OverviewTab({
 
 			{/* Today Stats & Stop Loss Status */}
 			{todayStats && (
-				<Card className="border-border/50">
+				<Card className="border-border/50 shadow-sm">
 					<div className="p-3">
-						<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
-							<div className="flex items-center gap-3 sm:gap-4 min-w-0">
-								<div className="flex items-center gap-2 shrink-0">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+							<div className="flex items-center justify-between gap-3 sm:gap-4 min-w-0">
+								<div className="flex items-center gap-2 sm:gap-3 min-w-0">
 									<Zap className="size-4 text-amber-400" />
 									<span className="text-xs text-muted-foreground">Today</span>
 								</div>
@@ -126,13 +126,13 @@ export function OverviewTab({
 									{todayStats.pnl >= 0 ? "+" : ""}
 									{todayStats.pnl.toFixed(2)} USDC
 								</span>
-								<span className="text-xs text-muted-foreground">
+								<span className="shrink-0 text-xs text-muted-foreground">
 									{todayStats.trades} trade{todayStats.trades !== 1 ? "s" : ""}
 								</span>
 							</div>
-							<div className="flex items-center gap-2 sm:pl-0">
+							<div className="flex items-center gap-2 w-full sm:w-auto">
 								<span className="text-xs text-muted-foreground shrink-0">Daily Limit:</span>
-								<div className="flex-1 sm:flex-none sm:w-24 h-2 bg-white/10 dark:bg-black/30 rounded-full overflow-hidden shrink-0">
+								<div className="h-2 w-full sm:w-24 bg-muted/30 rounded-full overflow-hidden">
 									<div
 										className={cn(
 											"h-full rounded-full transition-all",
@@ -160,7 +160,7 @@ export function OverviewTab({
 				{/* Hero Stats */}
 				<Card
 					className={cn(
-						"flex flex-col justify-center p-6 shrink-0 xl:w-72",
+						"flex flex-col justify-center p-6 shrink-0 xl:w-72 shadow-sm",
 						mergedStats.totalPnl >= 0 ? "border-emerald-500/20" : "border-red-500/20",
 					)}
 				>
@@ -183,7 +183,7 @@ export function OverviewTab({
 				</Card>
 
 				{/* Standard Stats */}
-				<Card className="flex-1 overflow-hidden">
+				<Card className="flex-1 overflow-hidden shadow-sm">
 					<div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-4 h-full">
 						<StatCard label="Trades" value={String(mergedStats.totalTrades)} icon={<Hash className="size-3.5" />} />
 						<StatCard
@@ -211,13 +211,13 @@ export function OverviewTab({
 				</Card>
 			</div>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 				{sortedMarkets.map((m) => (
 					<MarketCard key={m.id} market={m} />
 				))}
 			</div>
 
-			<Card>
+			<Card className="shadow-sm">
 				<div className="px-6 pb-2 pt-4">
 					<div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Cumulative P&L</div>
 				</div>
