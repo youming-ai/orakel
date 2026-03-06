@@ -789,10 +789,11 @@ async function main(): Promise<void> {
 			})
 			.filter((r) => {
 				const tl = r.timeLeftMin ?? 0;
-				const windowMin = DEFAULT_CANDLE_WINDOW_MINUTES;
+				const windowMin = r.market.candleWindowMinutes;
+				const buffer = Math.max(1, windowMin * 0.2);
 				const elapsed = windowMin - tl;
-				if (elapsed < 3) return false;
-				if (tl < 3) return false;
+				if (elapsed < buffer) return false;
+				if (tl < buffer) return false;
 				return true;
 			})
 			.sort((a, b) => {
