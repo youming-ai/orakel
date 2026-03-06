@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { CONFIG } from "../core/config.ts";
-import type { PriceTick } from "../types.ts";
+import type { PriceTick } from "../core/marketDataTypes.ts";
 
 const AGGREGATOR_ABI = [
 	"function latestRoundData() view returns (uint80 roundId,int256 answer,uint256 startedAt,uint256 updatedAt,uint80 answeredInRound)",

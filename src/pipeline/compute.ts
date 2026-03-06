@@ -1,4 +1,6 @@
+import type { AppConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
+import type { RawMarketData } from "../core/marketDataTypes.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
 import { applyTimeAwareness, computeRealizedVolatility, scoreDirection } from "../engines/probability.ts";
 import { detectRegime } from "../engines/regime.ts";
@@ -6,7 +8,7 @@ import { computeHeikenAshi, countConsecutive } from "../indicators/heikenAshi.ts
 import { computeMacd } from "../indicators/macd.ts";
 import { computeRsi, slopeLast } from "../indicators/rsi.ts";
 import { computeVwapSeries } from "../indicators/vwap.ts";
-import type { AppConfig, ComputeResult, MacdResult, RawMarketData, TradeDecision } from "../types.ts";
+import type { ComputeResult, MacdResult, TradeDecision } from "../trading/tradeTypes.ts";
 
 const log = createLogger("pipeline-compute");
 

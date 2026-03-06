@@ -1,8 +1,8 @@
 import { CTF_ADDRESS, ctfIface, USDC_E_ADDRESS, USDC_E_DECIMALS, usdcIface } from "../blockchain/contracts.ts";
+import type { BalanceSnapshotPayload, CtfPosition } from "../contracts/stateTypes.ts";
 import { createTtlCache } from "../core/cache.ts";
 import { CONFIG } from "../core/config.ts";
 import { createLogger } from "../core/logger.ts";
-import type { BalanceSnapshotPayload, CtfPosition } from "../types.ts";
 
 const log = createLogger("polygon-balance");
 

@@ -1,5 +1,15 @@
 import { CONFIG } from "../core/config.ts";
+import type { MarketConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
+import type {
+	Candle,
+	CandleWindowTiming,
+	FetchMarketDataResult,
+	GammaMarket,
+	OrderBookSummary,
+	PolymarketSnapshot,
+	PriceTick,
+} from "../core/marketDataTypes.ts";
 import { fetchKlines, fetchLastPrice } from "../data/binance.ts";
 import { fetchChainlinkPrice } from "../data/chainlink.ts";
 import {
@@ -11,17 +21,7 @@ import {
 	pickLatestLiveMarket,
 	summarizeOrderBook,
 } from "../data/polymarket.ts";
-import type {
-	Candle,
-	CandleWindowTiming,
-	FetchMarketDataResult,
-	GammaMarket,
-	MarketConfig,
-	OrderBookSummary,
-	PolymarketSnapshot,
-	PriceTick,
-	StreamHandles,
-} from "../types.ts";
+import type { StreamHandles } from "../trading/tradeTypes.ts";
 
 const log = createLogger("pipeline-fetch");
 

@@ -1,4 +1,4 @@
-import type { MarketConfig } from "../types.ts";
+import type { MarketConfig } from "./configTypes.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
 

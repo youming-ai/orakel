@@ -6,7 +6,7 @@ import type {
 	StateSnapshotPayload,
 	TradeExecutedPayload,
 	WsMessage,
-} from "../types.ts";
+} from "../contracts/stateTypes.ts";
 import { CONFIG } from "./config.ts";
 import { createLogger } from "./logger.ts";
 

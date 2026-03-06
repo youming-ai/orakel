@@ -1,5 +1,5 @@
-import type { MarketSnapshot, PaperStats, PaperTradeEntry } from "../types.ts";
 import type { ConfigSnapshotDto } from "./config.ts";
+import type { MarketSnapshot, PaperStats, PaperTradeEntry } from "./stateTypes.ts";
 
 export interface StopLossStatusDto {
 	stoppedAt: string | null;

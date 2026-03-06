@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createTtlCache } from "../core/cache.ts";
 import { CONFIG } from "../core/config.ts";
 import { createLogger } from "../core/logger.ts";
-import type { OrderBookSummary } from "../types.ts";
+import type { OrderBookSummary } from "../core/marketDataTypes.ts";
 
 type JsonRecord = Record<string, unknown>;
 type GammaValue = unknown;

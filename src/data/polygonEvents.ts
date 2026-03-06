@@ -10,9 +10,9 @@ import {
 	USDC_E_DECIMALS,
 	usdcIface,
 } from "../blockchain/contracts.ts";
+import type { OnChainEvent } from "../contracts/stateTypes.ts";
 import { CONFIG } from "../core/config.ts";
 import { createLogger } from "../core/logger.ts";
-import type { OnChainEvent } from "../types.ts";
 
 const log = createLogger("polygon-events");
 

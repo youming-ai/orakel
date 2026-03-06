@@ -1,5 +1,5 @@
+import type { BalanceSnapshotPayload, CtfPosition, OnChainEvent } from "../contracts/stateTypes.ts";
 import { createLogger } from "../core/logger.ts";
-import type { BalanceSnapshotPayload, CtfPosition, OnChainEvent } from "../types.ts";
 import { USDC_E_DECIMALS } from "./contracts.ts";
 
 const log = createLogger("account-state");

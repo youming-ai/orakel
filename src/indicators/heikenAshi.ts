@@ -1,4 +1,4 @@
-import type { Candle, HaCandle } from "../types.ts";
+import type { Candle, HaCandle } from "../core/marketDataTypes.ts";
 
 export function computeHeikenAshi(candles: Candle[]): HaCandle[] {
 	if (!Array.isArray(candles) || candles.length === 0) return [];

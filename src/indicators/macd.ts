@@ -1,4 +1,4 @@
-import type { MacdResult } from "../types.ts";
+import type { MacdResult } from "../trading/tradeTypes.ts";
 
 export function computeMacd(closes: (number | null)[], fast: number, slow: number, signal: number): MacdResult | null {
 	if (fast <= 0 || slow <= 0 || signal <= 0 || fast >= slow) return null;

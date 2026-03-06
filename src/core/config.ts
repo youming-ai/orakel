@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { z } from "zod";
+import type { AppConfig, RiskConfig, StrategyConfig } from "./configTypes.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
 import { MARKETS } from "./markets.ts";
@@ -18,8 +19,6 @@ export function onConfigReload(listener: ConfigReloadListener): void {
 export function offConfigReload(listener: ConfigReloadListener): void {
 	reloadListeners.delete(listener);
 }
-
-import type { AppConfig, RiskConfig, StrategyConfig } from "../types.ts";
 
 const RISK_DEFAULTS = {
 	maxTradeSizeUsdc: 1,

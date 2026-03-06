@@ -1,4 +1,4 @@
-import type { RiskConfig, StrategyConfig } from "../types.ts";
+import type { RiskConfig, StrategyConfig } from "../core/configTypes.ts";
 
 export type RiskConfigDto = RiskConfig;
 export type StrategyConfigDto = StrategyConfig;

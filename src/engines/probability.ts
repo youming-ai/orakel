@@ -1,5 +1,5 @@
 import { clamp } from "../core/utils.ts";
-import type { MacdResult, ScoreResult } from "../types.ts";
+import type { MacdResult, ScoreResult } from "../trading/tradeTypes.ts";
 
 interface ScoreDirectionInput {
 	price: number | null;

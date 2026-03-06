@@ -1,4 +1,4 @@
-import type { RegimeResult } from "../types.ts";
+import type { RegimeResult } from "../trading/tradeTypes.ts";
 
 interface RegimeInput {
 	price: number | null;

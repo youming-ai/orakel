@@ -1,5 +1,6 @@
+import type { StrategyConfig } from "../core/configTypes.ts";
 import { clamp } from "../core/utils.ts";
-import type { EdgeResult, Phase, Regime, Side, StrategyConfig, Strength, TradeDecision } from "../types.ts";
+import type { EdgeResult, Phase, Regime, Side, Strength, TradeDecision } from "../trading/tradeTypes.ts";
 
 export function computeEdge(params: {
 	modelUp: number;

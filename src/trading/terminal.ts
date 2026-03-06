@@ -3,7 +3,7 @@ import { createLogger } from "../core/logger.ts";
 import { isLiveRunning, isPaperRunning } from "../core/state.ts";
 import { formatNumber } from "../core/utils.ts";
 import type { ProcessMarketResult } from "../pipeline/processMarket.ts";
-import type { MacdResult, TradeDecision } from "../types.ts";
+import type { MacdResult, TradeDecision } from "./tradeTypes.ts";
 
 const log = createLogger("bot");
 

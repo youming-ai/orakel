@@ -1,14 +1,8 @@
 import { CONFIG } from "../core/config.ts";
+import type { MarketConfig } from "../core/configTypes.ts";
+import type { CandleWindowTiming, OrderBookSummary } from "../core/marketDataTypes.ts";
 import { persistSignal } from "../trading/persistence.ts";
-import type {
-	CandleWindowTiming,
-	MacdResult,
-	MarketConfig,
-	OrderBookSummary,
-	StreamHandles,
-	TradeDecision,
-	TradeSignal,
-} from "../types.ts";
+import type { MacdResult, StreamHandles, TradeDecision, TradeSignal } from "../trading/tradeTypes.ts";
 import { computeMarketDecision } from "./compute.ts";
 import { fetchMarketData, priceToBeatFromPolymarketMarket } from "./fetch.ts";
 
@@ -109,10 +103,8 @@ export async function processMarket({
 
 	const signalPayload = persistSignal({
 		market,
-		timing,
 		regimeInfo: result.regimeInfo,
 		edge: result.edge,
-		scored: result.scored,
 		finalUp: result.finalUp,
 		finalDown: result.finalDown,
 		volatility15m: result.volatility15m,

@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { CONFIG } from "../core/config.ts";
-import type { PriceTick, WsStreamHandle } from "../types.ts";
+import type { PriceTick } from "../core/marketDataTypes.ts";
+import type { WsStreamHandle } from "../trading/tradeTypes.ts";
 
 type BinanceTradeStreamParams = {
 	symbol?: string;

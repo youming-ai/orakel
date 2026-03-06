@@ -1,8 +1,8 @@
 import type { Wallet } from "ethers";
 import { Contract, constants } from "ethers";
 import { createLogger } from "../core/logger.ts";
-import type { RedeemResult } from "../types.ts";
 import { CTF_ABI, CTF_ADDRESS, USDC_E_ADDRESS } from "./contracts.ts";
+import type { RedeemResult } from "./redeemTypes.ts";
 
 const log = createLogger("redeemer");
 interface RedeemablePosition {

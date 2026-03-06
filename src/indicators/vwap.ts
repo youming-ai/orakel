@@ -1,4 +1,4 @@
-import type { Candle } from "../types.ts";
+import type { Candle } from "../core/marketDataTypes.ts";
 
 export function computeSessionVwap(candles: Candle[]): number | null {
 	if (!Array.isArray(candles) || candles.length === 0) return null;

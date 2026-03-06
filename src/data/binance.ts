@@ -1,6 +1,6 @@
 import { createTtlCache } from "../core/cache.ts";
 import { CONFIG } from "../core/config.ts";
-import type { Candle } from "../types.ts";
+import type { Candle } from "../core/marketDataTypes.ts";
 
 function toNumber(x: unknown): number | null {
 	const n = Number(x);

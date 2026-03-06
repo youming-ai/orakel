@@ -5,7 +5,7 @@ import type {
 	TradeExecutedPayload,
 	WsEventType,
 	WsMessage,
-} from "../types.ts";
+} from "./stateTypes.ts";
 
 export type BotEventType = WsEventType;
 export type BotWsMessage<T = unknown> = WsMessage<T>;
