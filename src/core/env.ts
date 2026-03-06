@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { StorageBackend } from "../types.ts";
 
 // ── helpers ──────────────────────────────────────────────
 
@@ -31,15 +30,6 @@ const envSchema = z.object({
 			const cleaned = v.trim().replace(/^0x/i, "");
 			return cleaned.length === 64 ? cleaned : undefined;
 		}),
-
-	// Storage backends
-	PERSIST_BACKEND: z
-		.string()
-		.transform((v): StorageBackend => {
-			const l = v.toLowerCase();
-			return l === "csv" ? "csv" : "none";
-		})
-		.default("csv" as StorageBackend),
 
 	// Polymarket
 	POLYMARKET_SLUG: z.string().default(""),

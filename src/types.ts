@@ -76,7 +76,6 @@ export interface AppConfig {
 	macdSlow: number;
 	macdSignal: number;
 	paperMode: boolean;
-	persistBackend: StorageBackend;
 	polymarket: {
 		marketSlug: string;
 		autoSelectLatest: boolean;
@@ -114,7 +113,6 @@ export type Phase = "EARLY" | "MID" | "LATE";
 export type Regime = "TREND_UP" | "TREND_DOWN" | "RANGE" | "CHOP";
 export type Strength = "STRONG" | "GOOD" | "OPTIONAL";
 export type Side = "UP" | "DOWN";
-export type StorageBackend = "csv" | "none";
 
 export interface TradeDecision {
 	action: "ENTER" | "NO_TRADE";

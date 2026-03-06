@@ -1,10 +1,9 @@
-import fs from "node:fs";
 import type { Wallet } from "ethers";
 import type { RedeemOneResult } from "../blockchain/redeemer.ts";
 import { fetchRedeemablePositions } from "../blockchain/redeemer.ts";
 import { createLogger } from "../core/logger.ts";
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
-import { onchainQueries } from "../db/queries.ts";
+import { kvQueries, onchainQueries } from "../db/queries.ts";
 import type { AccountStatsManager } from "./accountStats.ts";
 
 const log = createLogger("live-settler");
@@ -35,14 +34,14 @@ export class LiveSettler {
 
 	constructor(deps: LiveSettlerDeps) {
 		this.deps = deps;
-		this.loadRedeemedIds();
+		void this.loadRedeemedIds();
 	}
 
-	private loadRedeemedIds(): void {
+	private async loadRedeemedIds(): Promise<void> {
 		try {
-			const filePath = "./data/redeemed-trades.json";
-			if (fs.existsSync(filePath)) {
-				const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as unknown;
+			const json = await kvQueries.get("redeemed_trade_ids");
+			if (json) {
+				const data = JSON.parse(json) as unknown;
 				if (Array.isArray(data)) {
 					for (const id of data) {
 						this.redeemedIds.add(String(id));
@@ -55,10 +54,9 @@ export class LiveSettler {
 		}
 	}
 
-	private saveRedeemedIds(): void {
+	private async saveRedeemedIds(): Promise<void> {
 		try {
-			fs.mkdirSync("./data", { recursive: true });
-			fs.writeFileSync("./data/redeemed-trades.json", JSON.stringify([...this.redeemedIds]));
+			await kvQueries.set("redeemed_trade_ids", JSON.stringify([...this.redeemedIds]));
 		} catch (err) {
 			log.warn("Failed to save redeemed IDs:", err instanceof Error ? err.message : String(err));
 		}
@@ -107,7 +105,7 @@ export class LiveSettler {
 				}
 
 				this.redeemedIds.add(trade.id);
-				this.saveRedeemedIds();
+				void this.saveRedeemedIds();
 				redeemed++;
 				log.info(`Redeemed: ${trade.marketId} ${trade.side} pnl=$${(trade.pnl ?? 0).toFixed(2)} tx=${result.txHash}`);
 			}

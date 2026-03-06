@@ -1,8 +1,4 @@
-import fs from "node:fs";
-import { PERSIST_BACKEND } from "../core/config.ts";
-import { createLogger } from "../core/logger.ts";
 import { emitSignalNew } from "../core/state.ts";
-import { appendCsvRow } from "../core/utils.ts";
 import { signalQueries } from "../db/queries.ts";
 import type {
 	CandleWindowTiming,
@@ -13,8 +9,6 @@ import type {
 	TradeDecision,
 	TradeSignal,
 } from "../types.ts";
-
-const log = createLogger("bot");
 
 interface PersistSignalParams {
 	market: MarketConfig;
@@ -36,19 +30,6 @@ interface PersistSignalParams {
 	marketSlug: string;
 	rec: TradeDecision;
 	poly: PolymarketSnapshot;
-}
-
-function writeLatestSignal(marketId: string, payload: TradeSignal): void {
-	for (let attempt = 1; attempt <= 3; attempt++) {
-		try {
-			fs.mkdirSync("./data", { recursive: true });
-			fs.writeFileSync(`./data/latest-signal-${marketId}.json`, JSON.stringify(payload));
-			return;
-		} catch (err) {
-			log.warn(`writeLatestSignal attempt ${attempt}/3 failed for ${marketId}:`, err);
-		}
-	}
-	log.error(`writeLatestSignal failed after 3 attempts for market ${marketId}`);
 }
 
 export function persistSignal({
@@ -79,58 +60,6 @@ export function persistSignal({
 		: rec.action === "ENTER"
 			? `${rec.side}:${rec.phase}:${rec.strength}`
 			: "NO_TRADE";
-
-	if (PERSIST_BACKEND === "csv") {
-		appendCsvRow(
-			`./data/signals-${market.id}.csv`,
-			[
-				"timestamp",
-				"entry_minute",
-				"time_left_min",
-				"regime",
-				"signal",
-				"ta_raw_up",
-				"blended_up",
-				"blend_source",
-				"volatility_15m",
-				"price_to_beat",
-				"binance_chainlink_delta",
-				"orderbook_imbalance",
-				"model_up",
-				"model_down",
-				"mkt_up",
-				"mkt_down",
-				"raw_sum",
-				"arbitrage",
-				"edge_up",
-				"edge_down",
-				"recommendation",
-			],
-			[
-				signalTimestamp,
-				timing.elapsedMinutes.toFixed(3),
-				Number(timeLeftMin).toFixed(3),
-				regimeInfo.regime,
-				signalLabel,
-				scored.rawUp,
-				finalUp,
-				"ta_only",
-				volatility15m,
-				priceToBeat,
-				binanceChainlinkDelta,
-				orderbookImbalance,
-				finalUp,
-				finalDown,
-				marketUp,
-				marketDown,
-				edge.rawSum,
-				edge.arbitrage ? 1 : 0,
-				edge.edgeUp,
-				edge.edgeDown,
-				recommendation,
-			],
-		);
-	}
 
 	void signalQueries.insert({
 		timestamp: signalTimestamp,
@@ -188,7 +117,6 @@ export function persistSignal({
 		conditionId: poly.ok && poly.market?.conditionId ? poly.market.conditionId : null,
 	};
 
-	writeLatestSignal(market.id, signalPayload);
 	emitSignalNew({
 		marketId: market.id,
 		timestamp: signalPayload.timestamp,

@@ -3,7 +3,7 @@ import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
 import { enrichPosition } from "../blockchain/accountState.ts";
-import { CONFIG, PERSIST_BACKEND } from "../core/config.ts";
+import { CONFIG } from "../core/config.ts";
 import { env } from "../core/env.ts";
 import { createLogger } from "../core/logger.ts";
 import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
@@ -335,11 +335,6 @@ function canTrade(mode: "paper" | "live"): boolean {
 	return true;
 }
 
-function tradeLogPath(marketId: string | null | undefined, mode: "paper" | "live"): string {
-	const id = String(marketId || "GLOBAL").toUpperCase();
-	return `./data/${mode}/trades-${id}.csv`;
-}
-
 function logTrade(
 	trade: {
 		timestamp?: string;
@@ -354,33 +349,7 @@ function logTrade(
 	marketId: string | null | undefined,
 	mode: "paper" | "live",
 ): void {
-	const header = ["timestamp", "market", "side", "amount", "price", "orderId", "status", "mode"];
 	const timestamp = trade.timestamp ?? new Date().toISOString();
-	const row = [
-		timestamp,
-		trade.market || "",
-		trade.side,
-		trade.amount,
-		trade.price,
-		trade.orderId || "",
-		trade.status,
-		mode,
-	];
-
-	const line = `${row.join(",")}\n`;
-
-	if (PERSIST_BACKEND === "csv") {
-		const dirPath = `./data/${mode}`;
-		if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-
-		const logPath = tradeLogPath(marketId, mode);
-		if (!fs.existsSync(logPath)) {
-			fs.writeFileSync(logPath, `${header.join(",")}\n`);
-		}
-
-		fs.appendFileSync(logPath, line);
-	}
-
 	void tradeQueries.insertTrade({
 		timestamp,
 		market: marketId ?? trade.market ?? "",
