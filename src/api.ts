@@ -22,7 +22,7 @@ import {
 	setLiveRunning,
 	setPaperRunning,
 } from "./core/state.ts";
-import { signalQueries, tradeQueries } from "./db/queries.ts";
+import { tradeQueries } from "./db/queries.ts";
 import { liveAccount, paperAccount } from "./trading/accountStats.ts";
 import { getLiveStartReadinessError } from "./trading/liveGuards.ts";
 import { connectWallet, disconnectWallet, getClientStatus, getWallet, getWalletAddress } from "./trading/trader.ts";
@@ -177,39 +177,6 @@ const apiRoutes = new Hono()
 			})),
 		);
 	})
-
-	.get("/signals", async (c) => {
-		const rows = await signalQueries.getRecent(200);
-
-		return c.json(
-			rows.map((row) => ({
-				timestamp: row.timestamp ?? "",
-				entry_minute: str(row.entryMinute),
-				time_left_min: str(row.timeLeftMin),
-				regime: row.regime ?? "",
-				signal: row.signal ?? "",
-				vol_implied_up: str(row.volImpliedUp),
-				ta_raw_up: str(row.taRawUp),
-				blended_up: str(row.blendedUp),
-				blend_source: row.blendSource ?? "",
-				volatility_15m: str(row.volatility15m),
-				price_to_beat: str(row.priceToBeat),
-				binance_chainlink_delta: str(row.binanceChainlinkDelta),
-				orderbook_imbalance: str(row.orderbookImbalance),
-				model_up: str(row.modelUp),
-				model_down: str(row.modelDown),
-				mkt_up: str(row.mktUp),
-				mkt_down: str(row.mktDown),
-				raw_sum: str(row.rawSum),
-				arbitrage: str(row.arbitrage),
-				edge_up: str(row.edgeUp),
-				edge_down: str(row.edgeDown),
-				recommendation: row.recommendation ?? "",
-				market: row.market ?? "",
-			})),
-		);
-	})
-
 	.get("/paper-stats", (c) => {
 		return c.json({
 			stats: paperAccount.getStats(),

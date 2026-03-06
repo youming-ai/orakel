@@ -268,31 +268,32 @@ export const kvQueries = {
 	},
 };
 
-// Signals queries
-export const signalQueries = {
-	insert: async (data: typeof schema.signals.$inferInsert) => {
-		return await db.insert(schema.signals).values(data);
-	},
+// Signals queries - DISABLED: too verbose, not used
+// export const signalQueries = {
+// 	insert: async (data: typeof schema.signals.$inferInsert) => {
+// 		return await db.insert(schema.signals).values(data);
+// 	},
 
-	getRecent: async (limit: number) => {
-		return await db.select().from(schema.signals).orderBy(desc(schema.signals.timestamp)).limit(limit);
-	},
+// 	getRecent: async (limit: number) => {
+// 		return await db.select().from(schema.signals).orderBy(desc(schema.signals.timestamp)).limit(limit);
+// 	},
 
-	getRecentByMarket: async (market: string, limit: number) => {
-		return await db
-			.select()
-			.from(schema.signals)
-			.where(eq(schema.signals.market, market))
-			.orderBy(desc(schema.signals.timestamp))
-			.limit(limit);
-	},
-};
+// 	getRecentByMarket: async (market: string, limit: number) => {
+// 		return await db
+// 			.select()
+// 			.from(schema.signals)
+// 			.where(eq(schema.signals.market, market))
+// 			.orderBy(desc(schema.signals.timestamp))
+// 			.limit(limit);
+// 	},
+// };
 
 // Data reset functions
 export async function resetPaperDbData(): Promise<void> {
 	await db.delete(schema.paperState);
 	await db.delete(schema.trades).where(eq(schema.trades.mode, "paper"));
 	await db.delete(schema.dailyStats).where(eq(schema.dailyStats.mode, "paper"));
+	await db.delete(schema.signals); // Clear old signals data
 }
 
 export async function resetLiveDbData(): Promise<void> {
@@ -302,12 +303,13 @@ export async function resetLiveDbData(): Promise<void> {
 	await db.delete(schema.dailyStats).where(eq(schema.dailyStats.mode, "live"));
 	await db.delete(schema.onchainEvents);
 	await db.delete(schema.balanceSnapshots);
+	await db.delete(schema.signals); // Clear old signals data
 }
 
 // Database pruning
 const PRUNE_LIMITS = {
 	trades: 200,
-	signals: 500,
+	// signals: 500, // DISABLED: signals logging stopped
 	dailyStatsDays: 30,
 } as const;
 
@@ -322,14 +324,15 @@ export async function pruneDatabase(): Promise<{ pruned: Record<string, number> 
 	const tradesResult = await db.delete(schema.trades).where(notInArray(schema.trades.id, keepTradeIds));
 	pruned.trades = tradesResult.length;
 
-	// Prune signals
-	const keepSignalIds = db
-		.select({ id: schema.signals.id })
-		.from(schema.signals)
-		.orderBy(desc(schema.signals.id))
-		.limit(PRUNE_LIMITS.signals);
-	const signalsResult = await db.delete(schema.signals).where(notInArray(schema.signals.id, keepSignalIds));
-	pruned.signals = signalsResult.length;
+	// Signals pruning DISABLED - logging stopped
+	// const keepSignalIds = db
+	// 	.select({ id: schema.signals.id })
+	// 	.from(schema.signals)
+	// 	.orderBy(desc(schema.signals.id))
+	// 	.limit(PRUNE_LIMITS.signals);
+	// const signalsResult = await db.delete(schema.signals).where(notInArray(schema.signals.id, keepSignalIds));
+	// pruned.signals = signalsResult.length;
+	pruned.signals = 0;
 
 	// Prune daily_stats
 	const cutoffDate = new Date(Date.now() - PRUNE_LIMITS.dailyStatsDays * 86_400_000).toISOString().slice(0, 10);

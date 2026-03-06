@@ -1,5 +1,5 @@
 import { emitSignalNew } from "../core/state.ts";
-import { signalQueries } from "../db/queries.ts";
+// import { signalQueries } from "../db/queries.ts";
 import type {
 	CandleWindowTiming,
 	EdgeResult,
@@ -61,31 +61,32 @@ export function persistSignal({
 			? `${rec.side}:${rec.phase}:${rec.strength}`
 			: "NO_TRADE";
 
-	void signalQueries.insert({
-		timestamp: signalTimestamp,
-		market: market.id,
-		regime: regimeInfo.regime,
-		signal: signalLabel,
-		volImpliedUp: null,
-		taRawUp: scored.rawUp,
-		blendedUp: finalUp,
-		blendSource: "ta_only",
-		volatility15m: volatility15m,
-		priceToBeat: priceToBeat,
-		binanceChainlinkDelta: binanceChainlinkDelta,
-		orderbookImbalance: orderbookImbalance,
-		modelUp: finalUp,
-		modelDown: finalDown,
-		mktUp: marketUp,
-		mktDown: marketDown,
-		rawSum: edge.rawSum,
-		arbitrage: edge.arbitrage ? 1 : 0,
-		edgeUp: edge.edgeUp,
-		edgeDown: edge.edgeDown,
-		recommendation: recommendation,
-		entryMinute: timing.elapsedMinutes.toFixed(3),
-		timeLeftMin: Number(timeLeftMin),
-	});
+	// NOTE: Signals logging disabled - too verbose
+	// void signalQueries.insert({
+	// 	timestamp: signalTimestamp,
+	// 	market: market.id,
+	// 	regime: regimeInfo.regime,
+	// 	signal: signalLabel,
+	// 	volImpliedUp: null,
+	// 	taRawUp: scored.rawUp,
+	// 	blendedUp: finalUp,
+	// 	blendSource: "ta_only",
+	// 	volatility15m: volatility15m,
+	// 	priceToBeat: priceToBeat,
+	// 	binanceChainlinkDelta: binanceChainlinkDelta,
+	// 	orderbookImbalance: orderbookImbalance,
+	// 	modelUp: finalUp,
+	// 	modelDown: finalDown,
+	// 	mktUp: marketUp,
+	// 	mktDown: marketDown,
+	// 	rawSum: edge.rawSum,
+	// 	arbitrage: edge.arbitrage ? 1 : 0,
+	// 	edgeUp: edge.edgeUp,
+	// 	edgeDown: edge.edgeDown,
+	// 	recommendation: recommendation,
+	// 	entryMinute: timing.elapsedMinutes.toFixed(3),
+	// 	timeLeftMin: Number(timeLeftMin),
+	// });
 
 	if (rec.action !== "ENTER") return null;
 
