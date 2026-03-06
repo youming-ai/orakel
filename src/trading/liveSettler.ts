@@ -3,7 +3,7 @@ import type { RedeemOneResult } from "../blockchain/redeemer.ts";
 import { fetchRedeemablePositions } from "../blockchain/redeemer.ts";
 import { createLogger } from "../core/logger.ts";
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
-import { kvQueries, onchainQueries } from "../db/queries.ts";
+import { kvQueries } from "../db/queries.ts";
 import type { AccountStatsManager } from "./accountStats.ts";
 
 const log = createLogger("live-settler");
@@ -123,26 +123,23 @@ export class LiveSettler {
 		if (!this.deps.wallet) return null;
 		try {
 			const positions = await fetchRedeemablePositions(this.deps.wallet.address);
+			// Find first position with a conditionId
+			// Note: The API doesn't provide tokenIds, so we can't verify which position
+			// corresponds to which token. We use the first available conditionId as
+			// a best-effort approach, but don't persist it to avoid DB corruption.
 			for (const pos of positions) {
 				if (pos.conditionId) {
-					try {
-						await onchainQueries.upsertKnownCtfToken({
-							tokenId: tokenId,
-							marketId: "",
-							side: "",
-							conditionId: pos.conditionId,
-						});
-					} catch (err) {
-						log.warn("Failed to upsert known CTF token:", err instanceof Error ? err.message : String(err));
-					}
+					return pos.conditionId;
 				}
 			}
-			return await this.deps.lookupConditionId(tokenId);
+			return null;
 		} catch (err) {
 			log.warn("Failed to resolve conditionId:", err instanceof Error ? err.message : String(err));
 			return null;
 		}
 	}
+
+
 
 	start(intervalMs?: number): void {
 		if (this.timer) return;

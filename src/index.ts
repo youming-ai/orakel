@@ -1,56 +1,39 @@
-import { startApiServer } from "./api.ts";
-import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } from "./blockchain/accountState.ts";
-import { startReconciler } from "./blockchain/reconciler.ts";
-import { fetchRedeemablePositions, redeemAll, redeemByConditionId } from "./blockchain/redeemer.ts";
-import { CONFIG, startConfigWatcher } from "./core/config.ts";
-import { env } from "./core/env.ts";
+import { bootstrapApp } from "./app/bootstrap.ts";
+import { registerShutdownHandlers } from "./app/shutdown.ts";
+import { redeemByConditionId } from "./blockchain/redeemer.ts";
+import { CONFIG } from "./core/config.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets, getMarketById } from "./core/markets.ts";
-import {
-	emitBalanceSnapshot,
-	emitStateSnapshot,
-	getUpdatedAt,
-	isLivePendingStart,
-	isLivePendingStop,
-	isLiveRunning,
-	isPaperPendingStart,
-	isPaperPendingStop,
-	isPaperRunning,
-	setLiveRunning,
-	setOnchainBalance,
-	setPaperRunning,
-	updateMarkets,
-} from "./core/state.ts";
+import { isLiveRunning, isPaperRunning } from "./core/state.ts";
 import { createTradeTracker } from "./core/tradeTracker.ts";
 import { getCandleWindowTiming, sleep } from "./core/utils.ts";
 import { startMultiBinanceTradeStream } from "./data/binanceWs.ts";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.ts";
-import { startBalancePolling } from "./data/polygonBalance.ts";
-import { startOnChainEventStream } from "./data/polygonEvents.ts";
 import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
 import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
-import { closeDb } from "./db/client.ts";
 import { onchainQueries, pendingOrderQueries, pruneDatabase, tradeQueries } from "./db/queries.ts";
-import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
+import type { ProcessMarketResult } from "./pipeline/processMarket.ts";
 import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
-import { getAccount, initAccountStats, liveAccount, paperAccount } from "./trading/accountStats.ts";
+import { collectLatestPrices, createMarketStateMap } from "./runtime/marketState.ts";
+import { createOnchainRuntime } from "./runtime/onchainRuntime.ts";
+import { runSettlementCycle } from "./runtime/settlementCycle.ts";
+import { publishMarketSnapshots } from "./runtime/snapshotPublisher.ts";
+import { dispatchTradeCandidates } from "./runtime/tradeDispatch.ts";
+import { liveAccount, paperAccount } from "./trading/accountStats.ts";
 import { LiveSettler } from "./trading/liveSettler.ts";
 import { OrderManager, type TrackedOrder } from "./trading/orderManager.ts";
 
 import { renderDashboard } from "./trading/terminal.ts";
 import {
-	connectWallet,
-	executeTrade,
 	getClient,
 	getOpenGtdOrderCount,
 	getWallet,
 	registerOpenGtdOrder,
 	startHeartbeat,
-	stopHeartbeat,
 	unregisterOpenGtdOrder,
 } from "./trading/trader.ts";
-import type { MarketSnapshot, StreamHandles, WsStreamHandle } from "./types.ts";
+import type { StreamHandles, WsStreamHandle } from "./types.ts";
 
 export type { ProcessMarketResult } from "./pipeline/processMarket.ts";
 
@@ -73,31 +56,8 @@ interface SimpleOrderTracker {
 const paperTracker = createTradeTracker();
 const liveTracker = createTradeTracker();
 
-let balancePollingHandle: { getLast(): unknown; close(): void } | null = null;
-let eventStreamHandle: { close(): void } | null = null;
-let reconcilerHandle: { runNow(): Promise<number>; close(): void } | null = null;
 let redeemTimerHandle: ReturnType<typeof setInterval> | null = null;
-let activeOnchainWallet: string | null = null;
 let liveSettlerInstance: LiveSettler | null = null;
-
-// Auto-redeem configuration
-const AUTO_REDEEM_ENABLED = env.AUTO_REDEEM_ENABLED;
-const AUTO_REDEEM_INTERVAL_MS = env.AUTO_REDEEM_INTERVAL_MS;
-
-function collectLatestPrices(
-	markets: ReadonlyArray<{ id: string }>,
-	states: Map<string, MarketState>,
-): Map<string, number> {
-	const prices = new Map<string, number>();
-	for (const market of markets) {
-		const marketState = states.get(market.id);
-		const p = marketState?.prevCurrentPrice;
-		if (p !== null && p !== undefined) {
-			prices.set(market.id, p);
-		}
-	}
-	return prices;
-}
 
 async function readKnownTokenIds(): Promise<string[]> {
 	try {
@@ -109,87 +69,10 @@ async function readKnownTokenIds(): Promise<string[]> {
 }
 
 async function main(): Promise<void> {
-	startApiServer();
-	startConfigWatcher();
-	initAccountStats();
-
-	// Auto-connect wallet if PRIVATE_KEY is configured
-	if (env.PRIVATE_KEY) {
-		try {
-			const { address } = await connectWallet(env.PRIVATE_KEY);
-			log.info(`Auto-connected wallet: ${address}`);
-
-			// Start auto-redeem timer if enabled
-			if (AUTO_REDEEM_ENABLED) {
-				log.info(`Auto-redeem enabled: checking every ${AUTO_REDEEM_INTERVAL_MS / 60_000} minutes`);
-				redeemTimerHandle = setInterval(async () => {
-					try {
-						if (liveSettlerInstance?.isRunning()) {
-							log.debug("Auto-redeem skipped: LiveSettler is active");
-							return;
-						}
-						const wallet = getWallet();
-						if (!wallet) {
-							log.warn("Auto-redeem skipped: wallet not connected");
-							return;
-						}
-
-						const positions = await fetchRedeemablePositions(wallet.address);
-						if (positions.length === 0) {
-							log.debug("Auto-redeem: no redeemable positions found");
-							return;
-						}
-
-						const totalValue = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
-						log.info(
-							`Auto-redeem: found ${positions.length} position(s) worth $${totalValue.toFixed(2)}, redeeming...`,
-						);
-
-						const results = await redeemAll(wallet);
-						const successCount = results.filter((r) => !r.error).length;
-						const redeemedValue = results
-							.filter((r) => r.value !== undefined)
-							.reduce((sum, r) => sum + (r.value ?? 0), 0);
-
-						if (successCount > 0) {
-							log.info(
-								`Auto-redeem success: ${successCount}/${results.length} redeemed, total value: $${redeemedValue.toFixed(2)}`,
-							);
-						} else {
-							log.warn(`Auto-redeem failed: all ${results.length} redemption(s) failed`);
-						}
-
-						// Log individual failures
-						for (const result of results) {
-							if (result.error) {
-								log.warn(`Redeem failed for ${result.conditionId.slice(0, 10)}...: ${result.error}`);
-							}
-						}
-					} catch (err) {
-						log.error("Auto-redeem error:", err instanceof Error ? err.message : String(err));
-					}
-				}, AUTO_REDEEM_INTERVAL_MS);
-
-				// Run once on startup to check for any pending redemptions
-				setTimeout(async () => {
-					try {
-						const wallet = getWallet();
-						if (!wallet) return;
-
-						const positions = await fetchRedeemablePositions(wallet.address);
-						if (positions.length > 0) {
-							const totalValue = positions.reduce((sum, p) => sum + (p.currentValue ?? 0), 0);
-							log.info(`Startup auto-redeem check: ${positions.length} position(s) worth $${totalValue.toFixed(2)}`);
-						}
-					} catch (err) {
-						log.error("Startup redeem check failed:", err instanceof Error ? err.message : String(err));
-					}
-				}, 5000); // Check after 5 seconds to ensure RPC is ready
-			}
-		} catch (err) {
-			log.error("Failed to auto-connect wallet:", err instanceof Error ? err.message : String(err));
-		}
-	}
+	const bootstrapResult = await bootstrapApp({
+		isLiveSettlerRunning: () => liveSettlerInstance?.isRunning() ?? false,
+	});
+	redeemTimerHandle = bootstrapResult.redeemTimerHandle;
 
 	const orderManager = new OrderManager();
 
@@ -338,16 +221,8 @@ async function main(): Promise<void> {
 		liveSettlerInstance.start();
 	}
 
-	const states = new Map<string, MarketState>(
-		markets.map((m) => [
-			m.id,
-			{
-				prevSpotPrice: null,
-				prevCurrentPrice: null,
-				priceToBeatState: { slug: null, value: null, setAtMs: null },
-			},
-		]),
-	);
+	const states = createMarketStateMap(markets);
+	const onchainRuntime = createOnchainRuntime({ readKnownTokenIds });
 
 	const orderTracker: SimpleOrderTracker = {
 		orders: new Map<string, number>(),
@@ -508,23 +383,6 @@ async function main(): Promise<void> {
 		log.info(`Recovered ${recoveredFilledPendingCount} previously-filled pending live order(s)`);
 	}
 
-	const closeOnchainPipelines = () => {
-		if (balancePollingHandle) {
-			balancePollingHandle.close();
-			balancePollingHandle = null;
-		}
-		if (eventStreamHandle) {
-			eventStreamHandle.close();
-			eventStreamHandle = null;
-		}
-		if (reconcilerHandle) {
-			reconcilerHandle.close();
-			reconcilerHandle = null;
-		}
-		activeOnchainWallet = null;
-		resetAccountState();
-	};
-
 	const ensureOrderPolling = () => {
 		const clobClient = getClient();
 		if (clobClient) {
@@ -541,92 +399,21 @@ async function main(): Promise<void> {
 		}
 	};
 
-	const ensureOnchainPipelines = () => {
-		const wallet = getWallet();
-		if (!wallet) {
-			if (activeOnchainWallet !== null) {
-				log.info("Wallet disconnected, stopping on-chain pipelines");
-				closeOnchainPipelines();
-			}
-			return;
-		}
-
-		const walletAddress = wallet.address.toLowerCase();
-		const walletChanged = activeOnchainWallet !== null && activeOnchainWallet !== walletAddress;
-		if (walletChanged) {
-			log.info(`Wallet changed (${activeOnchainWallet} -> ${walletAddress}), restarting on-chain pipelines`);
-			closeOnchainPipelines();
-		}
-
-		if (activeOnchainWallet === walletAddress && balancePollingHandle && eventStreamHandle && reconcilerHandle) {
-			return;
-		}
-
-		initAccountState(walletAddress);
-		balancePollingHandle = startBalancePolling({
-			wallet: walletAddress,
-			knownTokenIds: readKnownTokenIds,
-			onUpdate: (snapshot) => {
-				updateFromSnapshot(snapshot);
-				setOnchainBalance(snapshot);
-				emitBalanceSnapshot(snapshot);
-			},
-		});
-		eventStreamHandle = startOnChainEventStream({
-			wallet: walletAddress,
-			onEvent: (event) => {
-				applyEvent(event);
-				void onchainQueries
-					.insertEvent({
-						txHash: event.txHash,
-						logIndex: event.logIndex,
-						blockNumber: event.blockNumber,
-						eventType: event.type,
-						fromAddr: event.from,
-						toAddr: event.to,
-						tokenId: event.tokenId,
-						value: event.value,
-						rawData: JSON.stringify(event),
-					})
-					.catch((err) => {
-						log.warn("Failed to persist on-chain event", err);
-					});
-			},
-		});
-		reconcilerHandle = startReconciler({ wallet: walletAddress });
-		activeOnchainWallet = walletAddress;
-		log.info("On-chain balance/events/reconciler pipelines started");
-	};
-
 	const prevWindowStartMs = new Map<string, number>();
-	const shutdown = () => {
-		log.info("Shutdown signal received, stopping bot...");
-		if (liveSettlerInstance) {
-			liveSettlerInstance.stop();
+	registerShutdownHandlers({
+		getLiveSettler: () => liveSettlerInstance,
+		clearLiveSettler: () => {
 			liveSettlerInstance = null;
-		}
-		orderManager.stopPolling();
-		stopHeartbeat();
-		setPaperRunning(false);
-		setLiveRunning(false);
-		streams.binance.close();
-		streams.polymarket.close();
-		clobWs.close();
-		for (const [, handle] of streams.chainlink) {
-			handle.close();
-		}
-		closeOnchainPipelines();
-		if (redeemTimerHandle) {
-			clearInterval(redeemTimerHandle);
+		},
+		orderManager,
+		streams,
+		clobWs,
+		onchainRuntime,
+		getRedeemTimerHandle: () => redeemTimerHandle,
+		clearRedeemTimerHandle: () => {
 			redeemTimerHandle = null;
-			log.info("Auto-redeem timer stopped");
-		}
-		void closeDb().then(() => {
-			setTimeout(() => process.exit(0), 2000);
-		});
-	};
-	process.on("SIGTERM", shutdown);
-	process.on("SIGINT", shutdown);
+		},
+	});
 
 	let consecutiveAllFails = 0;
 	const SAFE_MODE_THRESHOLD = 3;
@@ -650,7 +437,7 @@ async function main(): Promise<void> {
 
 	while (true) {
 		ensureOrderPolling();
-		ensureOnchainPipelines();
+		onchainRuntime.ensurePipelines();
 
 		const shouldRunLoop = isPaperRunning() || isLiveRunning();
 		if (!shouldRunLoop) {
@@ -658,58 +445,13 @@ async function main(): Promise<void> {
 			continue;
 		}
 
-// Settlement uses the previous tick's price (prevCurrentPrice) by design.
-// The settlement window closes BEFORE the new tick processes, so the last
-// known price at window-end is the correct settle price. (BUG 7 audit: accepted)
-		const latestPrices = collectLatestPrices(markets, states);
-
-		for (const market of markets) {
-			const timing = getCandleWindowTiming(market.candleWindowMinutes);
-			const prevStart = prevWindowStartMs.get(market.id);
-
-			if (latestPrices.size > 0) {
-				const paperRecovered = await paperAccount.resolveExpiredTrades(
-					latestPrices,
-					market.candleWindowMinutes,
-					market.id,
-				);
-				if (paperRecovered > 0) {
-					log.info(`[${market.id}] Recovered expired paper trades: ${paperRecovered}`);
-				}
-				// Live settlement runs regardless of isLiveRunning() — pending trades must
-				// settle even after live trading is stopped (fix: issue 2.1)
-				const liveRecovered = await liveAccount.resolveExpiredTrades(
-					latestPrices,
-					market.candleWindowMinutes,
-					market.id,
-				);
-				if (liveRecovered > 0) {
-					log.info(`[${market.id}] Recovered expired live trades: ${liveRecovered}`);
-				}
-			}
-
-			if (prevStart !== undefined && prevStart !== timing.startMs) {
-				if (latestPrices.size > 0) {
-					const paperResolved = await paperAccount.resolveTrades(prevStart, latestPrices, market.id);
-					if (paperResolved > 0) {
-						log.info(`[${market.id}] Paper window settled: ${paperResolved}`);
-					}
-					const liveResolved = await liveAccount.resolveTrades(prevStart, latestPrices, market.id);
-					if (liveResolved > 0) {
-						log.info(`[${market.id}] Live window settled: ${liveResolved}`);
-					}
-				}
-			}
-
-			prevWindowStartMs.set(market.id, timing.startMs);
-		}
-
-		// Force-resolve trades stuck beyond 1 hour — safety net for issue 7.2
-		const FORCE_RESOLVE_MAX_AGE_MS = 60 * 60_000;
-		const paperForced = await paperAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS, latestPrices);
-		if (paperForced > 0) log.warn(`Force-resolved ${paperForced} stuck paper trade(s)`);
-		const liveForced = await liveAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS, latestPrices);
-		if (liveForced > 0) log.warn(`Force-resolved ${liveForced} stuck live trade(s)`);
+		await runSettlementCycle({
+			markets,
+			states,
+			prevWindowStartMs,
+			paperAccount,
+			liveAccount,
+		});
 
 		ensureLiveSettler();
 
@@ -768,193 +510,42 @@ async function main(): Promise<void> {
 			clobWs.subscribe(newTokenIds);
 		}
 
-		const maxGlobalTrades = CONFIG.strategy.maxGlobalTradesPerWindow;
-		const candidates = results
-			.filter((r) => r.ok && r.rec?.action === "ENTER" && r.signalPayload)
-			.filter((r) => {
-				const sig = r.signalPayload;
-				if (!sig) return false;
-				if (sig.priceToBeat === null || sig.priceToBeat === undefined || sig.priceToBeat === 0) return false;
-				if (sig.currentPrice === null || sig.currentPrice === undefined) return false;
-				return true;
-			})
-			.filter((r) => {
-				const tl = r.timeLeftMin ?? 0;
-				const windowMin = r.market.candleWindowMinutes;
-				const buffer = Math.max(1, windowMin * 0.2);
-				const elapsed = windowMin - tl;
-				if (elapsed < buffer) return false;
-				if (tl < buffer) return false;
-				return true;
-			})
-			.sort((a, b) => {
-				const edgeA = Number(a.rec?.edge ?? 0);
-				const edgeB = Number(b.rec?.edge ?? 0);
-				if (edgeB !== edgeA) return edgeB - edgeA;
-				return Number(a.rawSum ?? 1) - Number(b.rawSum ?? 1);
-			});
-
-		let successfulTradesThisTick = 0;
-		for (const candidate of candidates) {
-			const sig = candidate.signalPayload;
-			if (!sig) continue;
-			const mkt = candidate.market;
-			const mktTiming = getCandleWindowTiming(mkt.candleWindowMinutes);
-			const windowKey = String(mktTiming.startMs);
-			const sideBook = sig.side === "UP" ? (candidate.orderbook?.up ?? null) : (candidate.orderbook?.down ?? null);
-			const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
-
-			if (isPaperRunning()) {
-				const paperAcc = getAccount("paper");
-				const tradeSize = Number(CONFIG.paperRisk.maxTradeSizeUsdc || 0);
-				const affordCheck = paperAcc.canAffordTradeWithStopCheck(tradeSize);
-				const minPaperLiquidity = Number(CONFIG.paperRisk.minLiquidity || 0);
-				const hasPaperLiquidity = sideLiquidity !== null && sideLiquidity >= minPaperLiquidity;
-				if (
-					!paperTracker.has(mkt.id, mktTiming.startMs) &&
-					affordCheck.canTrade &&
-					hasPaperLiquidity &&
-					paperTracker.canTradeGlobally(Math.min(maxGlobalTrades, CONFIG.paperRisk.maxTradesPerWindow)) &&
-					paperAcc.getPendingTrades().length < CONFIG.paperRisk.maxOpenPositions
-				) {
-					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.paperRisk }, "paper");
-					if (result?.success) {
-						paperTracker.record(mkt.id, mktTiming.startMs);
-					} else {
-						log.warn(`Paper trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
-					}
-				} else if (!hasPaperLiquidity) {
-					log.info(
-						`Skip ${mkt.id} paper: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minPaperLiquidity.toFixed(0)}`,
-					);
-				} else if (!affordCheck.canTrade) {
-					log.warn(`Trade rejected for ${mkt.id}: ${affordCheck.reason}`);
-				}
-			}
-
-			if (isLiveRunning()) {
-				const liveAcc = getAccount("live");
-				const minLiveLiquidity = Number(CONFIG.liveRisk.minLiquidity || 0);
-				const hasLiveLiquidity = sideLiquidity !== null && sideLiquidity >= minLiveLiquidity;
-				if (!hasLiveLiquidity) {
-					log.info(
-						`Skip ${mkt.id} live: liquidity ${sideLiquidity === null ? "n/a" : sideLiquidity.toFixed(0)} < ${minLiveLiquidity.toFixed(0)}`,
-					);
-				} else {
-					const liveWindowLimit = Math.min(maxGlobalTrades, CONFIG.liveRisk.maxTradesPerWindow);
-					const liveTradeSize = Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0);
-					const liveAffordCheck = liveAcc.canAffordTradeWithStopCheck(liveTradeSize);
-					const canPlace =
-						orderTracker &&
-						!orderTracker.hasOrder(mkt.id, windowKey) &&
-						!orderTracker.onCooldown() &&
-						orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
-						successfulTradesThisTick < liveWindowLimit &&
-						!liveTracker.has(mkt.id, mktTiming.startMs) &&
-						liveTracker.canTradeGlobally(liveWindowLimit) &&
-						liveAffordCheck.canTrade;
-
-					if (canPlace) {
-						const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
-						if (result?.success) {
-							orderTracker.record(mkt.id, windowKey);
-							liveTracker.record(mkt.id, mktTiming.startMs);
-							successfulTradesThisTick += 1;
-
-							if (result.orderId && (result.isGtdOrder ?? true)) {
-								const tradeTokenId = sig.tokens
-									? sig.side === "UP"
-										? sig.tokens.upTokenId
-										: sig.tokens.downTokenId
-									: undefined;
-								const gtdPrice = result.tradePrice ?? 0;
-								const gtdSize = Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0);
-								liveAcc.reserveBalance(gtdSize * gtdPrice);
-								orderManager.addOrderWithTracking(
-									{
-										orderId: result.orderId,
-										marketId: mkt.id,
-										windowSlug: windowKey,
-										side: sig.side ?? "UP",
-										tokenId: tradeTokenId,
-										price: gtdPrice,
-										size: gtdSize,
-										priceToBeat: sig.priceToBeat ?? null,
-										currentPriceAtEntry: sig.currentPrice ?? null,
-										placedAt: Date.now(),
-									},
-									true,
-								);
-							}
-						} else {
-							log.warn(`Live trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
-						}
-					}
-				}
-			}
-		}
-
-		const snapshots = results.map(
-			(r): MarketSnapshot => ({
-				id: r.market.id,
-				label: r.market.label,
-				ok: r.ok,
-				error: r.error,
-				spotPrice: r.spotPrice ?? null,
-				currentPrice: r.currentPrice ?? null,
-				priceToBeat: r.priceToBeat ?? null,
-				marketUp: r.marketUp ?? null,
-				marketDown: r.marketDown ?? null,
-				rawSum: r.rawSum ?? null,
-				arbitrage: r.arbitrage ?? false,
-				predictLong: r.pLong ? Number(r.pLong) : null,
-				predictShort: r.pShort ? Number(r.pShort) : null,
-				predictDirection: (r.predictNarrative as "LONG" | "SHORT" | "NEUTRAL") ?? "NEUTRAL",
-				haColor: r.consec?.color ?? null,
-				haConsecutive: r.consec?.count ?? 0,
-				rsi: r.rsiNow ?? null,
-				macd: r.macd
-					? {
-							macd: r.macd.macd,
-							signal: r.macd.signal,
-							hist: r.macd.hist,
-							histDelta: r.macd.histDelta,
-						}
-					: null,
-				vwapSlope: r.vwapSlope ?? null,
-				timeLeftMin: r.timeLeftMin ?? null,
-				phase: r.rec?.phase ?? null,
-				action: r.rec?.action ?? "NO_TRADE",
-				side: r.rec?.side ?? null,
-				edge: r.rec?.edge ?? null,
-				strength: r.rec?.strength ?? null,
-				reason: r.rec?.reason ?? null,
-				volatility15m: r.volatility15m ?? null,
-				blendSource: r.blendSource ?? null,
-				volImpliedUp: r.volImpliedUp ?? null,
-				binanceChainlinkDelta: r.binanceChainlinkDelta ?? null,
-				orderbookImbalance: r.orderbookImbalance ?? null,
-			}),
-		);
-		updateMarkets(snapshots);
-		emitStateSnapshot({
-			markets: snapshots,
-			updatedAt: getUpdatedAt(),
-			paperRunning: isPaperRunning(),
-			liveRunning: isLiveRunning(),
-			paperPendingStart: isPaperPendingStart(),
-			paperPendingStop: isPaperPendingStop(),
-			livePendingStart: isLivePendingStart(),
-			livePendingStop: isLivePendingStop(),
-			paperStats: paperAccount.getStats(),
-			liveStats: liveAccount.getStats(),
-			liveTodayStats: liveAccount.getTodayStats(),
-			paperBalance: paperAccount.getBalance(),
-			liveBalance: liveAccount.getBalance(),
-			todayStats: paperAccount.getTodayStats(),
-			stopLoss: paperAccount.isStopped() ? paperAccount.getStopReason() : null,
-			liveStopLoss: liveAccount.isStopped() ? liveAccount.getStopReason() : null,
+		await dispatchTradeCandidates({
+			results,
+			paperTracker,
+			liveTracker,
+			orderTracker,
+			onLiveOrderPlaced: ({
+				orderId,
+				marketId,
+				windowKey,
+				side,
+				tokenId,
+				price,
+				size,
+				priceToBeat,
+				currentPriceAtEntry,
+			}) => {
+				liveAccount.reserveBalance(size * price);
+				orderManager.addOrderWithTracking(
+					{
+						orderId,
+						marketId,
+						windowSlug: windowKey,
+						side,
+						tokenId,
+						price,
+						size,
+						priceToBeat,
+						currentPriceAtEntry,
+						placedAt: Date.now(),
+					},
+					true,
+				);
+			},
 		});
+
+		publishMarketSnapshots(results);
 
 		renderDashboard(results);
 		await sleep(CONFIG.pollIntervalMs);
