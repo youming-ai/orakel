@@ -37,16 +37,9 @@ const envSchema = z.object({
 		.string()
 		.transform((v): StorageBackend => {
 			const l = v.toLowerCase();
-			return l === "csv" || l === "dual" || l === "sqlite" ? l : "sqlite";
+			return l === "csv" ? "csv" : "none";
 		})
-		.default("sqlite" as StorageBackend),
-	READ_BACKEND: z
-		.string()
-		.transform((v): Exclude<StorageBackend, "dual"> => {
-			const l = v.toLowerCase();
-			return l === "csv" || l === "sqlite" ? l : "sqlite";
-		})
-		.default("sqlite" as Exclude<StorageBackend, "dual">),
+		.default("csv" as StorageBackend),
 
 	// Polymarket
 	POLYMARKET_SLUG: z.string().default(""),
@@ -77,12 +70,7 @@ const envSchema = z.object({
 	CORS_ORIGIN: z.string().default("*"),
 
 	// PostgreSQL
-	PGHOST: z.string().default("localhost"),
-	PGPORT: z.coerce.number().default(5432),
-	PGUSER: z.string().default("orakel"),
-	PGPASSWORD: z.string().default(""),
-	PGDATABASE: z.string().default("orakel"),
-	PGSSL: z.stringbool().default(false),
+	DATABASE_URL: z.string().default("postgresql://localhost:5432/orakel"),
 });
 
 // ── validate & export ────────────────────────────────────
