@@ -106,7 +106,8 @@ export function computeMarketDecision(
 		failedVwapReclaim,
 	});
 
-	const volatility15m = computeRealizedVolatility(closes, 60);
+	const volLookback = Math.max(30, market.candleWindowMinutes * 4);
+	const volatility15m = computeRealizedVolatility(closes, volLookback);
 	const binanceChainlinkDelta =
 		spotPrice !== null && currentPrice !== null && currentPrice > 0 ? (spotPrice - currentPrice) / currentPrice : null;
 	const upBookSummary = poly.ok ? (poly.orderbook?.up ?? null) : null;
