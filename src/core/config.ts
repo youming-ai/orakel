@@ -258,9 +258,6 @@ export const CONFIG: AppConfig = {
 export const PAPER_INITIAL_BALANCE: number = FILE_CONFIG.paper.initialBalance;
 export const LIVE_INITIAL_BALANCE: number = FILE_CONFIG.live.initialBalance;
 
-/** @deprecated Use market.candleWindowMinutes instead. Temporary bridge during multi-timeframe migration. */
-export const DEFAULT_CANDLE_WINDOW_MINUTES = 15;
-
 let perMarketStrategy: Record<string, z.infer<typeof StrategyConfigSchema>> = FILE_CONFIG.perMarketStrategy;
 
 export function getStrategyForMarket(marketId: string): StrategyConfig {
