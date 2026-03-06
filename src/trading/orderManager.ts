@@ -1,6 +1,6 @@
 import type { ClobClient } from "@polymarket/clob-client";
-import { statements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
+import { pendingOrderQueries } from "../db/queries.ts";
 
 const log = createLogger("orders");
 
@@ -36,44 +36,29 @@ export class OrderManager {
 	private onStatusChange: OrderStatusCallback | null = null;
 
 	constructor() {
-		this.loadFromDb();
+		void this.loadFromDb();
 	}
 
-	loadFromDb(): number {
-		if (!statements.getAllLivePendingOrders) return 0;
-
+	async loadFromDb(): Promise<number> {
 		try {
-			const rows =
-				(statements.getAllLivePendingOrders?.()?.all() as Array<{
-					order_id: string;
-					market_id: string;
-					window_start_ms: number;
-					side: string;
-					price: number;
-					size: number;
-					placed_at: number;
-					status: string;
-					token_id?: string;
-					price_to_beat?: number | null;
-					current_price_at_entry?: number | null;
-				}>) ?? [];
+			const rows = await pendingOrderQueries.getAll();
 			let loaded = 0;
 			for (const row of rows) {
-				if (this.orders.has(row.order_id)) continue;
-				this.orders.set(row.order_id, {
-					orderId: row.order_id,
-					marketId: row.market_id,
-					windowSlug: row.window_start_ms ? String(row.window_start_ms) : "",
+				if (this.orders.has(row.orderId)) continue;
+				this.orders.set(row.orderId, {
+					orderId: row.orderId,
+					marketId: row.marketId,
+					windowSlug: row.windowStartMs ? String(row.windowStartMs) : "",
 					side: row.side,
 					price: row.price,
 					size: row.size,
-					placedAt: row.placed_at,
+					placedAt: row.placedAt,
 					status: (row.status as TrackedOrder["status"]) ?? "placed",
 					sizeMatched: 0,
 					lastChecked: Date.now(),
-					tokenId: row.token_id ?? undefined,
-					priceToBeat: row.price_to_beat ?? null,
-					currentPriceAtEntry: row.current_price_at_entry ?? null,
+					tokenId: row.tokenId ?? undefined,
+					priceToBeat: row.priceToBeat ?? null,
+					currentPriceAtEntry: row.currentPriceAtEntry ?? null,
 				});
 				loaded++;
 			}
@@ -85,20 +70,20 @@ export class OrderManager {
 		}
 	}
 
-	private syncToDb(order: TrackedOrder): void {
+	private async syncToDb(order: TrackedOrder): Promise<void> {
 		try {
-			statements.upsertLivePendingOrder().run({
-				$orderId: order.orderId,
-				$marketId: order.marketId,
-				$windowStartMs: Number(order.windowSlug) || 0,
-				$side: order.side,
-				$price: order.price,
-				$size: order.size,
-				$priceToBeat: order.priceToBeat ?? null,
-				$currentPriceAtEntry: order.currentPriceAtEntry ?? null,
-				$tokenId: order.tokenId ?? "",
-				$placedAt: order.placedAt,
-				$status: order.status,
+			await pendingOrderQueries.upsert({
+				orderId: order.orderId,
+				marketId: order.marketId,
+				windowStartMs: Number(order.windowSlug) || 0,
+				side: order.side,
+				price: order.price,
+				size: order.size,
+				priceToBeat: order.priceToBeat ?? null,
+				currentPriceAtEntry: order.currentPriceAtEntry ?? null,
+				tokenId: order.tokenId ?? "",
+				placedAt: order.placedAt,
+				status: order.status,
 			});
 		} catch (err) {
 			log.warn(
@@ -166,22 +151,37 @@ export class OrderManager {
 				if (!result || typeof result !== "object") continue;
 				const orderResult = result as Record<string, unknown>;
 
-				const status = String(orderResult.status ?? "").toLowerCase();
+				// Polymarket GET /order/{id} returns "ORDER_STATUS_*" prefixed values,
+				// while POST /order returns short lowercase ("live", "matched", etc.).
+				// Normalize to short lowercase to handle both formats.
+				const rawStatus = String(orderResult.status ?? "")
+					.toLowerCase()
+					.replace("order_status_", "");
 				const sizeMatched = Number(orderResult.size_matched ?? orderResult.sizeMatched ?? 0);
 				const previousStatus = order.status;
 
-				if (status === "matched" || status === "filled" || (sizeMatched > 0 && sizeMatched >= order.size * 0.99)) {
+				if (
+					rawStatus === "matched" ||
+					rawStatus === "filled" ||
+					(sizeMatched > 0 && sizeMatched >= order.size * 0.99)
+				) {
 					order.status = "filled";
 					order.sizeMatched = sizeMatched;
 					log.info(`Order ${order.orderId.slice(0, 8)} FILLED: ${sizeMatched} / ${order.size}`);
-				} else if (status === "unmatched" || status === "cancelled") {
+				} else if (
+					rawStatus === "unmatched" ||
+					rawStatus === "canceled" ||
+					rawStatus === "cancelled" ||
+					rawStatus === "canceled_market_resolved" ||
+					rawStatus === "invalid"
+				) {
 					order.status = "cancelled";
-					log.info(`Order ${order.orderId.slice(0, 8)} CANCELLED`);
-				} else if (status === "expired") {
+					log.info(`Order ${order.orderId.slice(0, 8)} CANCELLED (api: ${rawStatus})`);
+				} else if (rawStatus === "expired") {
 					order.status = "expired";
 					log.info(`Order ${order.orderId.slice(0, 8)} EXPIRED`);
 				}
-				// Note: "live" status from API is ignored - order stays "placed" until filled/cancelled/expired
+				// "live" status from API is ignored — order stays "placed" until filled/cancelled/expired
 
 				order.lastChecked = Date.now();
 
