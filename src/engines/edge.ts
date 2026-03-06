@@ -59,6 +59,7 @@ export function computeEdge(params: {
 
 export function decide(params: {
 	remainingMinutes: number;
+	windowMinutes?: number;
 	edgeUp: number | null;
 	edgeDown: number | null;
 	modelUp?: number | null;
@@ -69,6 +70,7 @@ export function decide(params: {
 }): TradeDecision {
 	const {
 		remainingMinutes,
+		windowMinutes = 15,
 		edgeUp,
 		edgeDown,
 		modelUp = null,
@@ -78,7 +80,8 @@ export function decide(params: {
 		marketId = "",
 	} = params;
 
-	const phase: Phase = remainingMinutes > 10 ? "EARLY" : remainingMinutes > 5 ? "MID" : "LATE";
+	const ratio = windowMinutes > 0 ? remainingMinutes / windowMinutes : 0;
+	const phase: Phase = ratio > 0.66 ? "EARLY" : ratio > 0.33 ? "MID" : "LATE";
 
 	if (edgeUp === null || edgeDown === null) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "missing_market_data" };

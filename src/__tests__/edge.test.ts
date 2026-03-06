@@ -136,6 +136,31 @@ describe("decide", () => {
 		expect(result.phase).toBe("LATE");
 	});
 
+	it.each([
+		{ windowMinutes: 5, remaining: 4, expected: "EARLY" },
+		{ windowMinutes: 5, remaining: 2, expected: "MID" },
+		{ windowMinutes: 5, remaining: 1, expected: "LATE" },
+		{ windowMinutes: 60, remaining: 45, expected: "EARLY" },
+		{ windowMinutes: 60, remaining: 25, expected: "MID" },
+		{ windowMinutes: 60, remaining: 10, expected: "LATE" },
+		{ windowMinutes: 240, remaining: 180, expected: "EARLY" },
+		{ windowMinutes: 240, remaining: 100, expected: "MID" },
+		{ windowMinutes: 240, remaining: 30, expected: "LATE" },
+	])("proportional phase for $windowMinutes-min window: $remaining min remaining → $expected", ({
+		windowMinutes,
+		remaining,
+		expected,
+	}) => {
+		const result = decide({
+			remainingMinutes: remaining,
+			windowMinutes,
+			edgeUp: 0,
+			edgeDown: 0,
+			strategy: makeStrategy(),
+		});
+		expect(result.phase).toBe(expected);
+	});
+
 	it("returns NO_TRADE for missing market edge data", () => {
 		const result = decide({
 			remainingMinutes: 12,

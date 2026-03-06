@@ -152,6 +152,7 @@ export function computeMarketDecision(
 
 	const rec: TradeDecision = decide({
 		remainingMinutes: effectiveTimeLeftMin,
+		windowMinutes: market.candleWindowMinutes,
 		edgeUp: edge.edgeUp,
 		edgeDown: edge.edgeDown,
 		modelUp: finalUp,
