@@ -3,12 +3,12 @@ import type { ApiKeyCreds } from "@polymarket/clob-client";
 import { ClobClient, OrderType, Side } from "@polymarket/clob-client";
 import { providers, Wallet } from "ethers";
 import { enrichPosition } from "../blockchain/accountState.ts";
-import { CONFIG } from "../core/config.ts";
-import { onchainStatements, PERSIST_BACKEND, statements } from "../core/db.ts";
+import { CONFIG, PERSIST_BACKEND } from "../core/config.ts";
 import { env } from "../core/env.ts";
 import { createLogger } from "../core/logger.ts";
 import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
 import { getCandleWindowTiming } from "../core/utils.ts";
+import { onchainQueries, pendingOrderQueries, tradeQueries } from "../db/queries.ts";
 import type { MarketConfig, RiskConfig, TradeResult, TradeSignal } from "../types.ts";
 import { getAccount } from "./accountStats.ts";
 
@@ -369,7 +369,7 @@ function logTrade(
 
 	const line = `${row.join(",")}\n`;
 
-	if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
+	if (PERSIST_BACKEND === "csv") {
 		const dirPath = `./data/${mode}`;
 		if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 
@@ -381,21 +381,19 @@ function logTrade(
 		fs.appendFileSync(logPath, line);
 	}
 
-	if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-		statements.insertTrade().run({
-			$timestamp: timestamp,
-			$market: marketId ?? trade.market ?? "",
-			$side: trade.side,
-			$amount: trade.amount,
-			$price: trade.price,
-			$orderId: trade.orderId ?? "",
-			$status: trade.status,
-			$mode: mode,
-			$pnl: null,
-			$won: null,
-			$currentPriceAtEntry: trade.currentPriceAtEntry ?? null,
-		});
-	}
+	void tradeQueries.insertTrade({
+		timestamp,
+		market: marketId ?? trade.market ?? "",
+		side: trade.side,
+		amount: trade.amount,
+		price: trade.price,
+		orderId: trade.orderId ?? "",
+		status: trade.status,
+		mode,
+		pnl: null,
+		won: null,
+		currentPriceAtEntry: trade.currentPriceAtEntry ?? null,
+	});
 }
 
 export async function executeTrade(
@@ -614,37 +612,42 @@ async function executeTradeInternal(
 		const isGtdOrder = !isLatePhase || !isHighConfidence;
 		const defaultStatus = isGtdOrder ? "placed" : "filled";
 
-		logTrade(
-			{
-				market: marketSlug,
-				side: `BUY_${side}`,
-				amount: Number(riskConfig.maxTradeSizeUsdc || 0),
-				price,
-				orderId: resultOrderId || resultId || "unknown",
-				status: resultStatus || defaultStatus,
-				currentPriceAtEntry: signal.currentPrice,
-			},
-			signal.marketId || marketConfig?.id,
-			mode,
-		);
+		if (!resultOrderId && !resultId) {
+			log.warn(`Order returned no orderId, treating as failed: ${JSON.stringify(result)}`);
+			return { success: false, reason: "no_order_id" };
+		}
 
-		if (resultOrderId || resultId) {
-			const finalOrderId = resultOrderId || resultId || "unknown";
+		{
+			const finalOrderId = resultOrderId ?? resultId ?? "";
+
+			logTrade(
+				{
+					market: marketSlug,
+					side: `BUY_${side}`,
+					amount: Number(riskConfig.maxTradeSizeUsdc || 0),
+					price,
+					orderId: finalOrderId,
+					status: resultStatus || defaultStatus,
+					currentPriceAtEntry: signal.currentPrice,
+				},
+				signal.marketId || marketConfig?.id,
+				mode,
+			);
 
 			if (isGtdOrder) {
 				try {
-					statements.upsertLivePendingOrder().run({
-						$orderId: finalOrderId,
-						$marketId: signal.marketId ?? "",
-						$windowStartMs: timing.startMs,
-						$side: side,
-						$price: price,
-						$size: Number(riskConfig.maxTradeSizeUsdc || 0),
-						$priceToBeat: signal.priceToBeat ?? null,
-						$currentPriceAtEntry: signal.currentPrice ?? null,
-						$tokenId: tokenId,
-						$placedAt: Date.now(),
-						$status: "placed",
+					void pendingOrderQueries.upsert({
+						orderId: finalOrderId,
+						marketId: signal.marketId ?? "",
+						windowStartMs: timing.startMs,
+						side: side,
+						price: price,
+						size: Number(riskConfig.maxTradeSizeUsdc || 0),
+						priceToBeat: signal.priceToBeat ?? null,
+						currentPriceAtEntry: signal.currentPrice ?? null,
+						tokenId: tokenId,
+						placedAt: Date.now(),
+						status: "placed",
 					});
 				} catch (persistErr) {
 					log.warn(
@@ -695,11 +698,11 @@ async function executeTradeInternal(
 
 			try {
 				if (tokenId && tokenId.length > 0) {
-					onchainStatements.upsertKnownCtfToken().run({
-						$tokenId: tokenId,
-						$marketId: signal.marketId ?? "",
-						$side: side,
-						$conditionId: signal.conditionId ?? null,
+					void onchainQueries.upsertKnownCtfToken({
+						tokenId: tokenId,
+						marketId: signal.marketId ?? "",
+						side: side,
+						conditionId: signal.conditionId ?? null,
 					});
 					enrichPosition(tokenId, signal.marketId ?? "", side);
 				}
@@ -715,7 +718,7 @@ async function executeTradeInternal(
 		}
 
 		return {
-			success: !!(resultOrderId || resultId),
+			success: true,
 			order: result,
 			orderId: resultOrderId || resultId,
 			tradePrice: price,
