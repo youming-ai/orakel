@@ -13,7 +13,7 @@ export function TradesTab({ viewMode, liveTrades, marketRows }: TradesTabProps) 
 	return (
 		<div className="space-y-4">
 			<div>
-				<h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+				<h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
 					{viewMode === "paper" ? "Paper Trades" : "Live Trades"}
 				</h2>
 				<MarketComparisonTable rows={marketRows} />

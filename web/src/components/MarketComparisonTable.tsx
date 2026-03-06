@@ -27,7 +27,7 @@ export function MarketComparisonTable({ rows }: MarketComparisonTableProps) {
 				</TableHeader>
 				<TableBody>
 					{rows.map((row) => (
-						<TableRow key={row.market}>
+						<TableRow key={row.market} className="hover:bg-muted/50 transition-colors">
 							<TableCell className="font-mono text-xs font-medium">{row.market}</TableCell>
 							<TableCell className="font-mono text-xs text-right hidden sm:table-cell">{row.trades}</TableCell>
 							<TableCell className="font-mono text-xs text-right text-emerald-400 hidden sm:table-cell">

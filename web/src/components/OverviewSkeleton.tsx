@@ -38,7 +38,7 @@ export function OverviewSkeleton() {
 			</Card>
 
 			{/* Market cards placeholder — 2-col grid */}
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+			<div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 				{["market-a", "market-b"].map((id) => (
 					<Card key={id} className="border-border/60 shadow-sm">
 						<CardHeader className="pb-3">
