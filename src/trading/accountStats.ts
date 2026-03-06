@@ -1,14 +1,8 @@
-/**
- * Unified account state manager for both paper and live trading modes.
- * Generalizes paperStats.ts: identical behavior, per-mode state isolation.
- */
 import fs from "node:fs";
 import { CONFIG, LIVE_INITIAL_BALANCE, PAPER_INITIAL_BALANCE } from "../core/config.ts";
-import { getDb, PERSIST_BACKEND, resetLiveDbData, resetPaperDbData, statements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
+import * as queries from "../db/queries.ts";
 import type { AccountMode, RiskConfig, Side } from "../types.ts";
-
-// ============ Types ============
 
 interface DailyPnl {
 	date: string;
@@ -28,35 +22,6 @@ interface PersistedAccountState {
 	dailyCountedTradeIds: string[];
 	stoppedAt: string | null;
 	stopReason: string | null;
-}
-
-interface StateRow {
-	initial_balance: number;
-	current_balance: number;
-	max_drawdown: number;
-	wins: number;
-	losses: number;
-	total_pnl: number;
-	stopped_at: string | null;
-	stop_reason: string | null;
-	daily_pnl: string;
-	daily_counted_trade_ids: string;
-}
-
-interface TradeRow {
-	id: string;
-	market_id: string;
-	window_start_ms: number;
-	side: string;
-	price: number;
-	size: number;
-	price_to_beat: number;
-	current_price_at_entry: number | null;
-	timestamp: string;
-	resolved: number;
-	won: number | null;
-	pnl: number | null;
-	settle_price: number | null;
 }
 
 export interface TradeEntry {
@@ -93,8 +58,6 @@ export interface MarketBreakdown {
 	tradeCount: number;
 }
 
-// ============ Helpers ============
-
 function safeParseJson<T>(raw: string | null | undefined, fallback: T): T {
 	if (!raw) return fallback;
 	try {
@@ -104,40 +67,18 @@ function safeParseJson<T>(raw: string | null | undefined, fallback: T): T {
 	}
 }
 
-function tradeRowToEntry(r: TradeRow): TradeEntry {
-	return {
-		id: r.id,
-		marketId: r.market_id,
-		windowStartMs: r.window_start_ms,
-		side: r.side as Side,
-		price: r.price,
-		size: r.size,
-		priceToBeat: r.price_to_beat,
-		currentPriceAtEntry: r.current_price_at_entry,
-		timestamp: r.timestamp,
-		resolved: Boolean(r.resolved),
-		won: r.won === null ? null : Boolean(r.won),
-		pnl: r.pnl,
-		settlePrice: r.settle_price,
-	};
-}
-
-// ============ AccountStatsManager ============
-
 export class AccountStatsManager {
 	private mode: AccountMode;
 	private state: PersistedAccountState;
 	private dailyCountedTradeIdSet = new Set<string>();
 	private log: ReturnType<typeof createLogger>;
 	private initialBalanceDefault: number;
-	private loadedFromSqlite = false;
-	/** Tracks USDC reserved for placed-but-unfilled GTD orders */
 	private reservedBalance = 0;
 
 	constructor(mode: AccountMode, initialBalance: number) {
 		this.mode = mode;
 		this.initialBalanceDefault = initialBalance;
-		this.log = createLogger(`${mode}Stats`);
+		this.log = createLogger(`\${mode}Stats`);
 		this.state = this.createEmptyState(initialBalance);
 	}
 
@@ -157,24 +98,6 @@ export class AccountStatsManager {
 		};
 	}
 
-	// ---- DB statement selectors ----
-
-	private getStateStmt() {
-		return this.mode === "paper" ? statements.getPaperState() : statements.getLiveState();
-	}
-
-	private upsertStateStmt() {
-		return this.mode === "paper" ? statements.upsertPaperState() : statements.upsertLiveState();
-	}
-
-	private insertTradeStmt() {
-		return this.mode === "paper" ? statements.insertPaperTrade() : statements.insertLiveTrade();
-	}
-
-	private getAllTradesStmt() {
-		return this.mode === "paper" ? statements.getAllPaperTrades() : statements.getAllLiveTrades();
-	}
-
 	private getRiskConfig(): RiskConfig {
 		return this.mode === "paper" ? CONFIG.paperRisk : CONFIG.liveRisk;
 	}
@@ -183,250 +106,128 @@ export class AccountStatsManager {
 		return this.mode === "paper" ? "./logs/paper-stats.json" : "./logs/live-stats.json";
 	}
 
-	// ---- Initialization ----
-
-	init(): void {
-		if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
-			try {
-				const row = this.getStateStmt().get() as StateRow | null;
-				const tradeRows = this.getAllTradesStmt().all() as TradeRow[];
-				const trades = tradeRows.map(tradeRowToEntry);
-
-				if (row) {
-					this.state = {
-						trades,
-						wins: row.wins,
-						losses: row.losses,
-						totalPnl: row.total_pnl,
-						initialBalance: row.initial_balance,
-						currentBalance: row.current_balance,
-						maxDrawdown: row.max_drawdown,
-						dailyPnl: safeParseJson<DailyPnl[]>(row.daily_pnl, []),
-						dailyCountedTradeIds: safeParseJson<string[]>(row.daily_counted_trade_ids, []),
-						stoppedAt: row.stopped_at,
-						stopReason: row.stop_reason,
-					};
-					this.loadedFromSqlite = true;
-				} else if (trades.length > 0) {
-					// Recovery: state row missing but trades exist — reconstruct
-					let wins = 0;
-					let losses = 0;
-					let totalPnl = 0;
-					let currentBalance = this.initialBalanceDefault;
-					let maxDrawdown = 0;
-
-					for (const t of trades) {
-						if (t.resolved) {
-							if (t.won) wins++;
-							else losses++;
-							const pnl = t.pnl ?? 0;
-							totalPnl += pnl;
-							currentBalance += pnl;
-						} else {
-							currentBalance -= t.size * t.price;
-						}
-						const drawdown = this.initialBalanceDefault - currentBalance;
-						if (drawdown > maxDrawdown) maxDrawdown = drawdown;
-					}
-
-					this.state = {
-						trades,
-						wins,
-						losses,
-						totalPnl,
-						initialBalance: this.initialBalanceDefault,
-						currentBalance,
-						maxDrawdown,
-						dailyPnl: [],
-						dailyCountedTradeIds: [],
-						stoppedAt: null,
-						stopReason: null,
-					};
-					this.saveState();
-					this.loadedFromSqlite = true;
-				}
-			} catch (err) {
-				this.log.warn(`Failed to load ${this.mode} state from SQLite:`, err);
-			}
-		}
-
-		// Fallback: load from JSON (csv mode, or first migration from JSON → SQLite)
-		if (!this.loadedFromSqlite) {
-			const statsPath = this.getStatsPath();
-			try {
-				if (fs.existsSync(statsPath)) {
-					const raw = fs.readFileSync(statsPath, "utf8");
-					const parsed: unknown = JSON.parse(raw);
-					if (parsed && typeof parsed === "object") {
-						const obj = parsed as Record<string, unknown>;
-						this.state = {
-							trades: Array.isArray(obj.trades) ? (obj.trades as TradeEntry[]) : [],
-							wins: typeof obj.wins === "number" ? obj.wins : 0,
-							losses: typeof obj.losses === "number" ? obj.losses : 0,
-							totalPnl: typeof obj.totalPnl === "number" ? obj.totalPnl : 0,
-							initialBalance: typeof obj.initialBalance === "number" ? obj.initialBalance : this.initialBalanceDefault,
-							currentBalance:
-								typeof obj.currentBalance === "number"
-									? obj.currentBalance
-									: this.initialBalanceDefault + (typeof obj.totalPnl === "number" ? obj.totalPnl : 0),
-							maxDrawdown: typeof obj.maxDrawdown === "number" ? obj.maxDrawdown : 0,
-							dailyPnl: Array.isArray(obj.dailyPnl) ? (obj.dailyPnl as DailyPnl[]) : [],
-							dailyCountedTradeIds: Array.isArray(obj.dailyCountedTradeIds)
-								? (obj.dailyCountedTradeIds as string[])
-								: [],
-							stoppedAt: typeof obj.stoppedAt === "string" ? obj.stoppedAt : null,
-							stopReason: typeof obj.stopReason === "string" ? obj.stopReason : null,
-						};
-
-						// Migrate JSON data into SQLite on first run
-						if (PERSIST_BACKEND === "sqlite" || PERSIST_BACKEND === "dual") {
-							for (const trade of this.state.trades) {
-								this.upsertTrade(trade);
-							}
-							this.saveState();
-						}
-					}
-				}
-			} catch (err) {
-				this.log.warn(`Failed to load ${this.mode} state from JSON:`, err);
-			}
-		}
-
-		// Initialize the Set mirror from persisted array
-		this.dailyCountedTradeIdSet = new Set(this.state.dailyCountedTradeIds);
-
-		// Recalculate balance from trades to fix any historical inconsistencies
-		// (e.g., old balance used size instead of size*price for deduction)
-		this.recalculateBalance();
-	}
-
-	/**
-	 * Recalculate currentBalance from trades to ensure consistency.
-	 * Resolved trades contribute their pnl; pending trades hold size*price (USDC cost).
-	 */
-	private recalculateBalance(): void {
-		let balance = this.state.initialBalance;
-		for (const t of this.state.trades) {
-			if (t.resolved) {
-				balance += t.pnl ?? 0;
-			} else {
-				balance -= t.size * t.price;
-			}
-		}
-		if (Math.abs(balance - this.state.currentBalance) > 0.001) {
-			this.log.info(`Balance recalculated: ${this.state.currentBalance.toFixed(4)} → ${balance.toFixed(4)}`);
-			this.state.currentBalance = balance;
-			this.saveState();
-		}
-	}
-
-	/** Reserve balance for a pending GTD order (called when order is placed) */
-	reserveBalance(amount: number): void {
-		this.reservedBalance += amount;
-	}
-
-	/** Release reserved balance (called when order fills, cancels, or expires) */
-	unreserveBalance(amount: number): void {
-		this.reservedBalance = Math.max(0, this.reservedBalance - amount);
-	}
-
-	/** Effective balance = current balance minus reserved for pending GTD orders */
-	getEffectiveBalance(): number {
-		return this.state.currentBalance - this.reservedBalance;
-	}
-
-	// ---- Persistence ----
-
-	private saveState(): void {
-		this.upsertStateStmt().run({
-			$initialBalance: this.state.initialBalance,
-			$currentBalance: this.state.currentBalance,
-			$maxDrawdown: this.state.maxDrawdown,
-			$wins: this.state.wins,
-			$losses: this.state.losses,
-			$totalPnl: this.state.totalPnl,
-			$stoppedAt: this.state.stoppedAt,
-			$stopReason: this.state.stopReason,
-			$dailyPnl: JSON.stringify(this.state.dailyPnl),
-			$dailyCountedTradeIds: JSON.stringify(this.state.dailyCountedTradeIds),
-		});
-	}
-
-	private save(): void {
-		if (PERSIST_BACKEND === "csv" || PERSIST_BACKEND === "dual") {
-			fs.mkdirSync("./logs", { recursive: true });
-			fs.writeFileSync(this.getStatsPath(), JSON.stringify(this.state, null, 2));
-		}
-
-		if (PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite") {
-			this.saveState();
-
-			statements.upsertDailyStats().run({
-				$date: new Date().toDateString(),
-				$mode: this.mode,
-				$pnl: this.state.totalPnl,
-				$trades: this.state.trades.length,
-				$wins: this.state.wins,
-				$losses: this.state.losses,
-			});
-		}
-	}
-
-	private upsertTrade(trade: TradeEntry): void {
-		if (PERSIST_BACKEND !== "dual" && PERSIST_BACKEND !== "sqlite") return;
-
-		this.insertTradeStmt().run({
-			$id: trade.id,
-			$marketId: trade.marketId,
-			$windowStartMs: trade.windowStartMs,
-			$side: trade.side,
-			$price: trade.price,
-			$size: trade.size,
-			$priceToBeat: trade.priceToBeat,
-			$currentPriceAtEntry: trade.currentPriceAtEntry,
-			$timestamp: trade.timestamp,
-			$resolved: trade.resolved ? 1 : 0,
-			$won: trade.won === null ? null : trade.won ? 1 : 0,
-			$pnl: trade.pnl,
-			$settlePrice: trade.settlePrice,
-		});
-	}
-
-	/**
-	 * Sync settlement outcome back to the general `trades` log table.
-	 * Paper trades match on order_id = trade.id (same value passed to logTrade).
-	 * Live trades: the trades table uses the exchange orderId, not our generated id,
-	 * so this is a best-effort update — reconciler handles live settlement separately.
-	 */
-	private syncTradeLog(trade: TradeEntry): void {
-		if (PERSIST_BACKEND !== "dual" && PERSIST_BACKEND !== "sqlite") return;
+	async init(): Promise<void> {
 		try {
-			statements.updateTradeSettlement().run({
-				$orderId: trade.id,
-				$mode: this.mode,
-				$pnl: trade.pnl,
-				$won: trade.won === null ? null : trade.won ? 1 : 0,
-				$status: trade.won ? "settled_won" : "settled_lost",
-			});
+			if (this.mode === "paper") {
+				const stateRow = await queries.stateQueries.getPaperState();
+				const tradeRows = await queries.paperTradeQueries.getAll();
+
+				if (stateRow) {
+					this.state = {
+						trades: tradeRows.map((r) => ({
+							id: r.id,
+							marketId: r.marketId,
+							windowStartMs: r.windowStartMs,
+							side: r.side as Side,
+							price: r.price,
+							size: r.size,
+							priceToBeat: r.priceToBeat,
+							currentPriceAtEntry: r.currentPriceAtEntry,
+							timestamp: r.timestamp,
+							resolved: Boolean(r.resolved),
+							won: r.won === null ? null : Boolean(r.won),
+							pnl: r.pnl,
+							settlePrice: r.settlePrice,
+						})),
+						wins: stateRow.wins,
+						losses: stateRow.losses,
+						totalPnl: stateRow.totalPnl,
+						initialBalance: stateRow.initialBalance,
+						currentBalance: stateRow.currentBalance,
+						maxDrawdown: stateRow.maxDrawdown,
+						dailyPnl: safeParseJson(stateRow.dailyPnl, []),
+						dailyCountedTradeIds: safeParseJson(stateRow.dailyCountedTradeIds, []),
+						stoppedAt: stateRow.stoppedAt,
+						stopReason: stateRow.stopReason,
+					};
+				}
+			} else {
+				const stateRow = await queries.stateQueries.getLiveState();
+				const tradeRows = await queries.liveTradeQueries.getAll();
+
+				if (stateRow) {
+					this.state = {
+						trades: tradeRows.map((r) => ({
+							id: r.id,
+							marketId: r.marketId,
+							windowStartMs: r.windowStartMs,
+							side: r.side as Side,
+							price: r.price,
+							size: r.size,
+							priceToBeat: r.priceToBeat,
+							currentPriceAtEntry: r.currentPriceAtEntry,
+							timestamp: r.timestamp,
+							resolved: Boolean(r.resolved),
+							won: r.won === null ? null : Boolean(r.won),
+							pnl: r.pnl,
+							settlePrice: r.settlePrice,
+						})),
+						wins: stateRow.wins,
+						losses: stateRow.losses,
+						totalPnl: stateRow.totalPnl,
+						initialBalance: stateRow.initialBalance,
+						currentBalance: stateRow.currentBalance,
+						maxDrawdown: stateRow.maxDrawdown,
+						dailyPnl: safeParseJson(stateRow.dailyPnl, []),
+						dailyCountedTradeIds: safeParseJson(stateRow.dailyCountedTradeIds, []),
+						stoppedAt: stateRow.stoppedAt,
+						stopReason: stateRow.stopReason,
+					};
+				}
+			}
+
+			for (const id of this.state.dailyCountedTradeIds) {
+				this.dailyCountedTradeIdSet.add(id);
+			}
+
+			this.syncTradeLog();
+			this.log.info(`Loaded \${this.state.trades.length} trades, balance=\${this.state.currentBalance.toFixed(2)}`);
 		} catch (err) {
-			this.log.warn(
-				`syncTradeLog failed for ${this.mode} trade ${trade.id}:`,
-				err instanceof Error ? err.message : String(err),
-			);
+			this.log.error("Failed to load from database, using defaults:", err);
+			this.state = this.createEmptyState(this.initialBalanceDefault);
 		}
 	}
 
-	// ---- Trade Lifecycle ----
+	private async save(): Promise<void> {
+		try {
+			if (this.mode === "paper") {
+				await queries.stateQueries.upsertPaperState({
+					id: 1,
+					initialBalance: this.state.initialBalance,
+					currentBalance: this.state.currentBalance,
+					maxDrawdown: this.state.maxDrawdown,
+					wins: this.state.wins,
+					losses: this.state.losses,
+					totalPnl: this.state.totalPnl,
+					stoppedAt: this.state.stoppedAt,
+					stopReason: this.state.stopReason,
+					dailyPnl: JSON.stringify(this.state.dailyPnl),
+					dailyCountedTradeIds: JSON.stringify(this.state.dailyCountedTradeIds),
+				});
+			} else {
+				await queries.stateQueries.upsertLiveState({
+					id: 1,
+					initialBalance: this.state.initialBalance,
+					currentBalance: this.state.currentBalance,
+					maxDrawdown: this.state.maxDrawdown,
+					wins: this.state.wins,
+					losses: this.state.losses,
+					totalPnl: this.state.totalPnl,
+					stoppedAt: this.state.stoppedAt,
+					stopReason: this.state.stopReason,
+					dailyPnl: JSON.stringify(this.state.dailyPnl),
+					dailyCountedTradeIds: JSON.stringify(this.state.dailyCountedTradeIds),
+				});
+			}
+		} catch (err) {
+			this.log.error("Failed to save state:", err);
+		}
+	}
 
-	/**
-	 * Add a new trade entry. For live trading, pass exchangeOrderId to ensure
-	 * the trades table can be matched and updated with settlement P&L.
-	 */
 	addTrade(
 		entry: Omit<TradeEntry, "id" | "resolved" | "won" | "pnl" | "settlePrice">,
 		exchangeOrderId?: string,
 	): string {
-		// For live trading with exchangeOrderId provided, use it; otherwise generate
 		const id = exchangeOrderId ?? `${this.mode}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		if (this.state.trades.some((t) => t.id === id)) {
 			this.log.warn(`Duplicate trade id ignored: ${id}`);
@@ -442,226 +243,145 @@ export class AccountStatsManager {
 		};
 		this.state.trades.push(trade);
 		this.state.currentBalance -= entry.size * entry.price;
-		try {
-			const shouldUseTransaction = PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite";
-			const db = shouldUseTransaction ? getDb() : null;
-			if (db) {
-				db.run("BEGIN IMMEDIATE");
-				try {
-					this.upsertTrade(trade);
-					this.save();
-					db.run("COMMIT");
-				} catch (innerErr) {
-					db.run("ROLLBACK");
-					throw innerErr;
-				}
-			} else {
-				this.upsertTrade(trade);
-				this.save();
-			}
-		} catch (err) {
-			// Rollback in-memory state on DB write failure
-			this.state.trades.pop();
-			this.state.currentBalance += entry.size * entry.price;
-			throw err;
-		}
+		this.syncTradeLog();
+		void this.persistTrade(trade)
+			.then(() => this.save())
+			.catch((err) => {
+				this.state.trades.pop();
+				this.state.currentBalance += entry.size * entry.price;
+				this.log.error(`Failed to persist trade ${id}, rolled back:`, err);
+			});
 		return id;
 	}
 
-	resolveTrades(windowStartMs: number, finalPrices: Map<string, number>): number {
-		let resolved = 0;
-		const shouldUseTransaction = PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite";
-		const db = shouldUseTransaction ? getDb() : null;
-		if (db) {
-			db.run("BEGIN IMMEDIATE");
-		}
-
-		const prevWins = this.state.wins;
-		const prevLosses = this.state.losses;
-		const prevBalance = this.state.currentBalance;
-		const prevMaxDrawdown = this.state.maxDrawdown;
-		const prevTotalPnl = this.state.totalPnl;
-		const prevDailyPnl = this.state.dailyPnl.map((d) => ({ ...d }));
-		const prevDailyCountedTradeIds = [...this.state.dailyCountedTradeIds];
-		const mutatedTrades: Array<{
-			trade: TradeEntry;
-			prevResolved: boolean;
-			prevWon: boolean | null;
-			prevPnl: number | null;
-			prevSettlePrice: number | null;
-		}> = [];
-
+	private async persistTrade(entry: TradeEntry): Promise<void> {
 		try {
-			for (const trade of this.state.trades) {
-				if (trade.resolved) continue;
-				if (trade.windowStartMs !== windowStartMs) continue;
-
-				const finalPrice = finalPrices.get(trade.marketId);
-				if (finalPrice === undefined || trade.priceToBeat <= 0) continue;
-
-				mutatedTrades.push({
-					trade,
-					prevResolved: trade.resolved,
-					prevWon: trade.won,
-					prevPnl: trade.pnl,
-					prevSettlePrice: trade.settlePrice,
+			if (this.mode === "paper") {
+				await queries.paperTradeQueries.upsert({
+					id: entry.id,
+					marketId: entry.marketId,
+					windowStartMs: entry.windowStartMs,
+					side: entry.side,
+					price: entry.price,
+					size: entry.size,
+					priceToBeat: entry.priceToBeat,
+					currentPriceAtEntry: entry.currentPriceAtEntry,
+					timestamp: entry.timestamp,
+					resolved: entry.resolved ? 1 : 0,
+					won: entry.won === null ? null : entry.won ? 1 : 0,
+					pnl: entry.pnl,
+					settlePrice: entry.settlePrice,
 				});
-
-				// Unified settlement rule: price <= PTB → DOWN wins (standard Polymarket rule)
-				const upWon = finalPrice > trade.priceToBeat;
-				const downWon = finalPrice <= trade.priceToBeat;
-				trade.won = trade.side === "UP" ? upWon : downWon;
-
-				trade.settlePrice = finalPrice;
-				trade.resolved = true;
-
-				if (trade.won) {
-					trade.pnl = trade.size * (1 - trade.price);
-					this.state.wins++;
-				} else {
-					trade.pnl = -(trade.size * trade.price);
-					this.state.losses++;
-				}
-
-				this.state.currentBalance += trade.size * trade.price + trade.pnl;
-				const drawdown = this.state.initialBalance - this.state.currentBalance;
-				if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
-				this.state.totalPnl += trade.pnl;
-
-				this.updateDailyPnl(trade.id, trade.pnl, trade.timestamp);
-
-				this.upsertTrade(trade);
-				this.syncTradeLog(trade);
-				resolved++;
-			}
-
-			if (resolved > 0) {
-				this.checkAndTriggerStopLoss();
-				this.save();
-			}
-			if (db) {
-				db.run("COMMIT");
+			} else {
+				await queries.liveTradeQueries.upsert({
+					id: entry.id,
+					marketId: entry.marketId,
+					windowStartMs: entry.windowStartMs,
+					side: entry.side,
+					price: entry.price,
+					size: entry.size,
+					priceToBeat: entry.priceToBeat,
+					currentPriceAtEntry: entry.currentPriceAtEntry,
+					timestamp: entry.timestamp,
+					resolved: entry.resolved ? 1 : 0,
+					won: entry.won === null ? null : entry.won ? 1 : 0,
+					pnl: entry.pnl,
+					settlePrice: entry.settlePrice,
+				});
 			}
 		} catch (err) {
-			if (db) {
-				db.run("ROLLBACK");
-			}
-			for (const snap of mutatedTrades) {
-				snap.trade.resolved = snap.prevResolved;
-				snap.trade.won = snap.prevWon;
-				snap.trade.pnl = snap.prevPnl;
-				snap.trade.settlePrice = snap.prevSettlePrice;
-			}
-			this.state.wins = prevWins;
-			this.state.losses = prevLosses;
-			this.state.currentBalance = prevBalance;
-			this.state.maxDrawdown = prevMaxDrawdown;
-			this.state.totalPnl = prevTotalPnl;
-			this.state.dailyPnl = prevDailyPnl;
-			this.state.dailyCountedTradeIds = prevDailyCountedTradeIds;
-			this.dailyCountedTradeIdSet = new Set(prevDailyCountedTradeIds);
-			throw err;
+			this.log.error(`Failed to persist trade \${entry.id}:`, err);
 		}
-		return resolved;
 	}
 
-	/**
-	 * Settle pending trades from windows that have already ended.
-	 * Handles recovery after restart when window transitions were missed.
-	 * Uses current spot prices as settlement proxy for recently-ended windows only.
-	 * Old windows are skipped to avoid writing highly inaccurate historical PnL.
-	 */
-	resolveExpiredTrades(currentPrices: Map<string, number>, windowMinutes: number, maxLagWindows = 2): number {
-		const now = Date.now();
-		const windowMs = windowMinutes * 60_000;
-		let totalResolved = 0;
-		const maxRecoveryLagMs = Math.max(windowMs, Math.floor(windowMs * Math.max(1, maxLagWindows)));
-
-		const expiredWindows = new Set<number>();
+	async resolveTrades(windowStartMs: number, latestPrices: Map<string, number>): Promise<number> {
+		let resolvedCount = 0;
 		for (const trade of this.state.trades) {
-			const windowEndMs = trade.windowStartMs + windowMs;
-			if (trade.resolved || windowEndMs >= now) continue;
-			const lagMs = now - windowEndMs;
-			if (lagMs <= maxRecoveryLagMs) {
-				expiredWindows.add(trade.windowStartMs);
-			}
+			if (trade.resolved || trade.windowStartMs !== windowStartMs) continue;
+			const settlePrice = latestPrices.get(trade.marketId);
+			if (settlePrice === undefined) continue;
+			this.resolveSingle(trade, settlePrice);
+			resolvedCount++;
 		}
-
-		for (const windowStartMs of expiredWindows) {
-			const resolved = this.resolveTrades(windowStartMs, currentPrices);
-			totalResolved += resolved;
+		if (resolvedCount > 0) {
+			await this.save();
 		}
-
-		return totalResolved;
+		return resolvedCount;
 	}
 
-	/**
-	 * Force-resolve trades pending beyond maxAgeMs as losses.
-	 * Safety net for trades that resolveExpiredTrades cannot reach (too old).
-	 * Logs a warning for each force-resolved trade.
-	 */
-	forceResolveStuckTrades(maxAgeMs: number): number {
+	async resolveExpiredTrades(latestPrices: Map<string, number>, candleWindowMinutes: number): Promise<number> {
 		const now = Date.now();
-		let resolved = 0;
-		const shouldUseTransaction = PERSIST_BACKEND === "dual" || PERSIST_BACKEND === "sqlite";
-		const db = shouldUseTransaction ? getDb() : null;
-		if (db) {
-			db.run("BEGIN IMMEDIATE");
+		const windowMs = candleWindowMinutes * 60 * 1000;
+		let resolvedCount = 0;
+		for (const trade of this.state.trades) {
+			if (trade.resolved) continue;
+			const elapsed = now - trade.windowStartMs;
+			if (elapsed < windowMs * 1.5) continue;
+			const settlePrice = latestPrices.get(trade.marketId);
+			if (settlePrice === undefined) continue;
+			this.resolveSingle(trade, settlePrice);
+			resolvedCount++;
 		}
-
-		try {
-			for (const trade of this.state.trades) {
-				if (trade.resolved) continue;
-				const tradeAgeMs = now - trade.windowStartMs;
-				if (tradeAgeMs <= maxAgeMs) continue;
-
-				trade.resolved = true;
-				trade.won = false;
-				trade.pnl = -(trade.size * trade.price);
-				trade.settlePrice = null;
-
-				this.state.losses++;
-				this.state.currentBalance += trade.size * trade.price + trade.pnl;
-				const drawdown = this.state.initialBalance - this.state.currentBalance;
-				if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
-				this.state.totalPnl += trade.pnl;
-
-				this.updateDailyPnl(trade.id, trade.pnl, trade.timestamp);
-				this.upsertTrade(trade);
-				this.syncTradeLog(trade);
-				resolved++;
-				this.log.warn(`Force-resolved stuck trade ${trade.id} as loss (age: ${Math.round(tradeAgeMs / 60_000)}min)`);
-			}
-
-			if (resolved > 0) {
-				this.checkAndTriggerStopLoss();
-				this.save();
-			}
-			if (db) {
-				db.run("COMMIT");
-			}
-		} catch (err) {
-			if (db) {
-				db.run("ROLLBACK");
-			}
-			throw err;
+		if (resolvedCount > 0) {
+			await this.save();
 		}
-		return resolved;
+		return resolvedCount;
 	}
 
-	// ---- Queries ----
+	async forceResolveStuckTrades(maxAgeMs: number): Promise<number> {
+		const cutoff = Date.now() - maxAgeMs;
+		let resolvedCount = 0;
+		for (const trade of this.state.trades) {
+			if (trade.resolved) continue;
+			if (trade.windowStartMs > cutoff) continue;
+			trade.resolved = true;
+			trade.won = false;
+			trade.pnl = -trade.price * trade.size;
+			trade.settlePrice = 0.5;
+			this.state.currentBalance += trade.size * trade.price + trade.pnl;
+			if (trade.pnl > 0) this.state.wins++;
+			else this.state.losses++;
+			this.state.totalPnl += trade.pnl;
+			resolvedCount++;
+			this.log.warn(`Force-resolved stuck trade \${trade.id}`);
+		}
+		if (resolvedCount > 0) {
+			await this.save();
+		}
+		return resolvedCount;
+	}
 
-	getStats(): AccountStatsResult {
-		const pending = this.state.trades.filter((t) => !t.resolved).length;
-		const total = this.state.wins + this.state.losses;
-		return {
-			totalTrades: this.state.trades.length,
-			wins: this.state.wins,
-			losses: this.state.losses,
-			pending,
-			winRate: total > 0 ? this.state.wins / total : 0,
-			totalPnl: this.state.totalPnl,
-		};
+	private resolveSingle(trade: TradeEntry, settlePrice: number): void {
+		const won = settlePrice > trade.priceToBeat;
+		const pnl = won ? trade.size * (1 - trade.price) : -trade.size * trade.price;
+		trade.resolved = true;
+		trade.won = won;
+		trade.pnl = pnl;
+		trade.settlePrice = settlePrice;
+		this.state.currentBalance += trade.size * trade.price + pnl;
+		this.state.totalPnl += pnl;
+		if (won) this.state.wins++;
+		else this.state.losses++;
+		const drawdown = this.state.initialBalance - this.state.currentBalance;
+		if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
+		this.updateDailyPnl(trade, pnl);
+		this.persistTrade(trade);
+		this.syncTradeLog();
+	}
+
+	private updateDailyPnl(trade: TradeEntry, pnl: number): void {
+		const date = new Date().toDateString();
+		const existing = this.state.dailyPnl.find((d) => d.date === date);
+		if (existing) {
+			existing.pnl += pnl;
+			existing.trades++;
+		} else {
+			this.state.dailyPnl.push({ date, pnl, trades: 1 });
+		}
+		if (!this.dailyCountedTradeIdSet.has(trade.id)) {
+			this.dailyCountedTradeIdSet.add(trade.id);
+			this.state.dailyCountedTradeIds.push(trade.id);
+		}
 	}
 
 	getBalance(): { initial: number; current: number; maxDrawdown: number; reserved: number } {
@@ -673,22 +393,41 @@ export class AccountStatsManager {
 		};
 	}
 
-	canAffordTrade(size: number): boolean {
-		return this.getEffectiveBalance() >= size;
+	reserveBalance(amount: number): void {
+		this.reservedBalance += amount;
 	}
 
-	canAffordTradeWithStopCheck(size: number): { canTrade: boolean; reason: string | null } {
-		const stopCheck = this.checkAndTriggerStopLoss();
-		if (stopCheck.triggered) {
-			return { canTrade: false, reason: `trading_stopped:${stopCheck.reason}` };
-		}
-		if (this.getEffectiveBalance() < size) {
-			return { canTrade: false, reason: "insufficient_balance" };
-		}
-		if (this.isDailyLossLimitExceeded()) {
-			return { canTrade: false, reason: "daily_loss_limit_exceeded" };
-		}
-		return { canTrade: true, reason: null };
+	unreserveBalance(amount: number): void {
+		this.reservedBalance = Math.max(0, this.reservedBalance - amount);
+	}
+
+	getStats(): AccountStatsResult {
+		const resolved = this.state.trades.filter((t) => t.resolved);
+		const wins = resolved.filter((t) => t.won).length;
+		const losses = resolved.filter((t) => !t.won).length;
+		const total = resolved.length;
+		return {
+			totalTrades: total,
+			wins,
+			losses,
+			pending: this.state.trades.filter((t) => !t.resolved).length,
+			winRate: total === 0 ? 0 : wins / total,
+			totalPnl: this.state.totalPnl,
+		};
+	}
+
+	getTodayStats(): { pnl: number; trades: number; limit: number } {
+		const date = new Date().toDateString();
+		const today = this.state.dailyPnl.find((d) => d.date === date);
+		return {
+			pnl: today?.pnl ?? 0,
+			trades: today?.trades ?? 0,
+			limit: this.getRiskConfig().dailyMaxLossUsdc,
+		};
+	}
+
+	getRecentTrades(limit = 20): TradeEntry[] {
+		return this.state.trades.slice(-limit).reverse();
 	}
 
 	getPendingTrades(): TradeEntry[] {
@@ -696,111 +435,70 @@ export class AccountStatsManager {
 	}
 
 	getWonTrades(): TradeEntry[] {
-		return this.state.trades.filter((t) => t.resolved && t.won === true);
-	}
-
-	getRecentTrades(limit?: number): TradeEntry[] {
-		if (limit === undefined) return [...this.state.trades];
-		return this.state.trades.slice(-limit);
+		return this.state.trades.filter((t) => t.resolved && t.won);
 	}
 
 	getMarketBreakdown(): Record<string, MarketBreakdown> {
-		const breakdown: Record<string, MarketBreakdown> = {};
-		const marketIds = new Set(this.state.trades.map((t) => t.marketId));
-
-		for (const market of marketIds) {
-			const trades = this.state.trades.filter((t) => t.marketId === market);
-			const resolvedTrades = trades.filter((t) => t.resolved);
-			const wins = resolvedTrades.filter((t) => t.won).length;
-			const losses = resolvedTrades.filter((t) => !t.won).length;
-			const pending = trades.filter((t) => !t.resolved).length;
-			const totalPnl = trades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-
-			breakdown[market] = {
-				wins,
-				losses,
-				pending,
-				winRate: wins + losses > 0 ? wins / (wins + losses) : 0,
-				totalPnl,
-				tradeCount: trades.length,
+		const map = new Map<string, { wins: number; losses: number; pnl: number }>();
+		for (const trade of this.state.trades) {
+			if (!trade.resolved) continue;
+			const agg = map.get(trade.marketId) || { wins: 0, losses: 0, pnl: 0 };
+			if (trade.won) agg.wins++;
+			else agg.losses++;
+			agg.pnl += trade.pnl ?? 0;
+			map.set(trade.marketId, agg);
+		}
+		const result: Record<string, MarketBreakdown> = {};
+		for (const [market, agg] of map) {
+			const total = agg.wins + agg.losses;
+			result[market] = {
+				wins: agg.wins,
+				losses: agg.losses,
+				pending: 0,
+				winRate: total === 0 ? 0 : agg.wins / total,
+				totalPnl: agg.pnl,
+				tradeCount: total,
 			};
 		}
-
-		return breakdown;
+		return result;
 	}
 
-	// ---- Stop Loss & Daily Tracking ----
-
-	private getTodayDate(): string {
-		return new Date().toISOString().split("T")[0] ?? "";
-	}
-
-	private getTodayPnlEntry(): DailyPnl {
-		const today = this.getTodayDate();
-		let todayData = this.state.dailyPnl.find((d) => d.date === today);
-		if (!todayData) {
-			todayData = { date: today, pnl: 0, trades: 0 };
-			this.state.dailyPnl.push(todayData);
-			if (this.state.dailyPnl.length > 30) {
-				this.state.dailyPnl = this.state.dailyPnl.slice(-30);
+	canAffordTradeWithStopCheck(size: number): { canTrade: boolean; reason?: string } {
+		const risk = this.getRiskConfig();
+		const effectiveBalance = this.state.currentBalance - this.reservedBalance;
+		const maxCost = size * 0.6;
+		if (effectiveBalance < maxCost) {
+			return {
+				canTrade: false,
+				reason: `insufficient_balance_\${effectiveBalance.toFixed(2)}_<_\${maxCost.toFixed(2)}`,
+			};
+		}
+		if (this.isStopped()) {
+			return { canTrade: false, reason: "stop_loss_triggered" };
+		}
+		if (risk.dailyMaxLossUsdc > 0) {
+			const today = this.getTodayStats();
+			if (today.pnl <= -risk.dailyMaxLossUsdc) {
+				return { canTrade: false, reason: "daily_max_loss_reached" };
 			}
 		}
-		return todayData;
-	}
-
-	getDailyPnl(): { date: string; pnl: number; trades: number }[] {
-		return [...this.state.dailyPnl].sort((a, b) => b.date.localeCompare(a.date));
-	}
-
-	getTodayStats(): { pnl: number; trades: number; limit: number } {
-		const today = this.getTodayPnlEntry();
-		return {
-			pnl: today.pnl,
-			trades: today.trades,
-			limit: this.getRiskConfig().dailyMaxLossUsdc,
-		};
-	}
-
-	isDailyLossLimitExceeded(): boolean {
-		const today = this.getTodayPnlEntry();
-		const limit = this.getRiskConfig().dailyMaxLossUsdc;
-		return today.pnl < -limit;
+		return { canTrade: true };
 	}
 
 	isStopped(): boolean {
-		return this.state.stoppedAt !== null;
+		return !!this.state.stoppedAt;
 	}
 
 	getStopReason(): { stoppedAt: string | null; reason: string | null } {
-		return {
-			stoppedAt: this.state.stoppedAt,
-			reason: this.state.stopReason,
-		};
+		return { stoppedAt: this.state.stoppedAt, reason: this.state.stopReason };
 	}
 
-	checkAndTriggerStopLoss(): { triggered: boolean; reason: string | null } {
-		if (this.state.stoppedAt) {
-			return { triggered: true, reason: this.state.stopReason };
-		}
-
-		// Check daily loss limit
-		if (this.isDailyLossLimitExceeded()) {
-			this.state.stoppedAt = new Date().toISOString();
-			this.state.stopReason = `daily_loss_limit:${(-this.getTodayPnlEntry().pnl).toFixed(2)}`;
-			this.save();
-			return { triggered: true, reason: this.state.stopReason };
-		}
-
-		// Check max drawdown (50% of initial balance)
-		const maxAllowedDrawdown = this.state.initialBalance * 0.5;
-		if (this.state.maxDrawdown >= maxAllowedDrawdown) {
-			this.state.stoppedAt = new Date().toISOString();
-			this.state.stopReason = `max_drawdown:${this.state.maxDrawdown.toFixed(2)}`;
-			this.save();
-			return { triggered: true, reason: this.state.stopReason };
-		}
-
-		return { triggered: false, reason: null };
+	triggerStopLoss(reason: string): void {
+		if (this.state.stoppedAt) return;
+		this.state.stoppedAt = new Date().toISOString();
+		this.state.stopReason = reason;
+		this.log.warn(`Stop loss triggered: \${reason}`);
+		this.save();
 	}
 
 	clearStopFlag(): void {
@@ -809,81 +507,40 @@ export class AccountStatsManager {
 		this.save();
 	}
 
-	private updateDailyPnl(tradeId: string, pnl: number, tradeTimestamp?: string): void {
-		if (this.dailyCountedTradeIdSet.has(tradeId)) {
-			return;
-		}
-
-		const tradeDate = tradeTimestamp ? (tradeTimestamp.split("T")[0] ?? this.getTodayDate()) : this.getTodayDate();
-		let entry = this.state.dailyPnl.find((d) => d.date === tradeDate);
-		if (!entry) {
-			entry = { date: tradeDate, pnl: 0, trades: 0 };
-			this.state.dailyPnl.push(entry);
-			if (this.state.dailyPnl.length > 30) {
-				this.state.dailyPnl = this.state.dailyPnl.slice(-30);
-			}
-		}
-		entry.pnl += pnl;
-		entry.trades += 1;
-		this.state.dailyCountedTradeIds.push(tradeId);
-		this.dailyCountedTradeIdSet.add(tradeId);
-
-		if (this.state.dailyCountedTradeIds.length > 500) {
-			this.state.dailyCountedTradeIds = this.state.dailyCountedTradeIds.slice(-500);
-			this.dailyCountedTradeIdSet = new Set(this.state.dailyCountedTradeIds);
-		}
-	}
-
-	// ---- Reset ----
-
 	resetData(): void {
-		this.log.info(`Resetting all ${this.mode} trading data`);
-		if (this.mode === "paper") {
-			resetPaperDbData();
-		} else {
-			resetLiveDbData();
-		}
 		this.state = this.createEmptyState(this.initialBalanceDefault);
-		this.dailyCountedTradeIdSet = new Set();
-		this.log.info(`${this.mode} trading data reset complete`);
+		this.dailyCountedTradeIdSet.clear();
+		this.reservedBalance = 0;
+		this.save();
+		this.syncTradeLog();
+		this.log.info("Data reset");
 	}
 
-	resetBalance(initialBalance?: number): void {
-		this.state.initialBalance = initialBalance ?? this.initialBalanceDefault;
-		this.state.currentBalance = this.state.initialBalance;
-		this.state.maxDrawdown = 0;
+	pruneTrades(maxCount: number): void {
+		if (this.state.trades.length <= maxCount) return;
+		this.state.trades = this.state.trades.slice(-maxCount);
 		this.save();
 	}
 
-	/**
-	 * Prune old resolved trades from in-memory array to prevent unbounded growth.
-	 * Keeps all pending trades and the most recent maxResolved resolved trades.
-	 * Returns the number of pruned trades.
-	 */
-	pruneTrades(maxResolved = 500): number {
-		const pending = this.state.trades.filter((t) => !t.resolved);
-		const resolved = this.state.trades.filter((t) => t.resolved);
-
-		if (resolved.length <= maxResolved) return 0;
-
-		const pruned = resolved.length - maxResolved;
-		const kept = resolved.slice(-maxResolved);
-		this.state.trades = [...kept, ...pending];
-		return pruned;
+	private syncTradeLog(): void {
+		const path = this.getStatsPath();
+		try {
+			fs.mkdirSync("./logs", { recursive: true });
+			fs.writeFileSync(path, JSON.stringify(this.state, null, 2));
+		} catch (err) {
+			this.log.warn(`syncTradeLog failed for \${path}:`, err);
+		}
 	}
 }
-
-// ============ Singleton Instances ============
 
 export const paperAccount = new AccountStatsManager("paper", PAPER_INITIAL_BALANCE);
 export const liveAccount = new AccountStatsManager("live", LIVE_INITIAL_BALANCE);
 
-export function initAccountStats(): void {
-	paperAccount.init();
-	liveAccount.init();
+export async function initAccountStats(): Promise<void> {
+	await paperAccount.init();
+	await liveAccount.init();
 }
 
-// Helper to get account by mode
 export function getAccount(mode: AccountMode): AccountStatsManager {
 	return mode === "paper" ? paperAccount : liveAccount;
 }

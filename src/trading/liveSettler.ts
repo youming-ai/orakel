@@ -2,9 +2,9 @@ import fs from "node:fs";
 import type { Wallet } from "ethers";
 import type { RedeemOneResult } from "../blockchain/redeemer.ts";
 import { fetchRedeemablePositions } from "../blockchain/redeemer.ts";
-import { onchainStatements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
+import { onchainQueries } from "../db/queries.ts";
 import type { AccountStatsManager } from "./accountStats.ts";
 
 const log = createLogger("live-settler");
@@ -21,8 +21,8 @@ export interface LiveSettlerDeps {
 	clobWs: ClobWsHandle;
 	liveAccount: AccountStatsManager;
 	wallet: Wallet | null;
-	lookupTokenId: (marketId: string, side: string) => string | null;
-	lookupConditionId: (tokenId: string) => string | null;
+	lookupTokenId: (marketId: string, side: string) => string | null | Promise<string | null>;
+	lookupConditionId: (tokenId: string) => string | null | Promise<string | null>;
 	redeemFn: (wallet: Wallet, conditionId: string) => Promise<RedeemOneResult>;
 }
 
@@ -80,15 +80,12 @@ export class LiveSettler {
 			for (const trade of wonTrades) {
 				if (this.redeemedIds.has(trade.id)) continue;
 
-				const tokenId = this.deps.lookupTokenId(trade.marketId, trade.side);
+				const tokenId = await this.deps.lookupTokenId(trade.marketId, trade.side);
 				if (!tokenId) {
 					continue;
 				}
 
-				// Skip WebSocket isResolved check - instead rely on payoutDenominator check in redeemFn
-				// This handles cases where WebSocket misses market_resolved events or connection issues
-
-				let conditionId = this.deps.lookupConditionId(tokenId);
+				let conditionId = await this.deps.lookupConditionId(tokenId);
 				if (!conditionId) {
 					conditionId = await this.resolveConditionId(tokenId);
 				}
@@ -131,18 +128,18 @@ export class LiveSettler {
 			for (const pos of positions) {
 				if (pos.conditionId) {
 					try {
-						onchainStatements.upsertKnownCtfToken().run({
-							$tokenId: tokenId,
-							$marketId: null,
-							$side: null,
-							$conditionId: pos.conditionId,
+						await onchainQueries.upsertKnownCtfToken({
+							tokenId: tokenId,
+							marketId: "",
+							side: "",
+							conditionId: pos.conditionId,
 						});
 					} catch (err) {
 						log.warn("Failed to upsert known CTF token:", err instanceof Error ? err.message : String(err));
 					}
 				}
 			}
-			return this.deps.lookupConditionId(tokenId);
+			return await this.deps.lookupConditionId(tokenId);
 		} catch (err) {
 			log.warn("Failed to resolve conditionId:", err instanceof Error ? err.message : String(err));
 			return null;
