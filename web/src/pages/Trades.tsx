@@ -1,54 +1,5 @@
-import { useMemo } from "react";
-import { TradesTab } from "@/components/analytics/TradesTab";
-import { useLiveStats, usePaperStats, useTrades } from "@/lib/queries";
-import { buildMarketFromTrades } from "@/lib/stats";
-import { useUIStore } from "@/lib/store";
-import type { MarketRow } from "@/lib/types";
+import { TradesPanel } from "@/widgets/trades/TradesPanel";
 
 export function TradesPage() {
-	const viewMode = useUIStore((s) => s.viewMode);
-	const { data: trades = [] } = useTrades(viewMode);
-	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
-	const { data: liveStatsData } = useLiveStats(viewMode === "live");
-
-	// Use authoritative stats endpoints for market breakdown
-	const statsData = viewMode === "paper" ? paperStatsData : liveStatsData;
-
-	// Build market stats from stats endpoint trades (authoritative accountStats)
-	const marketStats = useMemo((): MarketRow[] => {
-		const statsTrades = statsData?.trades ?? [];
-		const byMarket = buildMarketFromTrades(statsTrades);
-		const result: MarketRow[] = [];
-		for (const [market, item] of Object.entries(byMarket)) {
-			const resolved = item.wins + item.losses;
-			result.push({
-				market,
-				trades: item.tradeCount,
-				wins: item.wins,
-				losses: item.losses,
-				pending: item.pending,
-				winRate: resolved > 0 ? item.wins / resolved : 0,
-				winRatePct: resolved > 0 ? Number(((item.wins / resolved) * 100).toFixed(1)) : 0,
-				pnl: Number(item.totalPnl.toFixed(2)),
-				resolvedCount: resolved,
-			});
-		}
-		const marketOrder = ["BTC-5m", "BTC-15m", "BTC-1h", "BTC-4h"];
-		return result.sort((a, b) => {
-			const aIndex = marketOrder.indexOf(a.market);
-			const bIndex = marketOrder.indexOf(b.market);
-			if (aIndex === -1 && bIndex === -1) return 0;
-			if (aIndex === -1) return 1;
-			if (bIndex === -1) return -1;
-			return aIndex - bIndex;
-		});
-	}, [statsData]);
-
-	return (
-		<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-safe">
-			<div className="rounded-xl border bg-card p-4 sm:p-6 shadow-sm">
-				<TradesTab viewMode={viewMode} liveTrades={trades} marketRows={marketStats} />
-			</div>
-		</main>
-	);
+	return <TradesPanel />;
 }

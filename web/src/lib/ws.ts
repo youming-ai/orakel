@@ -1,15 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { WsMessage } from "@/contracts/ws";
 import { getApiToken } from "./api.ts";
-
-// WebSocket message types (match backend)
-type WsEventType = "state:snapshot" | "signal:new" | "trade:executed";
-
-export interface WsMessage<T = unknown> {
-	type: WsEventType;
-	data: T;
-	ts: number;
-	version: number;
-}
 
 type MessageHandler = (msg: WsMessage) => void;
 

@@ -1,8 +1,8 @@
 import { ExternalLink } from "lucide-react";
+import type { TradeRecord } from "@/contracts/http";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { TradeRecord } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { modeBadge, sideBadge } from "@/lib/variants";
@@ -41,7 +41,7 @@ export function TradeTableDesktop({ pageTrades, paperMode }: TradeTableDesktopPr
 								<TableCell className="font-mono text-xs">{fmtTimestamp(t.timestamp)}</TableCell>
 								<TableCell className="font-mono text-xs font-medium max-w-[220px] truncate">
 									{(() => {
-										const slug = getMarketCycleSlug(t.market, t.timestamp);
+									const slug = getMarketCycleSlug(t.market, t.timestamp, t.marketSlug);
 										if (!slug) return t.market;
 										return (
 											<a

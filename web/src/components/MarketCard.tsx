@@ -1,205 +1,96 @@
-import { ChevronDown } from "lucide-react";
-import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { MarketSnapshot } from "@/lib/api";
-import { fmtCents, fmtMinSec, fmtPrice } from "@/lib/format";
+import { Card, CardContent } from "@/components/ui/card";
+import type { MarketSnapshot } from "@/contracts/http";
+import { fmtCents, fmtMinSec } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { confidenceSurface, confidenceText, sentimentText, toConfidenceLevel } from "@/lib/variants";
-import { ConfidenceBar, MiniTrend, macdLabel, SignalLight } from "./market/MarketIndicators";
+import { SimplifiedIndicators } from "./market/MarketIndicators";
 
 interface MarketCardProps {
 	market: MarketSnapshot;
 }
 
 export function MarketCard({ market: m }: MarketCardProps) {
-	const [techOpen, setTechOpen] = useState(false);
-
 	if (!m.ok) {
 		return (
-			<Card className="border-red-500/30 bg-red-500/10">
-				<CardHeader className="pb-2">
-					<CardTitle className="text-base">{m.id}</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<p className="text-sm text-red-400">Error: {m.error ?? "Unknown"}</p>
-				</CardContent>
+			<Card className="border-red-500/30 bg-red-500/10 p-4">
+				<p className="text-sm text-red-400">Error: {m.error ?? "Unknown"}</p>
 			</Card>
 		);
 	}
 
 	const isLong = m.predictDirection === "LONG";
 	const isEntry = m.action === "ENTER";
-	const phaseBg = m.phase === "LATE" ? "bg-amber-500/10" : "";
-	const macdInfo = macdLabel(m.macd);
-	const confidence = m.confidence;
 
 	return (
-		<Card className={cn("relative overflow-hidden transition-all duration-200 hover:border-border/80 group", phaseBg)}>
-			<CardHeader className="pb-3">
+		<Card
+			className={cn(
+				"relative overflow-hidden transition-all duration-300",
+				"bg-muted/30 border-border/50",
+				"hover:bg-muted/50 hover:border-border/80 hover:-translate-y-0.5",
+				"rounded-xl",
+			)}
+		>
+			<CardContent className="p-4 space-y-4">
+				{/* Header: Signal + ID + Phase */}
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
-						<SignalLight action={m.action} edge={m.edge} />
-						<CardTitle className="text-base font-bold">{m.id}</CardTitle>
+						<div
+							className={cn(
+								"w-2 h-2 rounded-full transition-colors duration-500",
+								isEntry ? (isLong ? "bg-emerald-500" : "bg-red-500") : "bg-muted-foreground/30",
+							)}
+						/>
+						<span className="font-semibold text-sm">{m.id}</span>
 					</div>
 					<div className="flex items-center gap-2">
 						{m.phase && (
-							<Badge variant="secondary" className="text-[11px] px-1.5 py-0 bg-secondary/50">
+							<Badge variant="secondary" className="text-[10px] px-1.5 py-0">
 								{m.phase}
 							</Badge>
 						)}
-						<span className="font-mono text-xs text-muted-foreground">{fmtMinSec(m.timeLeftMin)}</span>
-					</div>
-				</div>
-				<div className="flex items-baseline gap-2 mt-1">
-					<span className="font-mono text-xl font-bold tracking-tight">{fmtPrice(m.id, m.spotPrice)}</span>
-					{m.priceToBeat !== null && (
-						<span className="font-mono text-xs text-muted-foreground">PTB {fmtPrice(m.id, m.priceToBeat)}</span>
-					)}
-				</div>
-			</CardHeader>
-
-			<CardContent className="space-y-4 pt-0">
-				{/* Primary Stats */}
-				<div className="flex justify-between items-center rounded-lg bg-muted/20 p-2.5 border border-border/30">
-					<div className="flex flex-col gap-0.5">
-						<span className="text-[10px] uppercase text-muted-foreground font-semibold">Direction</span>
-						<span
-							className={cn(
-								"font-mono text-sm font-bold",
-								sentimentText({ sentiment: isLong ? "positive" : "negative" }),
-							)}
-						>
-							{isLong ? "LONG" : "SHORT"} {isLong ? m.predictLong : m.predictShort}%
-						</span>
-					</div>
-					<div className="h-6 w-px bg-border/50" />
-					<div className="flex flex-col items-end gap-0.5 font-mono text-[11px] font-medium">
-						<span className="text-emerald-400 tracking-tight">UP {fmtCents(m.marketUp)}</span>
-						<span className="text-red-400 tracking-tight">DN {fmtCents(m.marketDown)}</span>
+						<span className="font-mono text-[10px] text-muted-foreground">{fmtMinSec(m.timeLeftMin)}</span>
 					</div>
 				</div>
 
-				{/* Confidence bar */}
-				{confidence && <ConfidenceBar confidence={confidence} />}
+				{/* Main Signal */}
+				<div className="text-center py-2">
+					<div className={cn("text-2xl font-light tracking-tight", isLong ? "text-emerald-500" : "text-red-500")}>
+						{isLong ? "LONG" : "SHORT"} {isLong ? m.predictLong : m.predictShort}%
+					</div>
+				</div>
 
-				{/* Technicals Area — collapsible on mobile, always open on desktop */}
-				<section
-					id={`technicals-${m.id}`}
-					aria-label={`${m.id} technical indicators`}
-					className="bg-muted/20 border border-border/50 rounded-lg overflow-hidden"
-				>
-					<button
-						type="button"
-						onClick={() => setTechOpen((v) => !v)}
-						className="flex items-center justify-between w-full px-3 py-2 text-[10px] uppercase text-muted-foreground font-semibold tracking-wide sm:hidden"
+				{/* Odds */}
+				<div className="flex justify-center gap-4 text-[11px] font-mono">
+					<span className="text-emerald-400">UP {fmtCents(m.marketUp)}</span>
+					<span className="text-muted-foreground/30">|</span>
+					<span className="text-red-400">DN {fmtCents(m.marketDown)}</span>
+				</div>
+
+				{/* Simplified Indicators */}
+				<div className="pt-2 border-t border-border/30">
+					<SimplifiedIndicators market={m} />
+				</div>
+
+				{/* Action Button */}
+				{isEntry ? (
+					<div
+						className={cn(
+							"rounded-lg px-3 py-2 text-xs font-semibold text-center",
+							"bg-primary/10 text-primary border border-primary/30",
+							"animate-in fade-in slide-in-from-bottom-2 duration-500",
+						)}
 					>
-						<span>Technicals</span>
-						<ChevronDown className={cn("size-3.5 transition-transform", techOpen && "rotate-180")} />
-					</button>
-
-					<div className={cn("space-y-3 p-3 pt-0 sm:!block sm:pt-3", techOpen ? "block" : "hidden sm:block")}>
-						<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
-							<div className="space-y-1">
-								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">HA Trend</span>
-								<div className="flex items-center gap-1.5">
-									<MiniTrend haColor={m.haColor} count={m.haConsecutive} />
-								</div>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">RSI</span>
-								<span
-									className={cn(
-										"font-mono font-medium block",
-										sentimentText({
-											sentiment: (m.rsi ?? 50) > 70 ? "negative" : (m.rsi ?? 50) < 30 ? "positive" : "neutral",
-										}),
-									)}
-								>
-									{m.rsi?.toFixed(1) ?? "-"}
-								</span>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">MACD</span>
-								<span className={cn("font-mono font-medium block", macdInfo.color)}>{macdInfo.text}</span>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">VWAP</span>
-								<span
-									className={cn(
-										"font-mono font-medium block",
-										sentimentText({ sentiment: (m.vwapSlope ?? 0) > 0 ? "positive" : "negative" }),
-									)}
-								>
-									{(m.vwapSlope ?? 0) > 0 ? "Upward" : "Downward"}
-								</span>
-							</div>
-						</div>
-
-						<div className="h-px bg-border/50" />
-
-						<div className="grid grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-3 text-[11px]">
-							<div className="space-y-1">
-								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Vol (15m)</span>
-								<span className="font-mono font-medium block">
-									{m.volatility15m !== null ? `${(m.volatility15m * 100).toFixed(2)}%` : "-"}
-								</span>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Blend</span>
-								<span className="font-mono font-medium block truncate" title={m.blendSource ?? undefined}>
-									{m.blendSource ?? "-"}
-								</span>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Imbalance</span>
-								<span
-									className={cn(
-										"font-mono font-medium block",
-										sentimentText({
-											sentiment: m.orderbookImbalance !== null && m.orderbookImbalance > 0 ? "positive" : "negative",
-										}),
-									)}
-								>
-									{m.orderbookImbalance !== null ? `${(m.orderbookImbalance * 100).toFixed(0)}%` : "-"}
-								</span>
-							</div>
-							<div className="space-y-1">
-								<span className="text-[10px] uppercase text-muted-foreground font-semibold block">Arb Sum</span>
-								<span className={cn("font-mono font-medium block", m.arbitrage ? "text-amber-400" : "")}>
-									{m.rawSum !== null ? m.rawSum.toFixed(3) : "-"}
-								</span>
-							</div>
-						</div>
-					</div>
-				</section>
-
-				<div
-					className={cn(
-						"rounded-md px-3 py-2 text-xs font-semibold text-center border transition-colors",
-						isEntry
-							? confidenceSurface({ level: toConfidenceLevel(confidence?.score ?? 0.5) })
-							: "bg-muted/40 text-muted-foreground border-border/50",
-					)}
-				>
-					{isEntry ? (
-						<span className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap">
-							<span className="font-bold tracking-wide">BUY {m.side}</span>
-							<span className="text-muted-foreground/30">|</span>
+						<span className="flex items-center justify-center gap-2">
+							<span>BUY {m.side}</span>
+							<span className="text-primary/40">|</span>
 							<span className="font-mono">Edge {((m.edge ?? 0) * 100).toFixed(1)}%</span>
-							{confidence && (
-								<>
-									<span className="text-muted-foreground/30">|</span>
-									<span className={confidenceText({ level: toConfidenceLevel(confidence.score) })}>
-										{confidence.level}
-									</span>
-								</>
-							)}
 						</span>
-					) : (
-						<span className="uppercase tracking-wide">NO TRADE ({m.reason ?? m.phase})</span>
-					)}
-				</div>
+					</div>
+				) : (
+					<div className="text-center text-[11px] text-muted-foreground uppercase tracking-wide py-2">
+						{m.reason ?? "NO TRADE"}
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);

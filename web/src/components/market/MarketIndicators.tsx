@@ -1,4 +1,4 @@
-import type { ConfidenceResult, MarketSnapshot } from "@/lib/api";
+import type { ConfidenceResult, MarketSnapshot } from "@/contracts/http";
 import { cn } from "@/lib/utils";
 import {
 	confidenceBarFill,

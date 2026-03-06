@@ -1,6 +1,8 @@
-import { Activity, Clock, Loader2, Play, Zap } from "lucide-react";
+import { Activity, Loader2, Play, Zap } from "lucide-react";
 import { Link, useLocation } from "react-router";
-import { useCycleCountdown } from "@/hooks/useCycleCountdown";
+
+import { fmtPrice } from "@/lib/format";
+import { useSnapshot } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -78,6 +80,10 @@ export function Header({
 	onLiveToggle,
 }: HeaderProps) {
 	const location = useLocation();
+	const snapshot = useSnapshot();
+	const market = snapshot?.markets?.[0];
+	const marketBase = market?.ok ? market.id.split("-")[0] : null;
+	const marketSpotPrice = market?.ok ? fmtPrice(market.id, market.spotPrice) : null;
 	const isTradesActive = location.pathname === "/logs";
 	const isRunning = viewMode === "paper" ? paperRunning : liveRunning;
 	const pendingStart = viewMode === "paper" ? paperPendingStart : livePendingStart;
@@ -85,27 +91,26 @@ export function Header({
 	const status = getBotStatus(isRunning, pendingStart, pendingStop);
 	const isPending = status === "starting" || status === "stopping";
 	const mutationPending = viewMode === "paper" ? paperMutationPending : liveMutationPending;
-	const timeLeft = useCycleCountdown();
 
 	const handleToggle = viewMode === "paper" ? onPaperToggle : onLiveToggle;
 	const cfg = statusConfig[status];
 
 	return (
-		<div className="sticky top-3 z-50 flex justify-center px-3 pointer-events-none">
+		<div className="sticky top-3 z-50 mb-0.5 flex justify-center px-3 pointer-events-none">
 			<header className="pointer-events-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full max-w-3xl overflow-hidden relative">
 				{/* Logo */}
-				<div className="flex items-center gap-2 cursor-default select-none shrink-0">
-					<Link to="/" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity no-underline">
+				<div className="flex items-center gap-2.5 cursor-default select-none min-w-0">
+					<Link to="/" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity no-underline shrink-0">
 						<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-md border border-primary/20">
 							<Zap className="size-3.5" />
 						</div>
 						<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
 					</Link>
-					<span className="text-xs text-muted-foreground hidden sm:inline">/</span>
+					<span className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
 					<Link
 						to="/logs"
 						className={cn(
-							"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline",
+							"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline shrink-0",
 							isTradesActive && "text-foreground",
 						)}
 					>
@@ -113,15 +118,19 @@ export function Header({
 					</Link>
 				</div>
 
-				{/* Right: Countdown + Status + Wallet + Mode + Theme */}
+				{/* Right: Status + Wallet + Mode + Theme */}
 				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-					<div className="flex items-center gap-1.5 shrink-0" title="Time until next 15-minute cycle boundary">
-						<Clock className="size-3 text-muted-foreground" />
-						<span className="font-mono text-xs font-semibold text-foreground/80 tabular-nums">{timeLeft}</span>
-					</div>
 
-					<div className="h-4 w-px bg-border/60 shrink-0 hidden sm:block" />
-
+					{market?.ok && marketBase && marketSpotPrice && (
+						<div className="hidden md:flex items-end gap-2 px-1 py-0.5 shrink-0">
+							<span className="text-[10px] font-medium text-muted-foreground/90 tracking-[0.08em] uppercase">
+								{marketBase}
+							</span>
+							<span className="text-base font-semibold tracking-tight tabular-nums text-foreground leading-none">
+								{marketSpotPrice}
+							</span>
+						</div>
+					)}
 					<button
 						type="button"
 						onClick={handleToggle}

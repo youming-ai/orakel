@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
+import type { TradeRecord } from "@/contracts/http";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import type { TradeRecord } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { modeBadge, sideBadge } from "@/lib/variants";
@@ -17,7 +17,7 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 		<div className="grid grid-cols-1 gap-3 sm:hidden">
 			{pageTrades.map((t) => {
 				const { text, isUp } = sideLabel(t.side);
-				const slug = getMarketCycleSlug(t.market, t.timestamp);
+			const slug = getMarketCycleSlug(t.market, t.timestamp, t.marketSlug);
 				return (
 					<Card key={t.orderId || `trade-${t.timestamp}-${t.market}`} className="p-3">
 						<div className="flex items-start justify-between">

@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
+import type { DashboardState } from "@/contracts/http";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { DashboardState } from "./api";
 import type { ViewMode } from "./types";
 
 /* ── UI state ─────────────────────────────────────────── */

@@ -1,9 +1,9 @@
 import { AlertTriangle, DollarSign, Hash, Target, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { MarketSnapshot, PaperStats, StopLossStatus, TodayStats } from "@/contracts/http";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { MarketSnapshot, PaperStats, StopLossStatus, TodayStats } from "@/lib/api";
 import { CHART_COLORS, CHART_HEIGHT, TOOLTIP_CONTENT_STYLE, TOOLTIP_CURSOR_STYLE } from "@/lib/charts";
 import { asNumber, fmtDateTime, fmtTime } from "@/lib/format";
 import type { ViewMode } from "@/lib/types";
@@ -31,7 +31,7 @@ const addTimelineStartPoint = <T extends { cumulative: number }>(timeline: T[]):
 };
 
 interface OverviewTabProps {
-	stopLoss?: StopLossStatus;
+	stopLoss?: StopLossStatus | null;
 	viewMode: ViewMode;
 	todayStats?: TodayStats;
 	clearStopMutation: {

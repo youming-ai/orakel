@@ -1,4 +1,4 @@
-import type { MarketBreakdown, PaperStats, PaperTradeEntry, TradeRecord } from "./api";
+import type { MarketBreakdown, PaperStats, PaperTradeEntry, TradeRecord } from "@/contracts/http";
 import { fmtTime } from "./format";
 
 export function liveTradesAsPaper(trades: TradeRecord[]): PaperTradeEntry[] {
