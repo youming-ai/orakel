@@ -2,10 +2,10 @@ import { startApiServer } from "./api.ts";
 import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } from "./blockchain/accountState.ts";
 import { startReconciler } from "./blockchain/reconciler.ts";
 import { fetchRedeemablePositions, redeemAll, redeemByConditionId } from "./blockchain/redeemer.ts";
-import { CONFIG, DEFAULT_CANDLE_WINDOW_MINUTES, startConfigWatcher } from "./core/config.ts";
+import { CONFIG, startConfigWatcher } from "./core/config.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
-import { getActiveMarkets } from "./core/markets.ts";
+import { getActiveMarkets, getMarketById } from "./core/markets.ts";
 import {
 	emitBalanceSnapshot,
 	emitStateSnapshot,
@@ -235,9 +235,10 @@ async function main(): Promise<void> {
 
 			if (status === "filled" && previousStatus !== "filled") {
 				const parsedWindowStartMs = Number(order.windowSlug);
+				const orderMarket = getMarketById(order.marketId);
 				const windowStartMs = Number.isFinite(parsedWindowStartMs)
 					? parsedWindowStartMs
-					: getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES).startMs;
+					: getCandleWindowTiming(orderMarket?.candleWindowMinutes ?? 15).startMs;
 				const effectiveSize = order.sizeMatched > 0 ? order.sizeMatched : order.size;
 
 				const recordFilledTrade = (): boolean => {
@@ -280,7 +281,7 @@ async function main(): Promise<void> {
 				}
 
 				if (recorded) {
-					const currentTiming = getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES);
+					const currentTiming = getCandleWindowTiming(orderMarket?.candleWindowMinutes ?? 15);
 					if (windowStartMs < currentTiming.startMs) {
 						const prices = collectLatestPrices(markets, states);
 						if (prices.size > 0) {
@@ -418,7 +419,6 @@ async function main(): Promise<void> {
 
 	// Restore tracker state from DB to prevent duplicate orders after restart.
 	// Without this, a restart mid-window could allow re-placing orders.
-	const currentTiming = getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES);
 	const pendingLive = liveAccount.getPendingTrades();
 	let restoredCount = 0;
 	for (const trade of pendingLive) {
@@ -430,7 +430,9 @@ async function main(): Promise<void> {
 		orderTracker.record(trade.marketId, slugProxy, Number.isFinite(tradeTsMs) ? tradeTsMs : trade.windowStartMs);
 
 		// Restore liveTracker — only for trades in the current window
-		if (trade.windowStartMs === currentTiming.startMs) {
+		const tradeMarket = getMarketById(trade.marketId);
+		const tradeWindowTiming = getCandleWindowTiming(tradeMarket?.candleWindowMinutes ?? 15);
+		if (trade.windowStartMs === tradeWindowTiming.startMs) {
 			liveTracker.record(trade.marketId, trade.windowStartMs);
 		}
 		restoredCount++;
@@ -449,6 +451,8 @@ async function main(): Promise<void> {
 		const marketId = String(row.marketId ?? "").trim();
 		const windowStartMs = Number(row.windowStartMs ?? Number.NaN);
 		if (!orderId || !marketId || !Number.isFinite(windowStartMs)) continue;
+		const rowMarket = getMarketById(marketId);
+		const rowTiming = getCandleWindowTiming(rowMarket?.candleWindowMinutes ?? 15);
 		const price = Number(row.price ?? Number.NaN);
 		const size = Number(row.size ?? Number.NaN);
 		if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) {
@@ -494,7 +498,7 @@ async function main(): Promise<void> {
 				if (!orderTracker.hasOrder(marketId, windowKey)) {
 					orderTracker.record(marketId, windowKey, Number(row.placedAt ?? windowStartMs));
 				}
-				if (windowStartMs === currentTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
+				if (windowStartMs === rowTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
 					liveTracker.record(marketId, windowStartMs);
 				}
 				void pendingOrderQueries.delete(orderId).catch(() => {});
@@ -507,7 +511,7 @@ async function main(): Promise<void> {
 		if (!orderTracker.hasOrder(marketId, windowKey)) {
 			orderTracker.record(marketId, windowKey, Number(row.placedAt ?? windowStartMs));
 		}
-		if (windowStartMs === currentTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
+		if (windowStartMs === rowTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
 			liveTracker.record(marketId, windowStartMs);
 		}
 
@@ -626,7 +630,7 @@ async function main(): Promise<void> {
 		log.info("On-chain balance/events/reconciler pipelines started");
 	};
 
-	let prevWindowStartMs: number | null = null;
+	const prevWindowStartMs = new Map<string, number>();
 	const shutdown = () => {
 		log.info("Shutdown signal received, stopping bot...");
 		if (liveSettlerInstance) {
@@ -686,33 +690,39 @@ async function main(): Promise<void> {
 			continue;
 		}
 
-		const timing = getCandleWindowTiming(DEFAULT_CANDLE_WINDOW_MINUTES);
 		const latestPrices = collectLatestPrices(markets, states);
 
-		if (latestPrices.size > 0) {
-			const paperRecovered = await paperAccount.resolveExpiredTrades(latestPrices, DEFAULT_CANDLE_WINDOW_MINUTES);
-			if (paperRecovered > 0) {
-				log.info(`Recovered expired paper trades: ${paperRecovered}`);
-			}
-			// Live settlement runs regardless of isLiveRunning() — pending trades must
-			// settle even after live trading is stopped (fix: issue 2.1)
-			const liveRecovered = await liveAccount.resolveExpiredTrades(latestPrices, DEFAULT_CANDLE_WINDOW_MINUTES);
-			if (liveRecovered > 0) {
-				log.info(`Recovered expired live trades: ${liveRecovered}`);
-			}
-		}
+		for (const market of markets) {
+			const timing = getCandleWindowTiming(market.candleWindowMinutes);
+			const prevStart = prevWindowStartMs.get(market.id);
 
-		if (prevWindowStartMs !== null && prevWindowStartMs !== timing.startMs) {
 			if (latestPrices.size > 0) {
-				const paperResolved = await paperAccount.resolveTrades(prevWindowStartMs, latestPrices);
-				if (paperResolved > 0) {
-					log.info(`Paper window settled: ${paperResolved}`);
+				const paperRecovered = await paperAccount.resolveExpiredTrades(latestPrices, market.candleWindowMinutes);
+				if (paperRecovered > 0) {
+					log.info(`[${market.id}] Recovered expired paper trades: ${paperRecovered}`);
 				}
-				const liveResolved = await liveAccount.resolveTrades(prevWindowStartMs, latestPrices);
-				if (liveResolved > 0) {
-					log.info(`Live window settled: ${liveResolved}`);
+				// Live settlement runs regardless of isLiveRunning() — pending trades must
+				// settle even after live trading is stopped (fix: issue 2.1)
+				const liveRecovered = await liveAccount.resolveExpiredTrades(latestPrices, market.candleWindowMinutes);
+				if (liveRecovered > 0) {
+					log.info(`[${market.id}] Recovered expired live trades: ${liveRecovered}`);
 				}
 			}
+
+			if (prevStart !== undefined && prevStart !== timing.startMs) {
+				if (latestPrices.size > 0) {
+					const paperResolved = await paperAccount.resolveTrades(prevStart, latestPrices);
+					if (paperResolved > 0) {
+						log.info(`[${market.id}] Paper window settled: ${paperResolved}`);
+					}
+					const liveResolved = await liveAccount.resolveTrades(prevStart, latestPrices);
+					if (liveResolved > 0) {
+						log.info(`[${market.id}] Live window settled: ${liveResolved}`);
+					}
+				}
+			}
+
+			prevWindowStartMs.set(market.id, timing.startMs);
 		}
 
 		// Force-resolve trades stuck beyond 1 hour — safety net for issue 7.2
@@ -723,11 +733,7 @@ async function main(): Promise<void> {
 		if (liveForced > 0) log.warn(`Force-resolved ${liveForced} stuck live trade(s)`);
 
 		ensureLiveSettler();
-		prevWindowStartMs = timing.startMs;
 
-		orderTracker.setWindow(timing.startMs);
-		paperTracker.setWindow(timing.startMs);
-		liveTracker.setWindow(timing.startMs);
 		const results: ProcessMarketResult[] = await Promise.all(
 			markets.map(async (market) => {
 				try {
@@ -735,6 +741,10 @@ async function main(): Promise<void> {
 					if (!state) {
 						throw new Error(`missing_state_${market.id}`);
 					}
+					const timing = getCandleWindowTiming(market.candleWindowMinutes);
+					orderTracker.setWindow(timing.startMs);
+					paperTracker.setWindow(timing.startMs);
+					liveTracker.setWindow(timing.startMs);
 					return await processMarket({
 						market,
 						timing,
@@ -808,7 +818,8 @@ async function main(): Promise<void> {
 			const sig = candidate.signalPayload;
 			if (!sig) continue;
 			const mkt = candidate.market;
-			const windowKey = String(timing.startMs);
+			const mktTiming = getCandleWindowTiming(mkt.candleWindowMinutes);
+			const windowKey = String(mktTiming.startMs);
 			const sideBook = sig.side === "UP" ? (candidate.orderbook?.up ?? null) : (candidate.orderbook?.down ?? null);
 			const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
 
@@ -819,7 +830,7 @@ async function main(): Promise<void> {
 				const minPaperLiquidity = Number(CONFIG.paperRisk.minLiquidity || 0);
 				const hasPaperLiquidity = sideLiquidity !== null && sideLiquidity >= minPaperLiquidity;
 				if (
-					!paperTracker.has(mkt.id, timing.startMs) &&
+					!paperTracker.has(mkt.id, mktTiming.startMs) &&
 					affordCheck.canTrade &&
 					hasPaperLiquidity &&
 					paperTracker.canTradeGlobally(Math.min(maxGlobalTrades, CONFIG.paperRisk.maxTradesPerWindow)) &&
@@ -827,7 +838,7 @@ async function main(): Promise<void> {
 				) {
 					const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.paperRisk }, "paper");
 					if (result?.success) {
-						paperTracker.record(mkt.id, timing.startMs);
+						paperTracker.record(mkt.id, mktTiming.startMs);
 					} else {
 						log.warn(`Paper trade failed for ${mkt.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
 					}
@@ -858,7 +869,7 @@ async function main(): Promise<void> {
 						!orderTracker.onCooldown() &&
 						orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
 						successfulTradesThisTick < liveWindowLimit &&
-						!liveTracker.has(mkt.id, timing.startMs) &&
+						!liveTracker.has(mkt.id, mktTiming.startMs) &&
 						liveTracker.canTradeGlobally(liveWindowLimit) &&
 						liveAffordCheck.canTrade;
 
@@ -866,7 +877,7 @@ async function main(): Promise<void> {
 						const result = await executeTrade(sig, { marketConfig: mkt, riskConfig: CONFIG.liveRisk }, "live");
 						if (result?.success) {
 							orderTracker.record(mkt.id, windowKey);
-							liveTracker.record(mkt.id, timing.startMs);
+							liveTracker.record(mkt.id, mktTiming.startMs);
 							successfulTradesThisTick += 1;
 
 							if (result.orderId && (result.isGtdOrder ?? true)) {
