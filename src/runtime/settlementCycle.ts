@@ -1,8 +1,8 @@
+import type { MarketConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import { getCandleWindowTiming } from "../core/utils.ts";
 import type { MarketState } from "../pipeline/processMarket.ts";
 import type { AccountStatsManager } from "../trading/accountStats.ts";
-import type { MarketConfig } from "../types.ts";
 import { collectLatestPrices } from "./marketState.ts";
 
 const log = createLogger("settlement-cycle");

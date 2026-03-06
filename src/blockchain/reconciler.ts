@@ -1,8 +1,16 @@
+import type { ReconResult } from "../contracts/stateTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import { onchainQueries, tradeQueries } from "../db/queries.ts";
-import type { ReconResult } from "../types.ts";
 import { USDC_E_DECIMALS } from "./contracts.ts";
-import { rawToUsdc, statusFromConfidence } from "./reconciler-utils.ts";
+import { statusFromConfidence } from "./reconciler-utils.ts";
+import {
+	buildBaseReconResult,
+	findBestReconMatch,
+	findMatchingTokens,
+	type ReconEventCandidate,
+	type ReconKnownTokenCandidate,
+	type ReconTradeCandidate,
+} from "./reconcilerMatching.ts";
 
 const log = createLogger("reconciler");
 
@@ -17,18 +25,8 @@ let walletAddress = "";
 
 type DrizzleTradeRow = Awaited<ReturnType<typeof tradeQueries.getUnreconciledTrades>>[number];
 type TradeRow = DrizzleTradeRow & { orderId: string };
-type EventRow = Awaited<ReturnType<typeof onchainQueries.getByToken>>[number];
-
-function parseCreatedAtMs(value: string | number | null): number | null {
-	if (value === null) return null;
-	const rawNum = Number(value);
-	if (Number.isFinite(rawNum)) {
-		// SQLite created_at is Unix seconds; some rows may already be ms.
-		return rawNum > 1_000_000_000_000 ? rawNum : rawNum * 1000;
-	}
-	const parsed = Date.parse(String(value));
-	return Number.isFinite(parsed) ? parsed : null;
-}
+type EventRow = Awaited<ReturnType<typeof onchainQueries.getByToken>>[number] & ReconEventCandidate;
+type KnownTokenRow = Awaited<ReturnType<typeof onchainQueries.getKnownCtfTokens>>[number] & ReconKnownTokenCandidate;
 
 function hasOrderId(row: DrizzleTradeRow): row is TradeRow {
 	return typeof row.orderId === "string" && row.orderId.length > 0;
@@ -37,96 +35,34 @@ function hasOrderId(row: DrizzleTradeRow): row is TradeRow {
 // --- Core reconciliation ---
 
 async function reconcileTrade(trade: TradeRow): Promise<ReconResult> {
-	const base: ReconResult = {
-		orderId: trade.orderId,
-		status: "unreconciled",
-		confidence: 0,
-		txHash: null,
-		blockNumber: null,
-	};
+	const base = buildBaseReconResult(trade.orderId);
 
 	try {
-		// 1. Look up known tokens for this trade's market + side
-		const allTokens = await onchainQueries.getKnownCtfTokens();
-		const matchingTokens = allTokens.filter(
-			(t) => t.marketId === trade.market && t.side.toUpperCase().includes(trade.side.toUpperCase()),
-		);
-
+		const allTokens = (await onchainQueries.getKnownCtfTokens()) as KnownTokenRow[];
+		const reconTrade: ReconTradeCandidate = {
+			orderId: trade.orderId,
+			market: trade.market,
+			side: trade.side,
+			amount: trade.amount,
+			price: trade.price,
+			timestamp: trade.timestamp,
+		};
+		const matchingTokens = findMatchingTokens(allTokens, reconTrade);
 		if (matchingTokens.length === 0) {
 			return base;
 		}
 
-		const tradeTimestamp = new Date(trade.timestamp).getTime();
-		if (!Number.isFinite(tradeTimestamp)) {
-			return base;
-		}
-
-		const expectedUsdcDelta = Number(trade.amount) * Number(trade.price);
-
-		let bestMatch: {
-			event: EventRow;
-			confidence: number;
-			usdcDelta: number;
-			tokenId: string;
-		} | null = null;
-
-		// 2. For each known token, search on-chain events
-		for (const token of matchingTokens) {
-			const events = await onchainQueries.getByToken(token.tokenId, RECON_BATCH_LIMIT);
-
-			for (const rawEvent of events) {
-				// Check temporal proximity
-				const eventTime = parseCreatedAtMs(rawEvent.createdAt);
-				if (eventTime === null) continue;
-				const timeDiff = Math.abs(eventTime - tradeTimestamp);
-				if (timeDiff > TIME_MAX_MS) continue;
-
-				// Scoring: base 0.3 (token match) + USDC delta match 0.3 / CTF transfer 0.15 + time proximity 0.2 + direction 0.15
-				let confidence = 0.3;
-
-				if (rawEvent.eventType === "usdc_transfer") {
-					if (rawEvent.value === null) continue;
-					const usdcValue = rawToUsdc(BigInt(rawEvent.value), USDC_E_DECIMALS);
-					const delta = Math.abs(usdcValue - expectedUsdcDelta);
-					const tolerance = expectedUsdcDelta * USDC_TOLERANCE;
-					if (delta <= tolerance) {
-						confidence += 0.3;
-					}
-				} else if (rawEvent.eventType === "ctf_transfer_single") {
-					confidence += 0.15;
-				}
-
-				// Time proximity bonus
-				if (timeDiff <= TIME_CLOSE_MS) {
-					confidence += 0.2;
-				}
-
-				// Direction match bonus
-				if (walletAddress) {
-					const wallet = walletAddress.toLowerCase();
-					const toAddr = typeof rawEvent.toAddr === "string" ? rawEvent.toAddr.toLowerCase() : "";
-					const fromAddr = typeof rawEvent.fromAddr === "string" ? rawEvent.fromAddr.toLowerCase() : "";
-					const isIncoming = toAddr === wallet;
-					const isOutgoing = fromAddr === wallet;
-					if (isIncoming || isOutgoing) {
-						confidence += 0.15;
-					}
-				}
-
-				if (!bestMatch || confidence > bestMatch.confidence) {
-					bestMatch = {
-						event: rawEvent,
-						confidence,
-						usdcDelta:
-							rawEvent.eventType === "usdc_transfer" && rawEvent.value !== null
-								? rawToUsdc(BigInt(rawEvent.value), USDC_E_DECIMALS)
-								: 0,
-						tokenId: token.tokenId,
-					};
-				}
-			}
-		}
-
+		const bestMatch = await findBestReconMatch({
+			trade: reconTrade,
+			matchingTokens,
+			loadEvents: async (tokenId: string) =>
+				(await onchainQueries.getByToken(tokenId, RECON_BATCH_LIMIT)) as EventRow[],
+			walletAddress,
+			usdcDecimals: USDC_E_DECIMALS,
+			usdcTolerance: USDC_TOLERANCE,
+			timeCloseMs: TIME_CLOSE_MS,
+			timeMaxMs: TIME_MAX_MS,
+		});
 		if (!bestMatch) {
 			return base;
 		}

@@ -1,7 +1,12 @@
 import { createBunWebSocket } from "hono/bun";
+import type {
+	SignalNewPayload,
+	StateSnapshotPayload,
+	TradeExecutedPayload,
+	WsMessage,
+} from "../../contracts/stateTypes.ts";
 import { createLogger } from "../../core/logger.ts";
 import { botEvents } from "../../core/state.ts";
-import type { SignalNewPayload, StateSnapshotPayload, TradeExecutedPayload, WsMessage } from "../../types.ts";
 
 const wsLog = createLogger("ws");
 const SNAPSHOT_THROTTLE_MS = 500;

@@ -6,7 +6,7 @@ import type { OnchainRuntime } from "../runtime/onchainRuntime.ts";
 import type { LiveSettler } from "../trading/liveSettler.ts";
 import type { OrderManager } from "../trading/orderManager.ts";
 import { stopHeartbeat } from "../trading/trader.ts";
-import type { StreamHandles } from "../types.ts";
+import type { StreamHandles } from "../trading/tradeTypes.ts";
 
 const log = createLogger("shutdown");
 

@@ -1,11 +1,10 @@
-import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } from "../blockchain/accountState.ts";
+import { initAccountState, resetAccountState } from "../blockchain/accountState.ts";
 import { startReconciler } from "../blockchain/reconciler.ts";
 import { createLogger } from "../core/logger.ts";
-import { emitBalanceSnapshot, setOnchainBalance } from "../core/state.ts";
 import { startBalancePolling } from "../data/polygonBalance.ts";
 import { startOnChainEventStream } from "../data/polygonEvents.ts";
-import { onchainQueries } from "../db/queries.ts";
 import { getWallet } from "../trading/trader.ts";
+import { handleOnchainBalanceSnapshot, handleOnchainEvent } from "./onchainRuntimeHandlers.ts";
 
 const log = createLogger("onchain-runtime");
 
@@ -66,31 +65,14 @@ export function createOnchainRuntime({ readKnownTokenIds }: OnchainRuntimeParams
 		balancePollingHandle = startBalancePolling({
 			wallet: walletAddress,
 			knownTokenIds: readKnownTokenIds,
-			onUpdate: (snapshot) => {
-				updateFromSnapshot(snapshot);
-				setOnchainBalance(snapshot);
-				emitBalanceSnapshot(snapshot);
-			},
+			onUpdate: handleOnchainBalanceSnapshot,
 		});
 		eventStreamHandle = startOnChainEventStream({
 			wallet: walletAddress,
 			onEvent: (event) => {
-				applyEvent(event);
-				void onchainQueries
-					.insertEvent({
-						txHash: event.txHash,
-						logIndex: event.logIndex,
-						blockNumber: event.blockNumber,
-						eventType: event.type,
-						fromAddr: event.from,
-						toAddr: event.to,
-						tokenId: event.tokenId,
-						value: event.value,
-						rawData: JSON.stringify(event),
-					})
-					.catch((err) => {
-						log.warn("Failed to persist on-chain event", err);
-					});
+				void handleOnchainEvent(event, (message, err) => {
+					log.warn(message, err);
+				});
 			},
 		});
 		reconcilerHandle = startReconciler({ wallet: walletAddress });

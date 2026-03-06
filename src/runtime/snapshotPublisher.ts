@@ -1,7 +1,17 @@
-import { emitStateSnapshot, getUpdatedAt, isLivePendingStart, isLivePendingStop, isLiveRunning, isPaperPendingStart, isPaperPendingStop, isPaperRunning, updateMarkets } from "../core/state.ts";
+import type { MarketSnapshot } from "../contracts/stateTypes.ts";
+import {
+	emitStateSnapshot,
+	getUpdatedAt,
+	isLivePendingStart,
+	isLivePendingStop,
+	isLiveRunning,
+	isPaperPendingStart,
+	isPaperPendingStop,
+	isPaperRunning,
+	updateMarkets,
+} from "../core/state.ts";
 import type { ProcessMarketResult } from "../pipeline/processMarket.ts";
 import { liveAccount, paperAccount } from "../trading/accountStats.ts";
-import type { MarketSnapshot } from "../types.ts";
 
 export function buildMarketSnapshots(results: ProcessMarketResult[]): MarketSnapshot[] {
 	return results.map(

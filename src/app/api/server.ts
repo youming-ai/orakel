@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
+import type { StateSnapshotPayload, WsMessage } from "../../contracts/stateTypes.ts";
 import { env } from "../../core/env.ts";
 import { createLogger } from "../../core/logger.ts";
 import {
@@ -13,7 +14,6 @@ import {
 	isPaperRunning,
 } from "../../core/state.ts";
 import { liveAccount, paperAccount } from "../../trading/accountStats.ts";
-import type { StateSnapshotPayload, WsMessage } from "../../types.ts";
 import { corsMiddleware, rateLimit, requireAuth } from "./middleware.ts";
 import { apiRoutes } from "./routes.ts";
 import {
