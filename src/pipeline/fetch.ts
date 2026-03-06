@@ -292,11 +292,13 @@ export async function fetchMarketData(
 		const timeLeftMin = settlementLeftMin ?? timing.remainingMinutes;
 		const lastPrice = Number(lastPriceRaw);
 		const spotPrice = wsPrice ?? lastPrice;
-		const currentPrice = chainlink?.price ?? null;
-		const priceUpdatedAt = chainlink?.updatedAt ?? null;
-		if (priceUpdatedAt !== null && Date.now() - priceUpdatedAt > MAX_PRICE_AGE_MS) {
-			log.warn(`Stale price for ${market.id}: ${(Date.now() - priceUpdatedAt) / 1000}s old — skipping`);
-			return { ok: false, market, error: `stale_price_${(Date.now() - priceUpdatedAt) / 1000}s` };
+		const currentPrice = market.resolutionSource === "binance" ? spotPrice : (chainlink?.price ?? null);
+		if (market.resolutionSource !== "binance") {
+			const priceUpdatedAt = chainlink?.updatedAt ?? null;
+			if (priceUpdatedAt !== null && Date.now() - priceUpdatedAt > MAX_PRICE_AGE_MS) {
+				log.warn(`Stale price for ${market.id}: ${(Date.now() - priceUpdatedAt) / 1000}s old — skipping`);
+				return { ok: false, market, error: `stale_price_${(Date.now() - priceUpdatedAt) / 1000}s` };
+			}
 		}
 		const marketSlug = poly.ok ? String(poly.market?.slug ?? "") : "";
 		const marketStartMs =
