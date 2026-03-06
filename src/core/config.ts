@@ -172,7 +172,7 @@ const FILE_STRATEGY = FILE_CONFIG.strategy;
 const FILE_PAPER_RISK = FILE_CONFIG.paper.risk;
 const FILE_LIVE_RISK = FILE_CONFIG.live.risk;
 
-const DEFAULT_MARKET = MARKETS.find((m) => m.id === "BTC") ?? MARKETS[0] ?? null;
+const DEFAULT_MARKET = MARKETS.find((m) => m.id === "BTC-15m") ?? MARKETS[0] ?? null;
 
 function buildRiskConfig(primary: z.infer<typeof RiskConfigSchema>): RiskConfig {
 	return {

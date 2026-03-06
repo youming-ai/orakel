@@ -23,7 +23,10 @@ export interface HaCandle {
 
 export interface MarketConfig {
 	id: string;
+	coin: string;
 	label: string;
+	candleWindowMinutes: number;
+	resolutionSource: "chainlink" | "binance";
 	binanceSymbol: string;
 	polymarket: {
 		seriesId: string;
