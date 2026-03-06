@@ -1,7 +1,7 @@
 # AGENTS.md — Orakel
 
-Automated trading bot for Polymarket 15-minute crypto up/down markets.
-Backend: Bun + TypeScript + Hono + SQLite. Frontend: React 19 + Vite + shadcn/ui + Tailwind v4.
+Automated trading bot for Polymarket crypto up/down markets (5m, 15m, 1h, 4h).
+Backend: Bun + TypeScript + Hono + PostgreSQL (Drizzle ORM). Frontend: React 19 + Vite + shadcn/ui + Tailwind v4.
 
 ## Build & Run Commands
 
@@ -23,31 +23,61 @@ bun run test                         # Run all tests (vitest)
 bunx vitest run src/__tests__/rsi.test.ts   # Run a single test file
 bunx vitest run -t "clamp"           # Run tests matching name pattern
 bun run test:watch                   # Vitest in watch mode
+
+bunx drizzle-kit generate            # Generate migration from schema changes
+bunx drizzle-kit migrate             # Apply pending migrations
+bunx drizzle-kit push                # Push schema directly (dev only)
 ```
 
 ## CI Pipeline (.github/workflows/ci.yml)
 
 1. `bunx biome lint src/` — Lint only (stricter than `bun run lint`)
-2. `tsc --noEmit -p tsconfig.check.json` — Typecheck (excludes test files)
+2. `bunx tsc --noEmit -p tsconfig.check.json` — Typecheck (excludes test files)
 3. `bun run test` — Tests
-4. `docker build -t orakel:ci .` — Docker build (runs after checks pass)
+4. `docker build -t orakel:ci` — Docker build (runs after checks pass)
 
 Always run `bun run lint && bun run typecheck && bun run test` before pushing.
 
 ## Project Structure
 
 ```
-src/                           # Backend (Bun runtime)
+src/
 ├── index.ts                   # Entry point, main loop startup
-├── api.ts                     # Hono API server + WebSocket
+├── api.ts                     # Hono API server + WebSocket (legacy, see app/api/)
 ├── types.ts                   # ALL shared TypeScript interfaces/types
-├── core/                      # Config, DB, env, logger, state, utils, cache, markets
-├── trading/                   # Trade execution, account stats, order management, settlement
-├── pipeline/                  # Per-market processing: fetch → compute → processMarket (1s loop)
-├── blockchain/                # On-chain: account state, contracts, reconciliation, redemption
-├── engines/                   # Core logic: edge, probability, regime detection, arbitrage
-├── indicators/                # Technical analysis: RSI, MACD, VWAP, Heiken Ashi (pure functions)
-├── data/                      # External adapters: Binance, Polymarket, Chainlink, Polygon
+├── app/                       # Application lifecycle
+│   ├── api/                   # Routes, middleware, server, WebSocket broadcaster
+│   ├── bootstrap.ts           # Startup sequence (wallet, config, auto-redeem)
+│   └── shutdown.ts            # Graceful shutdown
+├── core/                      # Config, env, logger, state, utils, cache, markets
+├── db/                        # Database layer (Drizzle ORM + PostgreSQL)
+│   ├── schema.ts              # All table definitions (pgTable)
+│   ├── client.ts              # postgres connection + drizzle instance
+│   ├── queries.ts             # Shared query helpers
+│   └── index.ts               # Re-exports
+├── repositories/              # Data access — query objects per domain
+│   ├── tradeRepo.ts           # Trade CRUD + settlement queries
+│   ├── dailyStatsRepo.ts      # Daily P&L tracking
+│   ├── stateRepo.ts           # Paper/live state persistence
+│   ├── kvRepo.ts              # Key-value store
+│   ├── pendingOrderRepo.ts    # Live order tracking
+│   ├── onchainRepo.ts         # On-chain events + balance snapshots
+│   └── maintenanceRepo.ts     # DB pruning / maintenance
+├── runtime/                   # Runtime orchestration (cycles, state machines)
+│   ├── marketState.ts         # Per-market state management
+│   ├── settlementCycle.ts     # Settlement timing and execution
+│   ├── tradeDispatch.ts       # Trade routing (paper vs live)
+│   ├── orderRecovery.ts       # Recover pending orders on restart
+│   ├── orderStatusSync.ts     # Sync order status from Polymarket
+│   ├── onchainRuntime.ts      # On-chain monitoring runtime
+│   └── snapshotPublisher.ts   # WebSocket state broadcasting
+├── contracts/                 # Polymarket contract config (addresses, ABIs)
+├── trading/                   # Trade execution, account stats, order management
+├── pipeline/                  # Per-market processing: fetch → compute → processMarket
+├── blockchain/                # On-chain: account state, reconciliation, redemption
+├── engines/                   # Edge, probability, regime detection
+├── indicators/                # RSI, MACD, VWAP, Heiken Ashi (pure functions)
+├── data/                      # External adapters: Binance, Polymarket, Chainlink
 └── __tests__/                 # All test files (centralized, not co-located)
 
 web/                           # Frontend (Vite + React 19)
@@ -133,6 +163,16 @@ const log = createLogger("module-name");
 log.info("message", data);    // debug | info | warn | error
 ```
 
+## Database (PostgreSQL + Drizzle ORM)
+
+- **Schema**: `src/db/schema.ts` — all tables defined with `pgTable()`
+- **Client**: `src/db/client.ts` — `postgres` driver, exported `db` (drizzle instance)
+- **Repositories**: `src/repositories/` — domain-specific query objects (not raw SQL)
+- **Migrations**: `drizzle/` directory, managed by `drizzle-kit`
+- **Config**: `drizzle.config.ts` at project root
+- New DB code should use repositories or add queries to existing repo files.
+  Do NOT use raw SQL strings — use Drizzle query builder.
+
 ## Testing Conventions
 
 Tests use **Vitest**, centralized in `src/__tests__/` (not co-located with source).
@@ -149,10 +189,10 @@ Test timeout: 10 seconds (vitest.config.ts).
 - **ESM-only** (`"type": "module"` in package.json)
 - **No DI framework** — module-level singletons for shared state
 - **Config**: `config.json` (strategy/risk, Zod-validated, auto-reloads) + `.env` (secrets, Zod-validated)
-- **API**: Hono with chained routes for RPC type inference (`AppType` export)
-- **Database**: SQLite primary (`src/core/db.ts`), CSV legacy. New code uses `statements` from db.ts
+- **API**: Hono with chained routes; `src/app/api/` has routes, middleware, server, WS broadcaster
+- **Database**: PostgreSQL via Drizzle ORM (`src/db/`), repository pattern (`src/repositories/`)
 - **Frontend**: TanStack Query + Zustand + WebSocket (`state:snapshot` events are single source of truth)
-- **Docker**: multi-stage build (bot-deps → web-build → release), docker-compose for local dev
+- **Docker**: multi-stage build, docker-compose for local dev
 - **Named exports only** — no default exports anywhere in this codebase
 
 ## Things to Avoid
@@ -162,4 +202,5 @@ Test timeout: 10 seconds (vitest.config.ts).
 - `console.log` directly — use `createLogger()` factory
 - Path aliases — use relative imports with `.ts` extension
 - Mixing runtime values into type-only imports (verbatimModuleSyntax enforced)
+- Raw SQL strings — use Drizzle query builder via repositories
 - Adding new dependencies without justification — prefer existing libraries

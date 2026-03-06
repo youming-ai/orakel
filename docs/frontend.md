@@ -1,407 +1,185 @@
 # Frontend Architecture
 
-## 1. Frontend Overview
+> This document reflects the current frontend structure after the app/router/ws/widgets/entities refactor stage completed on March 7, 2026.
 
-The Orakel frontend is a real-time trading dashboard built with React 19, providing monitoring and control for the automated Polymarket trading bot.
+## Overview
 
-**Tech Stack**
+The frontend is a React 19 + Vite dashboard for monitoring and controlling the bot in real time.
 
-- Runtime: React 19 with TypeScript
-- Build Tool: Vite
-- Styling: Tailwind CSS v4 (via Vite plugin)
-- UI Components: shadcn/ui (Radix UI primitives)
-- Data Fetching: TanStack Query v5 (React Query)
-- State Management: Zustand (UI state) + TanStack Query (server state)
-- Charts: Recharts
-- Routing: React Router v7
+Current stack:
 
-**Build and Development Commands**
+- React 19
+- TypeScript
+- React Router
+- TanStack Query
+- Zustand
+- shadcn/ui + Tailwind v4
+- Recharts
 
-| Command | Description |
-|---------|-------------|
-| `cd web && bun install` | Install frontend dependencies |
-| `cd web && bun run dev` | Start Vite dev server (default port 5173) |
-| `cd web && bun run build` | Production build (outputs to web/dist) |
-| `cd web && bun run preview` | Preview production build |
+The frontend is no longer just `pages + components + lib`. It now has explicit `app`, `contracts`, `widgets`, `entities`, `features`, and `shared` boundaries, although some old `components/*` implementations still exist and are being phased out.
 
-**Deployment**
+## Current Structure
 
-- Production: Served from backend port 9999 (integrated into Docker image)
-- Development: Vite dev server proxies `/api` and `/ws` to backend at localhost:9999
-
----
-
-## 2. Application Structure
-
-### Entry Point (main.tsx)
-
-Application entry point initializes TanStack Query, React Router, and root providers. Wraps App component with QueryClientProvider for TanStack Query, BrowserRouter for routing, and StrictMode for development checks.
-
-### Root Component (App.tsx)
-
-Root component handles global providers: AlertDialogProvider for action confirmations, Toaster for notifications, and ErrorBoundary for uncaught errors. Routes page requests through React Router.
-
-### Routing Strategy
-
-Single-page application with two main routes:
-- `/` → Dashboard page
-- `/trades` → Trades page
-
-Both routes render inside a Layout component that provides the persistent Header and navigation.
-
-### Providers Stack
-
-- QueryClientProvider: TanStack Query for data fetching and caching
-- AlertDialogProvider: shadcn/ui dialog for confirmations (start/stop actions)
-- Toaster: shadcn/ui toast notifications system
-
----
-
-## 3. Pages
-
-### Dashboard.tsx
-
-Main dashboard page displaying real-time market data, trading signals, and P&L analytics. Contains two tabs managed by shadcn/ui Tabs component:
-
-**OverviewTab**: Shows aggregated statistics (win rate, total P&L, active positions), P&L chart using Recharts, and market card grid for each supported market (BTC, ETH, SOL, XRP).
-
-**TradesTab**: Displays unified trade table with pagination and market comparison table showing side-by-side statistics across markets.
-
-### Trades.tsx
-
-Dedicated trades page with TradesTab component. Provides expanded view of trade history with filtering and detailed market comparison statistics. Shares TradeTable and MarketComparisonTable components with Dashboard TradesTab.
-
-Both pages support view mode switching between paper trading and live trading data via Zustand store.
-
----
-
-## 4. Component Hierarchy
-
-Components are organized into logical subdirectories under `components/`:
-
-- `analytics/` — Dashboard tabs and charts (OverviewTab, TradesTab)
-- `market/` — Market-specific components (MarketCard, MarketIndicators)
-- `trades/` — Trade display components (TradeTable with desktop/mobile variants)
-- `ui/` — shadcn/ui primitives (alert-dialog, button, card, etc.)
-
-```
-App
-├── AlertDialog (confirm actions)
-├── Toaster (notifications)
-└── Layout
-    ├── Header
-    │   ├── Status indicators (paper/live running states)
-    │   ├── 15-minute window countdown timer
-    │   ├── View mode toggle (paper/live)
-    │   └── Navigation links (Dashboard / Trades)
-    └── <Outlet>
-        ├── Dashboard
-        │   └── Tabs
-        │       ├── OverviewTab (from analytics/)
-        │       │   ├── StatCard[] (win rate, P&L, positions)
-        │       │   ├── P&L Chart (Recharts)
-        │       │   └── MarketCard (from market/)
-        │       │       └── MarketIndicators (RSI, MACD, edge, confidence)
-        │       └── TradesTab (from analytics/)
-        │           ├── TradeTable (from trades/)
-        │           │   ├── TradeTableDesktop
-        │           │   └── TradeTableMobile
-        │           └── MarketComparisonTable
-        └── Trades
-            └── TradesTab
-                ├── TradeTable
-                │   ├── TradeTableDesktop
-                │   └── TradeTableMobile
-                └── MarketComparisonTable
+```text
+web/src/
+├── App.tsx
+├── app/
+│   ├── AppShell.tsx
+│   ├── router.tsx
+│   ├── layout/
+│   │   └── AppLayout.tsx
+│   └── ws/
+│       ├── cacheSync.ts
+│       └── useDashboardStateWithWs.ts
+├── contracts/
+│   ├── http.ts
+│   └── ws.ts
+├── entities/
+│   ├── account/
+│   │   └── queries.ts
+│   ├── market/
+│   │   └── MarketCard.tsx
+│   └── trade/
+│       └── queries.ts
+├── features/
+│   └── botControl/
+│       ├── ConfirmToggleDialog.tsx
+│       └── mutations.ts
+├── shared/
+│   └── query/
+│       └── queryKeys.ts
+├── widgets/
+│   ├── overview/
+│   │   ├── OverviewPanel.tsx
+│   │   └── OverviewTab.tsx
+│   └── trades/
+│       ├── TradesPanel.tsx
+│       ├── TradesTab.tsx
+│       ├── TradeTable.tsx
+│       ├── TradeTableDesktop.tsx
+│       ├── TradeTableMobile.tsx
+│       └── MarketComparisonTable.tsx
+├── pages/
+│   ├── Dashboard.tsx
+│   └── Trades.tsx
+├── components/              # Legacy implementations + compatibility layer
+├── lib/                     # Existing utilities, formatters, client wrappers
+├── hooks/
+└── styles/
 ```
 
-**Error Boundaries**
+## Runtime Composition
 
-- AppErrorBoundary: Catches unhandled errors at application level
-- ChartErrorBoundary: Isolates chart rendering errors, prevents dashboard failure
+Top-level runtime flow:
 
----
+1. [App.tsx](/Users/youming/GitHub/orakel/web/src/App.tsx) renders [AppShell.tsx](/Users/youming/GitHub/orakel/web/src/app/AppShell.tsx)
+2. `AppShell` loads dashboard state, wires start/stop mutations, and owns the confirm dialog
+3. [router.tsx](/Users/youming/GitHub/orakel/web/src/app/router.tsx) mounts routes inside [AppLayout.tsx](/Users/youming/GitHub/orakel/web/src/app/layout/AppLayout.tsx)
+4. pages are intentionally thin:
+   - [Dashboard.tsx](/Users/youming/GitHub/orakel/web/src/pages/Dashboard.tsx) -> `OverviewPanel`
+   - [Trades.tsx](/Users/youming/GitHub/orakel/web/src/pages/Trades.tsx) -> `TradesPanel`
 
-## 5. State Management
+This keeps routing/layout concerns out of analytics and trade presentation code.
 
-State management uses a two-tier architecture: client-side UI state and server state synchronization.
+## Data Contracts
 
-### UI State (Zustand)
+The frontend no longer defines backend DTOs ad hoc in API helpers.
 
-Zustand store (`useUIStore`) manages ephemeral UI state persisted to localStorage.
+Contract boundary:
 
-| State Field | Type | Persistence | Description |
-|-------------|------|-------------|-------------|
-| viewMode | `"paper" \| "live"` | Yes | Current trading mode view |
-| confirmAction | `"start" \| "stop" \| null` | No | Pending confirmation action |
+- [web/src/contracts/http.ts](/Users/youming/GitHub/orakel/web/src/contracts/http.ts)
+- [web/src/contracts/ws.ts](/Users/youming/GitHub/orakel/web/src/contracts/ws.ts)
 
-Persisted via Zustand middleware, storage key `orakel-ui`. Only viewMode is persisted.
+These mirror backend-facing response/message shapes and should be the first place to update when backend contracts change.
 
-### Server State (TanStack Query)
+## State Model
 
-TanStack Query manages data fetching, caching, and background synchronization with backend API.
+### UI State
 
-**Queries**
+Zustand is still used for ephemeral UI state, primarily:
 
-| Query Hook | Data | Refetch Interval | Stale Time |
-|------------|------|------------------|------------|
-| useDashboardState | DashboardState (markets, config, stats) | 1000ms (if WS disconnected) | 0ms (WS) / 5000ms (HTTP) |
-| useTrades(mode) | Trade history for mode | 5000ms | 10000ms |
-| usePaperStats | Paper trading statistics | 10000ms | 10000ms |
+- current `viewMode`
+- pending confirm action
 
-**Mutations**
+### Server State
 
-- Start/stop paper trading
-- Start/stop live trading
-- Reset paper stats
-- Reset live stats
-- Update configuration
+TanStack Query remains the source of truth for HTTP-fetched backend state:
 
-Mutations invalidate related queries on completion to trigger refetch.
+- dashboard snapshot
+- paper/live stats
+- trades
 
-### WebSocket Integration
+### Real-Time Sync
 
-When WebSocket is connected, state query polling is disabled (`refetchInterval: false`). WebSocket messages update TanStack Query cache directly via `setQueryData`, eliminating network overhead and reducing latency.
+WebSocket cache sync is now explicitly separated into `app/ws/*` instead of being mixed into a monolithic queries file.
 
----
+Important pieces:
 
-### Library Files (lib/)
+- [cacheSync.ts](/Users/youming/GitHub/orakel/web/src/app/ws/cacheSync.ts)
+- [useDashboardStateWithWs.ts](/Users/youming/GitHub/orakel/web/src/app/ws/useDashboardStateWithWs.ts)
 
-| File | Purpose |
-|------|---------|
-| `api.ts` | HTTP client with typed methods (get, post, put) |
-| `queries.ts` | TanStack Query hooks and cache handlers |
-| `store.ts` | Zustand store for UI state (viewMode, confirmations) |
-| `types.ts` | Shared TypeScript types/interfaces |
-| `utils.ts` | Pure utility functions (cn, formatters) |
-| `variants.ts` | Tailwind variant definitions for components |
-| `charts.ts` | Recharts configuration and helpers |
-| `constants.ts` | Application constants |
-| `format.ts` | Number/date formatting utilities |
-| `stats.ts` | Statistics calculation helpers |
-| `toast.ts` | Toast notification helpers |
-| `ws.ts` | WebSocket client and connection management |
+When WS is healthy, cache updates flow through these adapters rather than page-level merge logic.
 
----
+## Query / Mutation Boundaries
 
-## 6. Data Fetching
+The old `web/src/lib/queries.ts` now acts as a facade over split modules.
 
-### API Client (lib/api.ts)
+Current responsibility split:
 
-Lightweight fetch wrapper providing typed API methods. Handles authentication via Bearer token from `VITE_API_TOKEN` environment variable.
+- entity-level reads
+  - [entities/account/queries.ts](/Users/youming/GitHub/orakel/web/src/entities/account/queries.ts)
+  - [entities/trade/queries.ts](/Users/youming/GitHub/orakel/web/src/entities/trade/queries.ts)
+- feature-level write actions
+  - [features/botControl/mutations.ts](/Users/youming/GitHub/orakel/web/src/features/botControl/mutations.ts)
+- shared query keys
+  - [shared/query/queryKeys.ts](/Users/youming/GitHub/orakel/web/src/shared/query/queryKeys.ts)
 
-**HTTP Methods**
+## Presentation Layers
 
-| Method | Wrapper | Usage |
-|--------|---------|-------|
-| GET | `get<T>(path)` | Read-only requests |
-| POST | `post<T>(path)` | Actions without body |
-| POST | `postJson<T>(path, data)` | Actions with JSON payload |
-| PUT | `put<T>(path, data)` | Updates with JSON payload |
+The intended layering is now:
 
-All methods throw descriptive errors on failure, including HTTP status code and response text.
+- `pages/` choose which widget to render
+- `widgets/` assemble page-sized UI sections
+- `features/` own user actions or workflows
+- `entities/` expose reusable domain presentation units
+- `components/` remains as a legacy bucket during migration
 
-### Endpoints
+Examples already moved:
 
-For full API endpoint documentation, see [Backend Documentation](./backend.md#10-api-server).
+- dashboard summary rendering now enters via `widgets/overview/*`
+- trade-history rendering now enters via `widgets/trades/*`
+- market card now has an `entities/market/MarketCard.tsx` entry point
 
-Key endpoints used by frontend:
+Some widgets currently re-export or wrap older `components/*` implementations. That is intentional and keeps the migration incremental rather than breaking imports all at once.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/state` | GET | Full dashboard state snapshot |
-| `/api/trades?mode={paper\|live}` | GET | Trade history |
-| `/api/paper-stats` | GET | Paper trading statistics |
-| `/api/paper/start` | POST | Start paper trading |
-| `/api/paper/stop` | POST | Stop paper trading |
-| `/api/live/start` | POST | Start live trading |
-| `/api/live/stop` | POST | Stop live trading |
-| `/api/config` | GET | Current configuration |
-| `/api/config` | PUT | Update configuration |
+## Routes
 
-### Query Keys
+Current routes:
 
-TanStack Query uses hierarchical query keys for cache management:
+- `/` -> dashboard
+- `/logs` -> trades/logs view
+- unknown routes -> redirect to `/`
 
-- `["state"]` - Dashboard state
-- `["trades", mode]` - Trade history (keyed by viewMode)
-- `["paper-stats"]` - Paper statistics
+The route shell uses [AppLayout.tsx](/Users/youming/GitHub/orakel/web/src/app/layout/AppLayout.tsx), while [components/Layout.tsx](/Users/youming/GitHub/orakel/web/src/components/Layout.tsx) is now only a compatibility wrapper.
 
-Query keys enable targeted invalidation via `invalidateQueries()` after mutations.
+## Remaining Refactor Debt
 
-### Caching Strategy
+The frontend has crossed the “new structure exists” stage, but not the “legacy layer fully removed” stage yet.
 
-- HTTP polling fallback ensures data freshness when WebSocket unavailable
-- WebSocket cache merging: partial snapshots merge with existing cache to preserve full dataset
-- Stale time prevents unnecessary refetches for frequently accessed data
-- Background refetch keeps data fresh without blocking UI
+Still pending:
 
----
+- move more real implementations out of `components/analytics`, `components/trades`, and `components/market`
+- narrow `web/src/lib/*` down to transport/utilities instead of mixed concerns
+- introduce more entity-specific adapters/selectors instead of page-local shaping
+- remove compatibility re-exports once call sites are fully updated
 
-## 7. Real-time Updates (WebSocket)
+## Verification Baseline
 
-### WebSocket Hook (lib/ws.ts)
+Reliable checks for the refactor stage:
 
-`useWebSocket` hook manages WebSocket connection lifecycle with automatic reconnection.
+```bash
+./node_modules/.bin/tsc --noEmit
+./node_modules/.bin/biome check <targeted files>
+```
 
-**Connection Management**
-
-| Feature | Configuration |
-|---------|----------------|
-| Auto-reconnect | Yes |
-| Max reconnect attempts | 10 |
-| Base reconnect interval | 1000ms |
-| Reconnect strategy | Exponential backoff (optional) |
-
-**Authentication**
-
-Token passed via query parameter `?token=XXX` using `getApiToken()`. WebSocket URL derived from `VITE_API_BASE` or current origin.
-
-### Message Types
-
-Three message types broadcast from backend:
-
-| Message Type | Payload | Purpose |
-|--------------|---------|---------|
-| `state:snapshot` | Partial<DashboardState> | Real-time state updates (markets, running states, stats) |
-| `signal:new` | Signal data | New trading signal generated |
-| `trade:executed` | Trade data | Trade execution notification |
-
-### Versioning
-
-Each message includes `version` number from backend state snapshot. Frontend uses this to detect and discard out-of-order messages.
-
-### Cache Integration
-
-`createWsCacheHandler()` in `lib/queries.ts` integrates WebSocket messages with TanStack Query cache:
-
-- `state:snapshot` messages merge into existing query data
-- Only updates fields present in message payload
-- Preserves fields not included in snapshot (config, balance, etc.)
-- Triggers re-render via TanStack Query's reactive system
-
-When WebSocket connects, state query polling stops automatically (`refetchInterval: false`). WebSocket disconnects restore polling.
-
----
-
-## 8. Styling
-
-### Tailwind CSS v4
-
-Tailwind v4 integrated via Vite plugin (`@tailwindcss/vite`). Configuration in `web/src/styles/global.css`.
-
-**CSS Variables Theme**
-
-Design tokens defined as CSS variables for theming consistency:
-
-| Variable | Usage |
-|----------|-------|
-| `--background`, `--foreground` | Base background and text |
-| `--card`, `--card-foreground` | Card component colors |
-| `--primary`, `--primary-foreground` | Primary action colors |
-| `--secondary`, `--secondary-foreground` | Secondary action colors |
-| `--muted`, `--muted-foreground` | Subtle elements |
-| `--border`, `--ring` | Borders and focus rings |
-
-### Color Scheme
-
-Single dark theme (light mode not implemented). Colors optimized for dark background with high contrast text for dashboard readability.
-
-### Typography
-
-Inter font family loaded via CSS. Font sizes and line heights use Tailwind scale utilities.
-
-### Component Styling
-
-Components use utility classes with `cn()` helper function (`tailwind-merge`) for conditional class composition. Variant definitions in `lib/variants.ts` provide consistent component variants.
-
----
-
-## 9. UI Primitives (components/ui/)
-
-shadcn/ui primitives built on Radix UI, providing accessible, customizable components.
-
-| Component | Radix Dependency | Purpose |
-|-----------|------------------|---------|
-| alert-dialog.tsx | @radix-ui/react-alert-dialog | Confirmation dialogs (start/stop actions) |
-| badge.tsx | None (div) | Status indicators and labels |
-| button.tsx | @radix-ui/react-slot | Action buttons |
-| card.tsx | None (div) | Content containers (MarketCard, StatCard) |
-| separator.tsx | @radix-ui/react-separator | Visual dividers |
-| skeleton.tsx | None (div) | Loading placeholders |
-| table.tsx | None (table) | Data tables (TradeTable, MarketComparisonTable) |
-| tabs.tsx | @radix-ui/react-tabs | Tab navigation (Overview/Trades tabs) |
-| toaster.tsx | @radix-ui/react-toast | Toast notifications |
-
-All primitives support composition with Tailwind classes for customization.
-
----
-
-## 10. Custom Hooks
-
-### useCycleCountdown
-
-Computes 15-minute window countdown timer. Updates every second, displays time remaining until next quarter-hour boundary (HH:MM:00 or HH:MM:15, HH:MM:30, HH:MM:45).
-
-**Derived from**
-
-Current timestamp aligned to quarter-hour marks minus elapsed time within current window.
-
-### useReducedMotion
-
-Respects user's system reduced motion preference. Returns boolean indicating if motion-reduced UI should be used (prefers-reduced-motion media query).
-
-Used for conditional animations and transitions, improving accessibility for users sensitive to motion.
-
----
-
-## 11. Build Configuration
-
-### Vite Config (vite.config.ts)
-
-**Plugins**
-
-- `@vitejs/plugin-react` - React 19 support with Fast Refresh
-- `@tailwindcss/vite` - Tailwind v4 integration
-
-**Path Aliases**
-
-- `@` resolves to `web/src`
-
-**Dev Server Proxy**
-
-| Path | Target | Description |
-|------|--------|-------------|
-| `/api` | `http://localhost:9999` | Backend REST API |
-| `/ws` | `http://localhost:9999` | Backend WebSocket (ws: true) |
-
-Production deployment: Frontend served from backend port 9999, proxy not used.
-
-**Build Optimization**
-
-- Manual chunk splitting separates heavy dependencies
-- `charts` chunk: Recharts
-- `ui` chunk: Radix UI + Lucide React icons
-- Source maps disabled to reduce build size and memory usage
-- Optimized for 1GB VPS deployment
-
-**Environment Variables**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_API_BASE` | `/api` | Backend API base URL |
-| `API_URL` | `http://localhost:9999` | Proxy target for dev server |
-| `VITE_API_TOKEN` | empty | Bearer token for API authentication |
-
----
-
-## 12. Related Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Core Logic](./core-logic.md) | Architecture, data flow, trading strategy, decision logic |
-| [Backend Reference](./backend.md) | Backend modules, API endpoints, DB schema, data layer |
-| [Deployment Guide](./deployment.md) | Docker, CI/CD, environment setup |
-| [Testing](./testing.md) | Test coverage, organization, running tests |
-
-For complete project structure and development commands, see [README.md](../README.md).
+`vite build` may still depend on the local Node version meeting Vite's minimum requirement.

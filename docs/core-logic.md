@@ -1,10 +1,10 @@
 # Orakel Bot Core Logic
 
-Automated trading bot for Polymarket 15-minute crypto up/down markets.
+Automated trading bot for Polymarket BTC multi-timeframe up/down markets.
 
 ## Overview
 
-Every second, poll BTC/ETH/SOL/XRP markets, estimate 15-min price direction probability using technical indicators (model), compare against Polymarket odds (market), and bet when edge is found.
+Every second, process the active BTC markets (5m / 15m / 1h / 4h), estimate window-end direction probability using technical indicators, compare against Polymarket odds, and bet when edge is found.
 
 ```
 Startup → Establish data streams → 1s main loop { fetch → indicators → probability → edge → order } → 15min window end → settlement
@@ -20,7 +20,7 @@ Startup → Establish data streams → 1s main loop { fetch → indicators → p
 | **Chainlink** | On-chain oracle price | WS real-time + REST (2s fallback) |
 | **Polymarket** | Current market odds (UP/DOWN tokens) + order book | WS (CLOB best bid/ask) + REST (3s cache) |
 
-Four markets fetched independently. Cache layer (`cache.ts`) prevents redundant requests.
+Four BTC markets are fetched independently. Cache layer (`cache.ts`) prevents redundant requests.
 
 ### Cache TTLs
 
@@ -34,12 +34,12 @@ Four markets fetched independently. Cache layer (`cache.ts`) prevents redundant 
 
 ### Market Definitions (`src/core/markets.ts`)
 
-| Market | Binance Symbol | Polymarket Series | Chainlink Aggregator |
-|--------|---------------|-------------------|---------------------|
-| BTC | BTCUSDT | btc-up-or-down-15m | 0xc907... |
-| ETH | ETHUSDT | eth-up-or-down-15m | 0x639F... |
-| SOL | SOLUSDT | sol-up-or-down-15m | 0x5d43... |
-| XRP | XRPUSDT | xrp-up-or-down-15m | 0x8F62... |
+| Market | Binance Symbol | Polymarket Series | Resolution Source |
+|--------|---------------|-------------------|-------------------|
+| BTC-5m | BTCUSDT | btc-up-or-down-5m | Chainlink |
+| BTC-15m | BTCUSDT | btc-up-or-down-15m | Chainlink |
+| BTC-1h | BTCUSDT | btc-up-or-down-hourly | Binance |
+| BTC-4h | BTCUSDT | btc-up-or-down-4h | Chainlink |
 
 ---
 
@@ -514,7 +514,7 @@ Pending mode switches (paper to live) are deferred to window boundaries, prevent
 
 ### Why Bun
 
-Bun provides fast startup time, native TypeScript support (no additional compilation step), and a built-in SQLite driver. This reduces external dependency count and suits a single-process trading bot well.
+Bun provides fast startup time and native TypeScript support without an extra compile step. That fits a single-process bot with a tight startup/runtime loop, even though persistence is now handled through PostgreSQL rather than Bun's old SQLite path.
 
 ### Why Hono
 
@@ -526,7 +526,7 @@ Orakel is a single-process application that doesn't need multiple instances or t
 
 ### Why Cycle-Aware Transitions
 
-State switches within 15-minute windows (like switching from paper to live) could cause some trades in the same window to be recorded in paper mode while others execute in live mode, creating statistical inconsistencies. Deferring transitions to window boundaries ensures mode uniformity within each window.
+State switches within an active market window (like switching from paper to live) could cause some trades in the same cycle to be recorded in paper mode while others execute in live mode, creating statistical inconsistencies. Deferring transitions to window boundaries ensures mode uniformity within each market window.
 
 ### Why Both REST and WebSocket
 
