@@ -3,7 +3,6 @@ import { applyEvent, initAccountState, resetAccountState, updateFromSnapshot } f
 import { startReconciler } from "./blockchain/reconciler.ts";
 import { fetchRedeemablePositions, redeemAll, redeemByConditionId } from "./blockchain/redeemer.ts";
 import { CONFIG, startConfigWatcher } from "./core/config.ts";
-import { backupDatabase, closeDb, getDb, onchainStatements, pruneDatabase, statements } from "./core/db.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
@@ -30,6 +29,8 @@ import { startOnChainEventStream } from "./data/polygonEvents.ts";
 import type { ClobWsHandle } from "./data/polymarketClobWs.ts";
 import { startClobMarketWs } from "./data/polymarketClobWs.ts";
 import { startMultiPolymarketPriceStream } from "./data/polymarketLiveWs.ts";
+import { closeDb } from "./db/client.ts";
+import { onchainQueries, pendingOrderQueries, pruneDatabase, tradeQueries } from "./db/queries.ts";
 import type { MarketState, ProcessMarketResult } from "./pipeline/processMarket.ts";
 import { processMarket as processMarketPipeline } from "./pipeline/processMarket.ts";
 import { getAccount, initAccountStats, liveAccount, paperAccount } from "./trading/accountStats.ts";
@@ -113,24 +114,6 @@ let liveSettlerInstance: LiveSettler | null = null;
 const AUTO_REDEEM_ENABLED = env.AUTO_REDEEM_ENABLED;
 const AUTO_REDEEM_INTERVAL_MS = env.AUTO_REDEEM_INTERVAL_MS;
 
-interface KnownTokenRow {
-	token_id?: string;
-}
-
-interface LivePendingOrderRow {
-	order_id?: string;
-	market_id?: string;
-	window_start_ms?: number;
-	side?: string;
-	price?: number;
-	size?: number;
-	price_to_beat?: number | null;
-	current_price_at_entry?: number | null;
-	token_id?: string | null;
-	placed_at?: number;
-	status?: string;
-}
-
 function collectLatestPrices(
 	markets: ReadonlyArray<{ id: string }>,
 	states: Map<string, MarketState>,
@@ -146,11 +129,10 @@ function collectLatestPrices(
 	return prices;
 }
 
-function readKnownTokenIds(): string[] {
+async function readKnownTokenIds(): Promise<string[]> {
 	try {
-		const rows = onchainStatements.getKnownCtfTokens().all({}) as KnownTokenRow[];
-		if (!Array.isArray(rows)) return [];
-		return rows.map((row) => String(row?.token_id ?? "").trim()).filter((tokenId) => tokenId.length > 0);
+		const rows = await onchainQueries.getKnownCtfTokens();
+		return rows.map((row) => String(row?.tokenId ?? "").trim()).filter((tokenId) => tokenId.length > 0);
 	} catch {
 		return [];
 	}
@@ -239,50 +221,17 @@ async function main(): Promise<void> {
 		}
 	}
 
-	// Periodic WAL checkpoint to prevent database corruption
-	const WAL_CHECKPOINT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-	log.info(`WAL checkpoint enabled: running every ${WAL_CHECKPOINT_INTERVAL_MS / 60_000} minutes`);
-	setInterval(() => {
-		try {
-			const db = getDb();
-			db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-			log.debug("WAL checkpoint completed");
-		} catch (err) {
-			log.error("WAL checkpoint failed:", err instanceof Error ? err.message : String(err));
-		}
-	}, WAL_CHECKPOINT_INTERVAL_MS);
-
-	// Periodic database backup (every 4 hours, keeps 5 most recent)
-	const DB_BACKUP_INTERVAL_MS = 4 * 60 * 60 * 1000;
-	log.info(`Database backup enabled: running every ${DB_BACKUP_INTERVAL_MS / 3_600_000} hours`);
-	setInterval(() => {
-		backupDatabase();
-	}, DB_BACKUP_INTERVAL_MS);
-	// Run initial backup on startup
-	backupDatabase();
-
 	const orderManager = new OrderManager();
 
 	orderManager.onOrderStatusChange(
 		(order: TrackedOrder, status: TrackedOrder["status"], previousStatus: TrackedOrder["status"]) => {
-			try {
-				statements.updateTradeStatus().run({
-					$orderId: order.orderId,
-					$mode: "live",
-					$status: status,
-				});
-			} catch (err) {
+			void tradeQueries.updateTradeStatus(order.orderId, "live", status).catch((err) => {
 				log.warn(`Failed to update live trade status for ${order.orderId.slice(0, 12)}...`, err);
-			}
+			});
 
-			try {
-				statements.updateLivePendingOrderStatus().run({
-					$orderId: order.orderId,
-					$status: status,
-				});
-			} catch {
+			void pendingOrderQueries.updateStatus(order.orderId, status).catch(() => {
 				// Best-effort: row may not exist (e.g. FOK orders or already cleaned up)
-			}
+			});
 
 			if (status === "filled" && previousStatus !== "filled") {
 				const parsedWindowStartMs = Number(order.windowSlug);
@@ -322,11 +271,7 @@ async function main(): Promise<void> {
 				if (!recorded) {
 					setTimeout(() => {
 						if (recordFilledTrade()) {
-							try {
-								statements.deleteLivePendingOrder().run({ $orderId: order.orderId });
-							} catch {
-								/* best-effort */
-							}
+							void pendingOrderQueries.delete(order.orderId).catch(() => {});
 						} else {
 							log.error(`Retry also failed for ${order.orderId.slice(0, 12)}... — will recover on restart`);
 						}
@@ -338,26 +283,19 @@ async function main(): Promise<void> {
 					if (windowStartMs < currentTiming.startMs) {
 						const prices = collectLatestPrices(markets, states);
 						if (prices.size > 0) {
-							const settled = liveAccount.resolveTrades(windowStartMs, prices);
-							if (settled > 0) {
-								log.info(`Immediate settlement for late-filled trade: ${settled} trade(s)`);
-							}
+							void liveAccount.resolveTrades(windowStartMs, prices).then((settled) => {
+								if (settled > 0) {
+									log.info(`Immediate settlement for late-filled trade: ${settled} trade(s)`);
+								}
+							});
 						}
 					}
-					try {
-						statements.deleteLivePendingOrder().run({ $orderId: order.orderId });
-					} catch {
-						/* best-effort */
-					}
+					void pendingOrderQueries.delete(order.orderId).catch(() => {});
 				}
 			}
 
 			if (status === "cancelled" || status === "expired") {
-				try {
-					statements.deleteLivePendingOrder().run({ $orderId: order.orderId });
-				} catch {
-					/* best-effort */
-				}
+				void pendingOrderQueries.delete(order.orderId).catch(() => {});
 				orderTracker.orders.delete(orderTracker.keyFor(order.marketId, order.windowSlug));
 			}
 
@@ -390,24 +328,19 @@ async function main(): Promise<void> {
 
 	const clobWs: ClobWsHandle = startClobMarketWs();
 
-	function lookupTokenId(marketId: string, side: string): string | null {
+	async function lookupTokenId(marketId: string, side: string): Promise<string | null> {
 		try {
-			const row = onchainStatements.getCtfTokenByMarketSide().get({
-				$marketId: marketId,
-				$side: side,
-			}) as { token_id: string } | null;
-			return row?.token_id ?? null;
+			const row = await onchainQueries.getCtfTokenByMarketSide(marketId, side);
+			return row?.tokenId ?? null;
 		} catch {
 			return null;
 		}
 	}
 
-	function lookupConditionId(tokenId: string): string | null {
+	async function lookupConditionId(tokenId: string): Promise<string | null> {
 		try {
-			const row = onchainStatements.getKnownCtfToken().get({
-				$tokenId: tokenId,
-			}) as { condition_id: string | null } | null;
-			return row?.condition_id ?? null;
+			const row = await onchainQueries.getKnownCtfToken(tokenId);
+			return row?.conditionId ?? null;
 		} catch {
 			return null;
 		}
@@ -507,13 +440,13 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const pendingOrderRows = statements.getAllLivePendingOrders().all({}) as LivePendingOrderRow[];
+	const pendingOrderRows = await pendingOrderQueries.getAll();
 	let restoredPendingOrderCount = 0;
 	let recoveredFilledPendingCount = 0;
 	for (const row of pendingOrderRows) {
-		const orderId = String(row.order_id ?? "").trim();
-		const marketId = String(row.market_id ?? "").trim();
-		const windowStartMs = Number(row.window_start_ms ?? Number.NaN);
+		const orderId = String(row.orderId ?? "").trim();
+		const marketId = String(row.marketId ?? "").trim();
+		const windowStartMs = Number(row.windowStartMs ?? Number.NaN);
 		if (!orderId || !marketId || !Number.isFinite(windowStartMs)) continue;
 		const price = Number(row.price ?? Number.NaN);
 		const size = Number(row.size ?? Number.NaN);
@@ -524,11 +457,7 @@ async function main(): Promise<void> {
 
 		const rowStatus = String(row.status ?? "placed").toLowerCase();
 		if (rowStatus === "cancelled" || rowStatus === "expired") {
-			try {
-				statements.deleteLivePendingOrder().run({ $orderId: orderId });
-			} catch {
-				// Best-effort cleanup
-			}
+			void pendingOrderQueries.delete(orderId).catch(() => {});
 			continue;
 		}
 		const side = String(row.side ?? "UP").toUpperCase() === "DOWN" ? "DOWN" : "UP";
@@ -543,12 +472,12 @@ async function main(): Promise<void> {
 						side,
 						price,
 						size,
-						priceToBeat: Number(row.price_to_beat ?? 0),
+						priceToBeat: Number(row.priceToBeat ?? 0),
 						currentPriceAtEntry:
-							row.current_price_at_entry === null || row.current_price_at_entry === undefined
+							row.currentPriceAtEntry === null || row.currentPriceAtEntry === undefined
 								? null
-								: Number(row.current_price_at_entry),
-						timestamp: new Date(Number(row.placed_at ?? Date.now())).toISOString(),
+								: Number(row.currentPriceAtEntry),
+						timestamp: new Date(Number(row.placedAt ?? Date.now())).toISOString(),
 					},
 					orderId,
 				);
@@ -558,27 +487,15 @@ async function main(): Promise<void> {
 			}
 
 			if (recorded) {
-				try {
-					statements.updateTradeStatus().run({
-						$orderId: orderId,
-						$mode: "live",
-						$status: "filled",
-					});
-				} catch {
-					// Best-effort
-				}
+				void tradeQueries.updateTradeStatus(orderId, "live", "filled").catch(() => {});
 				const windowKey = String(windowStartMs);
 				if (!orderTracker.hasOrder(marketId, windowKey)) {
-					orderTracker.record(marketId, windowKey, Number(row.placed_at ?? windowStartMs));
+					orderTracker.record(marketId, windowKey, Number(row.placedAt ?? windowStartMs));
 				}
 				if (windowStartMs === currentTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
 					liveTracker.record(marketId, windowStartMs);
 				}
-				try {
-					statements.deleteLivePendingOrder().run({ $orderId: orderId });
-				} catch {
-					// Best-effort cleanup
-				}
+				void pendingOrderQueries.delete(orderId).catch(() => {});
 				recoveredFilledPendingCount++;
 			}
 			continue;
@@ -586,7 +503,7 @@ async function main(): Promise<void> {
 
 		const windowKey = String(windowStartMs);
 		if (!orderTracker.hasOrder(marketId, windowKey)) {
-			orderTracker.record(marketId, windowKey, Number(row.placed_at ?? windowStartMs));
+			orderTracker.record(marketId, windowKey, Number(row.placedAt ?? windowStartMs));
 		}
 		if (windowStartMs === currentTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
 			liveTracker.record(marketId, windowStartMs);
@@ -598,12 +515,12 @@ async function main(): Promise<void> {
 				marketId,
 				windowSlug: windowKey,
 				side,
-				tokenId: row.token_id ? String(row.token_id) : undefined,
+				tokenId: row.tokenId ? String(row.tokenId) : undefined,
 				price,
 				size,
-				priceToBeat: row.price_to_beat ?? null,
-				currentPriceAtEntry: row.current_price_at_entry ?? null,
-				placedAt: Number(row.placed_at ?? Date.now()),
+				priceToBeat: row.priceToBeat ?? null,
+				currentPriceAtEntry: row.currentPriceAtEntry ?? null,
+				placedAt: Number(row.placedAt ?? Date.now()),
 			},
 			true,
 		);
@@ -685,21 +602,21 @@ async function main(): Promise<void> {
 			wallet: walletAddress,
 			onEvent: (event) => {
 				applyEvent(event);
-				try {
-					onchainStatements.insertOnchainEvent().run({
-						$txHash: event.txHash,
-						$logIndex: event.logIndex,
-						$blockNumber: event.blockNumber,
-						$eventType: event.type,
-						$fromAddr: event.from,
-						$toAddr: event.to,
-						$tokenId: event.tokenId,
-						$value: event.value,
-						$rawData: JSON.stringify(event),
+				void onchainQueries
+					.insertEvent({
+						txHash: event.txHash,
+						logIndex: event.logIndex,
+						blockNumber: event.blockNumber,
+						eventType: event.type,
+						fromAddr: event.from,
+						toAddr: event.to,
+						tokenId: event.tokenId,
+						value: event.value,
+						rawData: JSON.stringify(event),
+					})
+					.catch((err) => {
+						log.warn("Failed to persist on-chain event", err);
 					});
-				} catch (err) {
-					log.warn("Failed to persist on-chain event", err);
-				}
 			},
 		});
 		reconcilerHandle = startReconciler({ wallet: walletAddress });
@@ -730,10 +647,9 @@ async function main(): Promise<void> {
 			redeemTimerHandle = null;
 			log.info("Auto-redeem timer stopped");
 		}
-		// Gracefully close database: checkpoint WAL and close connection
-		// This prevents corruption from incomplete WAL writes on hard kill
-		closeDb();
-		setTimeout(() => process.exit(0), 2000);
+		void closeDb().then(() => {
+			setTimeout(() => process.exit(0), 2000);
+		});
 	};
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
@@ -743,13 +659,12 @@ async function main(): Promise<void> {
 	const PRUNE_INTERVAL_MS = 3_600_000;
 	let lastPruneMs = 0;
 
-	// Periodic DB pruning (once per hour)
 	if (Date.now() - lastPruneMs >= PRUNE_INTERVAL_MS) {
 		try {
-			const result = pruneDatabase();
-			const total = Object.values(result.pruned).reduce((a, b) => a + b, 0);
+			const result = await pruneDatabase();
+			const total = Object.values(result.pruned).reduce((a: number, b: number) => a + b, 0);
 			if (total > 0) {
-				log.info("DB pruned", { ...result.pruned, vacuumed: result.vacuumed });
+				log.info("DB pruned", result.pruned);
 			}
 			paperAccount.pruneTrades(500);
 			liveAccount.pruneTrades(500);
@@ -773,13 +688,13 @@ async function main(): Promise<void> {
 		const latestPrices = collectLatestPrices(markets, states);
 
 		if (latestPrices.size > 0) {
-			const paperRecovered = paperAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
+			const paperRecovered = await paperAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
 			if (paperRecovered > 0) {
 				log.info(`Recovered expired paper trades: ${paperRecovered}`);
 			}
 			// Live settlement runs regardless of isLiveRunning() — pending trades must
 			// settle even after live trading is stopped (fix: issue 2.1)
-			const liveRecovered = liveAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
+			const liveRecovered = await liveAccount.resolveExpiredTrades(latestPrices, CONFIG.candleWindowMinutes);
 			if (liveRecovered > 0) {
 				log.info(`Recovered expired live trades: ${liveRecovered}`);
 			}
@@ -787,11 +702,11 @@ async function main(): Promise<void> {
 
 		if (prevWindowStartMs !== null && prevWindowStartMs !== timing.startMs) {
 			if (latestPrices.size > 0) {
-				const paperResolved = paperAccount.resolveTrades(prevWindowStartMs, latestPrices);
+				const paperResolved = await paperAccount.resolveTrades(prevWindowStartMs, latestPrices);
 				if (paperResolved > 0) {
 					log.info(`Paper window settled: ${paperResolved}`);
 				}
-				const liveResolved = liveAccount.resolveTrades(prevWindowStartMs, latestPrices);
+				const liveResolved = await liveAccount.resolveTrades(prevWindowStartMs, latestPrices);
 				if (liveResolved > 0) {
 					log.info(`Live window settled: ${liveResolved}`);
 				}
@@ -800,9 +715,9 @@ async function main(): Promise<void> {
 
 		// Force-resolve trades stuck beyond 1 hour — safety net for issue 7.2
 		const FORCE_RESOLVE_MAX_AGE_MS = 60 * 60_000;
-		const paperForced = paperAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS);
+		const paperForced = await paperAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS);
 		if (paperForced > 0) log.warn(`Force-resolved ${paperForced} stuck paper trade(s)`);
-		const liveForced = liveAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS);
+		const liveForced = await liveAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS);
 		if (liveForced > 0) log.warn(`Force-resolved ${liveForced} stuck live trade(s)`);
 
 		ensureLiveSettler();

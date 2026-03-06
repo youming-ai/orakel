@@ -1,9 +1,8 @@
-import { onchainStatements } from "../core/db.ts";
 import { createLogger } from "../core/logger.ts";
+import { onchainQueries, tradeQueries } from "../db/queries.ts";
 import type { ReconResult } from "../types.ts";
 import { USDC_E_DECIMALS } from "./contracts.ts";
-import type { EventRow, TradeRow } from "./reconciler-utils.ts";
-import { isEventRow, isKnownTokenRow, isTradeRow, rawToUsdc, statusFromConfidence } from "./reconciler-utils.ts";
+import { rawToUsdc, statusFromConfidence } from "./reconciler-utils.ts";
 
 const log = createLogger("reconciler");
 
@@ -16,7 +15,12 @@ const STATUS_QUERY_LIMIT = 10_000;
 
 let walletAddress = "";
 
-function parseCreatedAtMs(value: string | number): number | null {
+type DrizzleTradeRow = Awaited<ReturnType<typeof tradeQueries.getUnreconciledTrades>>[number];
+type TradeRow = DrizzleTradeRow & { orderId: string };
+type EventRow = Awaited<ReturnType<typeof onchainQueries.getByToken>>[number];
+
+function parseCreatedAtMs(value: string | number | null): number | null {
+	if (value === null) return null;
 	const rawNum = Number(value);
 	if (Number.isFinite(rawNum)) {
 		// SQLite created_at is Unix seconds; some rows may already be ms.
@@ -26,11 +30,15 @@ function parseCreatedAtMs(value: string | number): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+function hasOrderId(row: DrizzleTradeRow): row is TradeRow {
+	return typeof row.orderId === "string" && row.orderId.length > 0;
+}
+
 // --- Core reconciliation ---
 
-function reconcileTrade(trade: TradeRow): ReconResult {
+async function reconcileTrade(trade: TradeRow): Promise<ReconResult> {
 	const base: ReconResult = {
-		orderId: trade.order_id,
+		orderId: trade.orderId,
 		status: "unreconciled",
 		confidence: 0,
 		txHash: null,
@@ -39,15 +47,10 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 
 	try {
 		// 1. Look up known tokens for this trade's market + side
-		const allTokensRaw = onchainStatements.getKnownCtfTokens().all({});
-		if (!Array.isArray(allTokensRaw)) {
-			log.error("getKnownCtfTokens returned non-array");
-			return base;
-		}
-		const allTokens = allTokensRaw as unknown[];
-		const matchingTokens = allTokens
-			.filter(isKnownTokenRow)
-			.filter((t) => t.market_id === trade.market && t.side.toUpperCase().includes(trade.side.toUpperCase()));
+		const allTokens = await onchainQueries.getKnownCtfTokens();
+		const matchingTokens = allTokens.filter(
+			(t) => t.marketId === trade.market && t.side.toUpperCase().includes(trade.side.toUpperCase()),
+		);
 
 		if (matchingTokens.length === 0) {
 			return base;
@@ -69,15 +72,11 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 
 		// 2. For each known token, search on-chain events
 		for (const token of matchingTokens) {
-			const events = onchainStatements
-				.getOnchainEventsByToken()
-				.all({ $tokenId: token.token_id, $limit: RECON_BATCH_LIMIT }) as unknown[];
+			const events = await onchainQueries.getByToken(token.tokenId, RECON_BATCH_LIMIT);
 
 			for (const rawEvent of events) {
-				if (!isEventRow(rawEvent)) continue;
-
 				// Check temporal proximity
-				const eventTime = parseCreatedAtMs(rawEvent.created_at);
+				const eventTime = parseCreatedAtMs(rawEvent.createdAt);
 				if (eventTime === null) continue;
 				const timeDiff = Math.abs(eventTime - tradeTimestamp);
 				if (timeDiff > TIME_MAX_MS) continue;
@@ -85,14 +84,15 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 				// Scoring: base 0.3 (token match) + USDC delta match 0.3 / CTF transfer 0.15 + time proximity 0.2 + direction 0.15
 				let confidence = 0.3;
 
-				if (rawEvent.event_type === "usdc_transfer") {
+				if (rawEvent.eventType === "usdc_transfer") {
+					if (rawEvent.value === null) continue;
 					const usdcValue = rawToUsdc(BigInt(rawEvent.value), USDC_E_DECIMALS);
 					const delta = Math.abs(usdcValue - expectedUsdcDelta);
 					const tolerance = expectedUsdcDelta * USDC_TOLERANCE;
 					if (delta <= tolerance) {
 						confidence += 0.3;
 					}
-				} else if (rawEvent.event_type === "ctf_transfer_single") {
+				} else if (rawEvent.eventType === "ctf_transfer_single") {
 					confidence += 0.15;
 				}
 
@@ -104,8 +104,8 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 				// Direction match bonus
 				if (walletAddress) {
 					const wallet = walletAddress.toLowerCase();
-					const toAddr = typeof rawEvent.to_addr === "string" ? rawEvent.to_addr.toLowerCase() : "";
-					const fromAddr = typeof rawEvent.from_addr === "string" ? rawEvent.from_addr.toLowerCase() : "";
+					const toAddr = typeof rawEvent.toAddr === "string" ? rawEvent.toAddr.toLowerCase() : "";
+					const fromAddr = typeof rawEvent.fromAddr === "string" ? rawEvent.fromAddr.toLowerCase() : "";
 					const isIncoming = toAddr === wallet;
 					const isOutgoing = fromAddr === wallet;
 					if (isIncoming || isOutgoing) {
@@ -117,8 +117,11 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 					bestMatch = {
 						event: rawEvent,
 						confidence,
-						usdcDelta: rawEvent.event_type === "usdc_transfer" ? rawToUsdc(BigInt(rawEvent.value), USDC_E_DECIMALS) : 0,
-						tokenId: token.token_id,
+						usdcDelta:
+							rawEvent.eventType === "usdc_transfer" && rawEvent.value !== null
+								? rawToUsdc(BigInt(rawEvent.value), USDC_E_DECIMALS)
+								: 0,
+						tokenId: token.tokenId,
 					};
 				}
 			}
@@ -129,15 +132,15 @@ function reconcileTrade(trade: TradeRow): ReconResult {
 		}
 
 		return {
-			orderId: trade.order_id,
+			orderId: trade.orderId,
 			status: statusFromConfidence(bestMatch.confidence),
 			confidence: bestMatch.confidence,
-			txHash: bestMatch.event.tx_hash,
-			blockNumber: bestMatch.event.block_number,
+			txHash: bestMatch.event.txHash,
+			blockNumber: bestMatch.event.blockNumber,
 		};
 	} catch (err) {
 		log.warn("reconcileTrade failed", {
-			orderId: trade.order_id,
+			orderId: trade.orderId,
 			error: err instanceof Error ? err.message : String(err),
 		});
 		return base;
@@ -150,25 +153,23 @@ export async function runReconciliation(): Promise<number> {
 	let updated = 0;
 
 	try {
-		const rows = onchainStatements.getUnreconciledTrades().all({ $limit: RECON_BATCH_LIMIT }) as unknown[];
+		const rows = await tradeQueries.getUnreconciledTrades(RECON_BATCH_LIMIT);
 
-		for (const rawRow of rows) {
-			if (!isTradeRow(rawRow)) continue;
-
-			const result = reconcileTrade(rawRow);
+		for (const row of rows) {
+			if (!hasOrderId(row)) continue;
+			const result = await reconcileTrade(row);
 			if (result.status === "unreconciled") continue;
 
 			try {
-				onchainStatements.updateTradeReconStatus().run({
-					$orderId: result.orderId,
-					$reconStatus: result.status,
-					$reconConfidence: result.confidence,
-					$txHash: result.txHash,
-					$blockNumber: result.blockNumber,
-					$logIndex: null,
-					$onchainUsdcDelta: null,
-					$onchainTokenId: null,
-					$onchainTokenDelta: null,
+				await onchainQueries.updateTradeReconStatus(result.orderId, {
+					reconStatus: result.status,
+					reconConfidence: result.confidence,
+					txHash: result.txHash,
+					blockNumber: result.blockNumber,
+					logIndex: null,
+					onchainUsdcDelta: null,
+					onchainTokenId: null,
+					onchainTokenDelta: null,
 				});
 				updated++;
 				log.debug("Trade reconciled", {
@@ -235,12 +236,12 @@ export function startReconciler(opts?: { intervalMs?: number; wallet?: string })
 
 // --- Status query ---
 
-export function getReconStatus(): {
+export async function getReconStatus(): Promise<{
 	unreconciled: number;
 	pending: number;
 	confirmed: number;
 	disputed: number;
-} {
+}> {
 	const result = {
 		unreconciled: 0,
 		pending: 0,
@@ -249,14 +250,12 @@ export function getReconStatus(): {
 	};
 
 	try {
-		const unreconRows = onchainStatements.getUnreconciledTrades().all({ $limit: STATUS_QUERY_LIMIT }) as unknown[];
+		const unreconRows = await tradeQueries.getUnreconciledTrades(STATUS_QUERY_LIMIT);
 		result.unreconciled = unreconRows.length;
 
-		const reconRows = onchainStatements.getReconciledTrades().all({ $limit: STATUS_QUERY_LIMIT }) as unknown[];
-		for (const raw of reconRows) {
-			if (!raw || typeof raw !== "object") continue;
-			const row = raw as Record<string, unknown>;
-			const status = String(row.recon_status ?? "");
+		const reconRows = await tradeQueries.getReconciledTrades(STATUS_QUERY_LIMIT);
+		for (const row of reconRows) {
+			const status = String(row.reconStatus ?? "");
 			if (status === "pending") result.pending++;
 			else if (status === "confirmed") result.confirmed++;
 			else if (status === "disputed") result.disputed++;

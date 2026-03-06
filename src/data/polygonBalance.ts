@@ -202,7 +202,7 @@ async function fetchBalanceSnapshot(wallet: string, knownTokenIds: string[]): Pr
 
 export function startBalancePolling(opts: {
 	wallet: string;
-	knownTokenIds: () => string[];
+	knownTokenIds: () => string[] | Promise<string[]>;
 	intervalMs?: number;
 	onUpdate?: (snapshot: BalanceSnapshotPayload) => void;
 }): { getLast(): BalanceSnapshotPayload | null; close(): void } {
@@ -219,9 +219,9 @@ export function startBalancePolling(opts: {
 		if (closed || inFlight) return;
 		inFlight = true;
 		try {
-			const tokenIds = (() => {
+			const tokenIds = await (async () => {
 				try {
-					const ids = opts.knownTokenIds?.();
+					const ids = await opts.knownTokenIds?.();
 					return Array.isArray(ids) ? ids : [];
 				} catch (err) {
 					log.warn("knownTokenIds() threw", {

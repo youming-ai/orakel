@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import path from "node:path";
+
 import { Hono } from "hono";
 import { createBunWebSocket, serveStatic } from "hono/bun";
 import { createMiddleware } from "hono/factory";
@@ -7,7 +7,6 @@ import { getAccountSummary, getAllPositions } from "./blockchain/accountState.ts
 import { getReconStatus } from "./blockchain/reconciler.ts";
 import { fetchRedeemablePositions, redeemAll } from "./blockchain/redeemer.ts";
 import { atomicWriteConfig, CONFIG, reloadConfig } from "./core/config.ts";
-import { getDbDiagnostics, READ_BACKEND, statements } from "./core/db.ts";
 import { env } from "./core/env.ts";
 import { createLogger } from "./core/logger.ts";
 import {
@@ -23,6 +22,7 @@ import {
 	setLiveRunning,
 	setPaperRunning,
 } from "./core/state.ts";
+import { signalQueries, tradeQueries } from "./db/queries.ts";
 import { liveAccount, paperAccount } from "./trading/accountStats.ts";
 import { getLiveStartReadinessError } from "./trading/liveGuards.ts";
 import { connectWallet, disconnectWallet, getClientStatus, getWallet, getWalletAddress } from "./trading/trader.ts";
@@ -32,48 +32,7 @@ const PORT = env.API_PORT;
 
 const log = createLogger("api");
 const wsLog = createLogger("ws");
-const LOGS_DIR = path.resolve("data");
 const SNAPSHOT_THROTTLE_MS = 500;
-
-interface TradeRowSqlite {
-	timestamp: string;
-	market: string;
-	side: string;
-	amount: number;
-	price: number;
-	order_id: string | null;
-	status: string | null;
-	mode: string;
-	pnl: number | null;
-	won: number | null;
-	current_price_at_entry: number | null;
-}
-
-interface SignalRowSqlite {
-	timestamp: string;
-	market: string;
-	entry_minute: string | number | null;
-	time_left_min: string | number | null;
-	regime: string | null;
-	signal: string | null;
-	vol_implied_up: number | null;
-	ta_raw_up: number | null;
-	blended_up: number | null;
-	blend_source: string | null;
-	volatility_15m: number | null;
-	price_to_beat: number | null;
-	binance_chainlink_delta: number | null;
-	orderbook_imbalance: number | null;
-	model_up: number | null;
-	model_down: number | null;
-	mkt_up: number | null;
-	mkt_down: number | null;
-	raw_sum: number | null;
-	arbitrage: number | null;
-	edge_up: number | null;
-	edge_down: number | null;
-	recommendation: string | null;
-}
 
 const { upgradeWebSocket, websocket } = createBunWebSocket();
 const wsClients = new Set<WebSocket>();
@@ -127,106 +86,6 @@ function str(v: string | number | null | undefined): string {
 	return v === null || v === undefined ? "" : String(v);
 }
 
-function parseCsvLine(line: string): string[] {
-	const result: string[] = [];
-	let current = "";
-	let inQuotes = false;
-
-	for (let i = 0; i < line.length; i++) {
-		const char = line[i];
-		if (char === '"') {
-			inQuotes = !inQuotes;
-		} else if (char === "," && !inQuotes) {
-			result.push(current.trim());
-			current = "";
-		} else {
-			current += char;
-		}
-	}
-	result.push(current.trim());
-	return result;
-}
-
-function parseCsv(filePath: string, limit = 200): Record<string, string>[] {
-	const header = ["timestamp", "market", "side", "amount", "price", "orderId", "status", "mode"];
-	try {
-		const raw = fs.readFileSync(filePath, "utf8").trim();
-		if (!raw) return [];
-		const lines = raw.split("\n");
-		const dataLines = lines[0]?.startsWith("timestamp") ? lines.slice(1) : lines;
-		return dataLines
-			.slice(-limit)
-			.map((line) => {
-				const vals = parseCsvLine(line);
-				if (vals.length < 6) return null;
-				const row: Record<string, string> = {};
-				for (let i = 0; i < header.length; i++) {
-					const key = header[i];
-					if (key) row[key] = vals[i]?.trim() ?? "";
-				}
-				return row;
-			})
-			.filter((row): row is Record<string, string> => row !== null);
-	} catch {
-		return [];
-	}
-}
-
-function parseSignalCsv(filePath: string, limit = 200): Record<string, string>[] {
-	const signalHeader = [
-		"timestamp",
-		"entry_minute",
-		"time_left_min",
-		"regime",
-		"signal",
-		"vol_implied_up",
-		"ta_raw_up",
-		"blended_up",
-		"blend_source",
-		"volatility_15m",
-		"price_to_beat",
-		"binance_chainlink_delta",
-		"orderbook_imbalance",
-		"model_up",
-		"model_down",
-		"mkt_up",
-		"mkt_down",
-		"raw_sum",
-		"arbitrage",
-		"edge_up",
-		"edge_down",
-		"recommendation",
-	];
-
-	try {
-		const raw = fs.readFileSync(filePath, "utf8").trim();
-		if (!raw) return [];
-		const lines = raw.split("\n");
-
-		let startIdx = 0;
-		if (lines.length > 0 && lines[0]?.startsWith("timestamp,entry_minute")) {
-			startIdx = 1;
-		}
-
-		return lines
-			.slice(startIdx)
-			.slice(-limit)
-			.map((line) => {
-				const vals = parseCsvLine(line);
-				if (vals.length < 5) return null;
-				const row: Record<string, string> = {};
-				for (let i = 0; i < signalHeader.length; i++) {
-					const key = signalHeader[i];
-					if (key) row[key] = vals[i]?.trim() ?? "";
-				}
-				return row;
-			})
-			.filter((row): row is Record<string, string> => row !== null);
-	} catch {
-		return [];
-	}
-}
-
 // ---------------------------------------------------------------------------
 // API routes — chained for Hono RPC type inference
 // ---------------------------------------------------------------------------
@@ -248,7 +107,7 @@ const apiRoutes = new Hono()
 	.get("/db/diagnostics", (c) => {
 		return c.json({
 			ok: true as const,
-			diagnostics: getDbDiagnostics(),
+			diagnostics: { backend: "postgresql" },
 		});
 	})
 
@@ -295,109 +154,60 @@ const apiRoutes = new Hono()
 		});
 	})
 
-	.get("/logs", (c) => {
+	.get("/logs", async (c) => {
 		const mode = c.req.query("mode");
+		const rows =
+			mode === "paper" || mode === "live"
+				? await tradeQueries.getRecentByMode(mode, 100)
+				: await tradeQueries.getAllRecent(100);
 
-		if (READ_BACKEND === "sqlite") {
-			const rows = (
-				mode === "paper" || mode === "live"
-					? statements.getRecentTrades().all({ $mode: mode, $limit: 100 })
-					: statements.getAllRecentTrades().all({ $limit: 100 })
-			) as TradeRowSqlite[];
-
-			return c.json(
-				rows.map((row) => ({
-					timestamp: row.timestamp ?? "",
-					market: row.market ?? "",
-					side: row.side ?? "",
-					amount: String(row.amount ?? ""),
-					price: String(row.price ?? ""),
-					orderId: row.order_id ?? "",
-					status: row.status ?? "",
-					mode: row.mode ?? "",
-					pnl: row.pnl ?? null,
-					won: row.won ?? null,
-					currentPriceAtEntry: row.current_price_at_entry ?? null,
-				})),
-			);
-		}
-
-		const markets = ["BTC", "ETH", "SOL", "XRP"];
-		const all: Record<string, string>[] = [];
-		const modes = mode === "paper" || mode === "live" ? [mode] : ["paper", "live"];
-		for (const m of markets) {
-			for (const md of modes) {
-				const rows = parseCsv(path.join(LOGS_DIR, md, `trades-${m}.csv`), 50);
-				for (const row of rows) {
-					row.market = m;
-					if (!row.mode) row.mode = md;
-					all.push(row);
-				}
-			}
-		}
-		all.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
 		return c.json(
-			all.slice(0, 100).map((row) => ({
+			rows.map((row) => ({
 				timestamp: row.timestamp ?? "",
 				market: row.market ?? "",
 				side: row.side ?? "",
 				amount: String(row.amount ?? ""),
 				price: String(row.price ?? ""),
-				orderId: row.order_id ?? row.orderId ?? "",
+				orderId: row.orderId ?? "",
 				status: row.status ?? "",
 				mode: row.mode ?? "",
-				pnl: row.pnl !== undefined && row.pnl !== "" ? Number(row.pnl) : null,
-				won: row.won !== undefined && row.won !== "" ? Number(row.won) : null,
+				pnl: row.pnl ?? null,
+				won: row.won ?? null,
+				currentPriceAtEntry: row.currentPriceAtEntry ?? null,
 			})),
 		);
 	})
 
-	.get("/signals", (c) => {
-		if (READ_BACKEND === "sqlite") {
-			const rows = statements.getRecentSignals().all({
-				$limit: 200,
-			}) as SignalRowSqlite[];
+	.get("/signals", async (c) => {
+		const rows = await signalQueries.getRecent(200);
 
-			return c.json(
-				rows.map((row) => ({
-					timestamp: row.timestamp ?? "",
-					entry_minute: str(row.entry_minute),
-					time_left_min: str(row.time_left_min),
-					regime: row.regime ?? "",
-					signal: row.signal ?? "",
-					vol_implied_up: str(row.vol_implied_up),
-					ta_raw_up: str(row.ta_raw_up),
-					blended_up: str(row.blended_up),
-					blend_source: row.blend_source ?? "",
-					volatility_15m: str(row.volatility_15m),
-					price_to_beat: str(row.price_to_beat),
-					binance_chainlink_delta: str(row.binance_chainlink_delta),
-					orderbook_imbalance: str(row.orderbook_imbalance),
-					model_up: str(row.model_up),
-					model_down: str(row.model_down),
-					mkt_up: str(row.mkt_up),
-					mkt_down: str(row.mkt_down),
-					raw_sum: str(row.raw_sum),
-					arbitrage: str(row.arbitrage),
-					edge_up: str(row.edge_up),
-					edge_down: str(row.edge_down),
-					recommendation: row.recommendation ?? "",
-					market: row.market ?? "",
-				})),
-			);
-		}
-
-		const markets = ["BTC", "ETH", "SOL", "XRP"];
-		const all: Record<string, string>[] = [];
-		for (const m of markets) {
-			const rows = parseSignalCsv(path.join(LOGS_DIR, `signals-${m}.csv`), 50);
-			for (const row of rows) {
-				row.market = m;
-				all.push(row);
-			}
-		}
-		all.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
-		return c.json(all.slice(0, 200));
+		return c.json(
+			rows.map((row) => ({
+				timestamp: row.timestamp ?? "",
+				entry_minute: str(row.entryMinute),
+				time_left_min: str(row.timeLeftMin),
+				regime: row.regime ?? "",
+				signal: row.signal ?? "",
+				vol_implied_up: str(row.volImpliedUp),
+				ta_raw_up: str(row.taRawUp),
+				blended_up: str(row.blendedUp),
+				blend_source: row.blendSource ?? "",
+				volatility_15m: str(row.volatility15m),
+				price_to_beat: str(row.priceToBeat),
+				binance_chainlink_delta: str(row.binanceChainlinkDelta),
+				orderbook_imbalance: str(row.orderbookImbalance),
+				model_up: str(row.modelUp),
+				model_down: str(row.modelDown),
+				mkt_up: str(row.mktUp),
+				mkt_down: str(row.mktDown),
+				raw_sum: str(row.rawSum),
+				arbitrage: str(row.arbitrage),
+				edge_up: str(row.edgeUp),
+				edge_down: str(row.edgeDown),
+				recommendation: row.recommendation ?? "",
+				market: row.market ?? "",
+			})),
+		);
 	})
 
 	.get("/paper-stats", (c) => {
@@ -617,8 +427,8 @@ const apiRoutes = new Hono()
 		return c.json({ ok: true as const, data: getAllPositions() });
 	})
 
-	.get("/live/recon-status", (c) => {
-		return c.json({ ok: true as const, data: getReconStatus() });
+	.get("/live/recon-status", async (c) => {
+		return c.json({ ok: true as const, data: await getReconStatus() });
 	})
 
 	.get("/live/redeemable", async (c) => {
