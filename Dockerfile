@@ -36,9 +36,7 @@ RUN if id bun >/dev/null 2>&1; then \
 COPY --from=deps /app/node_modules node_modules
 COPY package.json bun.lock tsconfig.json ./
 COPY src src
-
-# Create data directory with correct ownership
-RUN mkdir -p /app/data && chown -R bun:bun /app/data
+COPY drizzle drizzle
 
 USER bun
 EXPOSE 9999

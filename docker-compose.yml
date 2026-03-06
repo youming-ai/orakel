@@ -14,7 +14,6 @@ services:
     ports:
       - "9999:9999"
     volumes:
-      - ./data:/app/data
       - ./config.json:/app/config.json:ro
     restart: unless-stopped
     stop_grace_period: 30s
