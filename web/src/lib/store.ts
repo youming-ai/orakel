@@ -1,5 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { DashboardState } from "./api";
 import type { ViewMode } from "./types";
 
 /* ── UI state ─────────────────────────────────────────── */
@@ -29,3 +32,13 @@ export const useUIStore = create<UIState>()(
 		},
 	),
 );
+
+export function useSnapshot(): DashboardState | undefined {
+	const queryClient = useQueryClient();
+
+	return useSyncExternalStore(
+		(onStoreChange) => queryClient.getQueryCache().subscribe(() => onStoreChange()),
+		() => queryClient.getQueryData<DashboardState>(["state"]),
+		() => queryClient.getQueryData<DashboardState>(["state"]),
+	);
+}
