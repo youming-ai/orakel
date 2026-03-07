@@ -27,6 +27,7 @@ Automated trading bot for Polymarket **BTC Up/Down** multi-timeframe markets. Pa
 git clone https://github.com/youming-ai/orakel.git
 cd orakel
 cp .env.example .env
+# Edit .env with your configuration
 docker compose up --build
 ```
 
@@ -36,20 +37,25 @@ docker compose up --build
 ## Development
 
 ```bash
+# Install dependencies
 bun install                          # Backend deps
 cd web && bun install && cd ..       # Frontend deps
 
+# Run development servers
 bun run dev                          # Bot + web dashboard (concurrent)
 bun run start                        # Bot only (port 9999)
 cd web && bun run dev                # Frontend only (port 5173)
 ```
 
+### Development Commands
+
 | Command | Description |
 |---------|-------------|
 | `bun run lint` | Biome check (lint + format) |
+| `bun run lint:fix` | Auto-fix lint issues |
 | `bun run typecheck` | TypeScript type checking |
 | `bun run test` | Vitest unit tests |
-| `bun run lint:fix` | Auto-fix lint issues |
+| `bun run test:watch` | Vitest in watch mode |
 
 Pre-push: `bun run lint && bun run typecheck && bun run test`
 
@@ -60,7 +66,7 @@ Pre-push: `bun run lint && bun run typecheck && bun run test`
 | `.env` | Secrets, ports, market selection | No (restart required) |
 | `config.json` | Strategy thresholds, risk parameters | Yes (auto-detected) |
 
-Key env vars:
+### Key Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -68,16 +74,58 @@ Key env vars:
 | `ACTIVE_MARKETS` | `""` | Enabled markets (empty = all supported markets) |
 | `API_TOKEN` | `""` | Bearer token for API auth |
 | `PRIVATE_KEY` | `""` | Wallet key for live trading (auto-connects) |
+| `DATABASE_URL` | `""` | PostgreSQL connection string |
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Core Logic](./docs/core-logic.md) | Architecture, data flow, trading strategy, decision logic, design decisions |
-| [Backend Reference](./docs/backend.md) | Module map, API endpoints, DB schema, data adapters, blockchain |
-| [Frontend](./docs/frontend.md) | React components, state management, WebSocket, styling |
-| [Deployment](./docs/deployment.md) | Docker, CI/CD, environment setup, VPS auto-deployment |
-| [Testing](./docs/testing.md) | Test coverage, organization, running tests |
+完整的技术文档请查看 [docs/](./docs/) 目录：
+
+| 文档 | 描述 |
+|------|------|
+| [Core Logic](./docs/core-logic.md) | 交易逻辑、架构设计、数据流、决策引擎 |
+| [Backend Reference](./docs/backend.md) | 后端模块结构、API 端点、数据库设计 |
+| [Frontend](./docs/frontend.md) | React 组件架构、状态管理、WebSocket |
+| [Deployment](./docs/deployment.md) | Docker 部署、CI/CD、环境配置 |
+| [Testing](./docs/testing.md) | 测试覆盖、测试组织方式 |
+| [API Conventions](./docs/api-conventions.md) | API 设计规范 |
+
+## Project Structure
+
+```
+├── src/                      # Backend source
+│   ├── app/                  # 应用启动、API、WebSocket
+│   ├── runtime/              # 交易运行时
+│   ├── repositories/         # 数据访问层
+│   ├── trading/              # 交易执行
+│   ├── pipeline/             # 市场数据处理
+│   ├── engines/              # 决策引擎
+│   ├── indicators/           # 技术指标
+│   ├── data/                 # 外部数据适配器
+│   └── __tests__/            # 测试文件
+├── web/                      # Frontend (React + Vite)
+├── docs/                     # 技术文档
+├── drizzle/                  # 数据库迁移
+└── docker-compose.yml        # Docker 配置
+```
+
+## Database
+
+PostgreSQL with Drizzle ORM:
+
+```bash
+# Generate migration after schema changes
+bunx drizzle-kit generate
+
+# Apply migrations
+bunx drizzle-kit migrate
+
+# Direct schema push (development only)
+bunx drizzle-kit push
+```
+
+## License
+
+MIT
 
 ## Disclaimer
 
