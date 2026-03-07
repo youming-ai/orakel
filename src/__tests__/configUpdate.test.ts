@@ -111,7 +111,7 @@ describe("applyConfigUpdate", () => {
 					maxGlobalTradesPerWindow: 3,
 					skipMarkets: [],
 				},
-				"BTC-1h": {
+				"BTC-15m": {
 					minTimeLeftMin: 15,
 				},
 			},
@@ -122,7 +122,7 @@ describe("applyConfigUpdate", () => {
 				default: {
 					maxGlobalTradesPerWindow: 2,
 				},
-				"BTC-1h": {
+				"BTC-15m": {
 					maxTimeLeftMin: 28,
 				},
 			},
@@ -142,7 +142,7 @@ describe("applyConfigUpdate", () => {
 					maxGlobalTradesPerWindow: 2,
 					skipMarkets: [],
 				},
-				"BTC-1h": {
+				"BTC-15m": {
 					minTimeLeftMin: 15,
 					maxTimeLeftMin: 28,
 				},

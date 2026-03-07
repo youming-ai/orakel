@@ -1,8 +1,6 @@
 import { Activity, Loader2, Play, Zap } from "lucide-react";
 import { Link, useLocation } from "react-router";
 
-import { fmtPrice } from "@/lib/format";
-import { useSnapshot } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -65,14 +63,6 @@ function StatusIcon({ status }: { status: BotStatus }) {
 	}
 }
 
-function BtcIcon({ className }: { className?: string }) {
-	return (
-		<svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-			<path d="M12.5 2C7.81 2 4 5.81 4 10.5c0 4.69 3.81 8.5 8.5 8.5s8.5-3.81 8.5-8.5C21 5.81 17.19 2 12.5 2zm1.5 12.5h-1v1.5h-1v-1.5h-1v1.5H10v-1.5H8v-1h1v-5H8v-1h2V6h1v1.5h1V6h1v1.5c1.38 0 2.5 1.12 2.5 2.5 0 .74-.33 1.4-.84 1.85.51.45.84 1.11.84 1.85 0 1.38-1.12 2.5-2.5 2.5zm0-4.5c0-.55-.45-1-1-1h-2v2h2c.55 0 1-.45 1-1zm-3 3.5h2c.55 0 1-.45 1-1s-.45-1-1-1h-2v2z" />
-		</svg>
-	);
-}
-
 export function Header({
 	viewMode,
 	paperRunning,
@@ -88,10 +78,6 @@ export function Header({
 	onLiveToggle,
 }: HeaderProps) {
 	const location = useLocation();
-	const snapshot = useSnapshot();
-	const market = snapshot?.markets?.[0];
-	const marketBase = market?.ok ? market.id.split("-")[0] : null;
-	const marketSpotPrice = market?.ok ? fmtPrice(market.id, market.spotPrice) : null;
 	const isTradesActive = location.pathname === "/logs";
 	const isRunning = viewMode === "paper" ? paperRunning : liveRunning;
 	const pendingStart = viewMode === "paper" ? paperPendingStart : livePendingStart;
@@ -104,26 +90,17 @@ export function Header({
 	const cfg = statusConfig[status];
 
 	return (
-		<div className="sticky top-3 z-50 mb-0.5 max-w-7xl mx-auto px-3 sm:px-6 pointer-events-none">
-			<header className="pointer-events-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full overflow-hidden relative">
-				<div className="flex items-center gap-2.5 cursor-default select-none min-w-0">
+		<header className="sticky top-3 z-50 mb-0.5 max-w-7xl mx-auto px-3 sm:px-6">
+			<div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full overflow-hidden relative">
+				<nav aria-label="Main navigation" className="flex items-center gap-2.5 cursor-default select-none min-w-0">
 					<Link to="/" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity no-underline shrink-0">
 						<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-md border border-primary/20">
-							<Zap className="size-3.5" />
+							<Zap className="size-3.5" aria-hidden="true" />
 						</div>
 						<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
 					</Link>
-					{market?.ok && marketBase && marketSpotPrice && (
-						<div className="hidden sm:flex items-center gap-1.5 shrink-0">
-							<span className="h-4 w-px bg-border/60 shrink-0" />
-							<BtcIcon className="size-4 text-orange-400" />
-							<span className="text-sm font-semibold tracking-tight tabular-nums text-foreground leading-none">
-								{marketSpotPrice}
-							</span>
-						</div>
-					)}
 					<div className="hidden md:flex items-center gap-2.5 shrink-0">
-						<span className="h-4 w-px bg-border/60 shrink-0" />
+						<div className="h-4 w-px bg-border/60 shrink-0" />
 						<Link
 							to="/logs"
 							className={cn(
@@ -134,12 +111,13 @@ export function Header({
 							logs
 						</Link>
 					</div>
-				</div>
+				</nav>
 
 				<div className="absolute left-1/2 -translate-x-1/2 flex items-center rounded-md border overflow-hidden min-h-7 bg-muted/50 shrink-0">
 					<button
 						type="button"
 						onClick={() => onViewModeChange("paper")}
+						aria-pressed={viewMode === "paper"}
 						className={cn(
 							"px-2.5 h-7 text-[11px] font-semibold tracking-wide uppercase transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							viewMode === "paper"
@@ -149,10 +127,10 @@ export function Header({
 					>
 						Paper
 					</button>
-					<div className="w-px self-stretch bg-border" />
 					<button
 						type="button"
 						onClick={() => onViewModeChange("live")}
+						aria-pressed={viewMode === "live"}
 						className={cn(
 							"px-2.5 h-7 text-[11px] font-semibold tracking-wide uppercase transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							viewMode === "live"
@@ -169,17 +147,19 @@ export function Header({
 						type="button"
 						onClick={handleToggle}
 						disabled={mutationPending}
+						aria-label={`Bot status: ${cfg.label}. Click to toggle.`}
+						aria-live="polite"
 						className={cn(
 							"flex items-center justify-center size-9 sm:size-7 rounded-md transition-all shrink-0 border outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							cfg.className,
 							isPending && "animate-pulse",
+							mutationPending && "cursor-not-allowed opacity-60",
 						)}
-						title={cfg.label}
 					>
 						<StatusIcon status={status} />
 					</button>
 				</div>
-			</header>
-		</div>
+			</div>
+		</header>
 	);
 }

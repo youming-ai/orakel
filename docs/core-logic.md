@@ -4,7 +4,7 @@ Automated trading bot for Polymarket BTC multi-timeframe up/down markets.
 
 ## Overview
 
-Every second, process the active BTC markets (5m / 15m / 1h), estimate window-end direction probability with a per-market model that blends technical indicators and `priceToBeat` distance/volatility, compare against Polymarket odds, and bet when edge is found.
+Every second, process the active BTC markets (5m / 15m), estimate window-end direction probability with a per-market model that blends technical indicators and `priceToBeat` distance/volatility, compare against Polymarket odds, and bet when edge is found.
 
 ```
 Startup → Establish data streams → 1s main loop { fetch → indicators → probability → edge → order } → 15min window end → settlement
@@ -38,7 +38,6 @@ Four BTC markets are fetched independently. Cache layer (`cache.ts`) prevents re
 |--------|---------------|-------------------|-------------------|
 | BTC-5m | BTCUSDT | btc-up-or-down-5m | Chainlink |
 | BTC-15m | BTCUSDT | btc-up-or-down-15m | Chainlink |
-| BTC-1h | BTCUSDT | btc-up-or-down-hourly | Binance |
 ---
 
 ## 2. Decision Engine — Four-Layer Pipeline

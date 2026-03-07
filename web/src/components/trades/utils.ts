@@ -22,13 +22,12 @@ type MarketConfig = {
 const MARKET_CONFIGS: Record<string, MarketConfig> = {
 	"BTC-5m": { windowMinutes: 5, slugPrefix: "btc-updown-5m-", slugFormat: "timestamp" },
 	"BTC-15m": { windowMinutes: 15, slugPrefix: "btc-updown-15m-", slugFormat: "timestamp" },
-	"BTC-1h": { windowMinutes: 60, slugPrefix: "bitcoin-up-or-down-", slugFormat: "descriptive" },
 };
 
 export function getMarketCycleSlug(market: string, timestamp: string, marketSlug?: string | null): string | null {
 	if (!market || !timestamp) return null;
 
-	// If marketSlug is available (from DB), use it directly for BTC-1h descriptive slugs
+	// If marketSlug is available (from DB), use it directly
 	if (marketSlug) {
 		return marketSlug;
 	}
@@ -47,7 +46,6 @@ export function getMarketCycleSlug(market: string, timestamp: string, marketSlug
 		return `${config.slugPrefix}${windowStart}`;
 	}
 
-	// For descriptive slugs (1h): we can't compute from timestamp alone
 	// Return null to fall back to displaying market ID only
 	return null;
 }

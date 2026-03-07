@@ -26,7 +26,7 @@ interface OverviewTabProps {
 	markets: MarketSnapshot[];
 }
 
-const MARKET_ORDER = ["BTC-5m", "BTC-15m", "BTC-1h"];
+const MARKET_ORDER = ["BTC-5m", "BTC-15m"];
 
 export function OverviewTab({
 	stopLoss,
@@ -64,7 +64,7 @@ export function OverviewTab({
 				<StatsGrid stats={mergedStats} />
 			</div>
 
-			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+			<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
 				{sortedMarkets.map((m) => (
 					<MarketCard key={m.id} market={m} />
 				))}

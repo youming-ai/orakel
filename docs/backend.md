@@ -117,7 +117,6 @@ The runtime currently targets BTC multi-timeframe markets only:
 |--------|--------|-------------------|-------------------|
 | `BTC-5m` | 5 min | Chainlink | `btc-up-or-down-5m` |
 | `BTC-15m` | 15 min | Chainlink | `btc-up-or-down-15m` |
-| `BTC-1h` | 60 min | Binance | `btc-up-or-down-hourly` |
 
 Definitions live in [src/core/markets.ts](/Users/youming/GitHub/orakel/src/core/markets.ts).
 

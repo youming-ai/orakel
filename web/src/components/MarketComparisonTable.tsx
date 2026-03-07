@@ -1,7 +1,18 @@
+import { BtcIcon } from "@/components/icons";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { MarketRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { EmptyPlaceholder } from "./EmptyPlaceholder";
+
+function MarketCell({ market }: { market: string }) {
+	const isBtc = market.startsWith("BTC");
+	return (
+		<span className="flex items-center gap-1.5">
+			{isBtc && <BtcIcon size={14} />}
+			<span>{market}</span>
+		</span>
+	);
+}
 
 interface MarketComparisonTableProps {
 	rows: MarketRow[];
@@ -28,7 +39,9 @@ export function MarketComparisonTable({ rows }: MarketComparisonTableProps) {
 				<TableBody>
 					{rows.map((row) => (
 						<TableRow key={row.market} className="hover:bg-muted/50 transition-colors">
-							<TableCell className="font-mono text-xs font-medium">{row.market}</TableCell>
+							<TableCell className="font-mono text-xs font-medium">
+								<MarketCell market={row.market} />
+							</TableCell>
 							<TableCell className="font-mono text-xs text-right hidden sm:table-cell">{row.trades}</TableCell>
 							<TableCell className="font-mono text-xs text-right text-emerald-400 hidden sm:table-cell">
 								{row.wins}

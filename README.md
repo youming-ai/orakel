@@ -10,7 +10,6 @@ Automated trading bot for Polymarket **BTC Up/Down** multi-timeframe markets. Pa
 |--------|-----------|--------------|-------------------|-------------------|
 | BTC-5m | 5 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-5m` |
 | BTC-15m | 15 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-15m` |
-| BTC-1h | 1 hour | BTCUSDT | Binance BTC/USDT | `btc-up-or-down-hourly` |
 
 ## Features
 

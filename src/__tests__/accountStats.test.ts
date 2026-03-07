@@ -198,11 +198,11 @@ describe("resolveTrades marketId filtering (BUG 4)", () => {
 	it("should only resolve trades matching the given marketId", async () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { marketId: "BTC-5m", windowStartMs: 1000, side: "UP", price: 0.4, size: 10 });
-		addTestTrade(mgr, { marketId: "BTC-1h", windowStartMs: 1000, side: "UP", price: 0.4, size: 10 });
+		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: 1000, side: "UP", price: 0.4, size: 10 });
 
 		const prices = new Map([
 			["BTC-5m", 60000],
-			["BTC-1h", 60000],
+			["BTC-15m", 60000],
 		]);
 		const resolved = await mgr.resolveTrades(1000, prices, "BTC-5m");
 		expect(resolved).toBe(1);
@@ -213,11 +213,11 @@ describe("resolveTrades marketId filtering (BUG 4)", () => {
 	it("should resolve all matching trades when marketId is omitted", async () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { marketId: "BTC-5m", windowStartMs: 1000 });
-		addTestTrade(mgr, { marketId: "BTC-1h", windowStartMs: 1000 });
+		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: 1000 });
 
 		const prices = new Map([
 			["BTC-5m", 60000],
-			["BTC-1h", 60000],
+			["BTC-15m", 60000],
 		]);
 		const resolved = await mgr.resolveTrades(1000, prices);
 		expect(resolved).toBe(2);
@@ -226,12 +226,12 @@ describe("resolveTrades marketId filtering (BUG 4)", () => {
 });
 
 describe("resolveExpiredTrades cross-timeframe (BUG 2)", () => {
-	it("should not resolve BTC-1h trade when called with 5min window and BTC-5m marketId", async () => {
+	it("should not resolve BTC-15m trade when called with 5min window and BTC-5m marketId", async () => {
 		const mgr = makeManager(100);
 		const eightMinAgo = Date.now() - 8 * 60_000;
-		addTestTrade(mgr, { marketId: "BTC-1h", windowStartMs: eightMinAgo, side: "UP" });
+		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: eightMinAgo, side: "UP" });
 
-		const prices = new Map([["BTC-1h", 60000]]);
+		const prices = new Map([["BTC-15m", 60000]]);
 		const resolved = await mgr.resolveExpiredTrades(prices, 5, "BTC-5m");
 		expect(resolved).toBe(0);
 		expect(mgr.getStats().pending).toBe(1);

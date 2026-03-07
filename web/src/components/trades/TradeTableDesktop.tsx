@@ -1,4 +1,5 @@
 import { ExternalLink } from "lucide-react";
+import { BtcIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,6 +8,17 @@ import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { modeBadge, sideBadge } from "@/lib/variants";
 import { fmtTimestamp, getDisplayMode, getMarketCycleSlug, getPolymarketUrl, sideLabel } from "./utils";
+
+function MarketWithIcon({ market, slug }: { market: string; slug: string | null }) {
+	const isBtc = market.startsWith("BTC");
+	const displayText = slug || market;
+	return (
+		<span className="flex items-center gap-1.5">
+			{isBtc && <BtcIcon size={14} />}
+			<span>{displayText}</span>
+		</span>
+	);
+}
 
 interface TradeTableDesktopProps {
 	pageTrades: TradeRecord[];
@@ -46,16 +58,18 @@ export function TradeTableDesktop({ pageTrades, paperMode }: TradeTableDesktopPr
 								<TableCell className="font-mono text-xs font-medium max-w-[220px] truncate">
 									{(() => {
 										const slug = getMarketCycleSlug(t.market, t.timestamp, t.marketSlug);
-										if (!slug) return t.market;
 										return (
 											<a
-												href={getPolymarketUrl(slug)}
+												href={slug ? getPolymarketUrl(slug) : undefined}
 												target="_blank"
 												rel="noopener noreferrer"
-												className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors hover:underline"
+												className={cn(
+													"inline-flex items-center gap-1 transition-colors",
+													slug && "text-blue-400 hover:text-blue-300 hover:underline",
+												)}
 											>
-												{slug}
-												<ExternalLink className="size-3 shrink-0" />
+												<MarketWithIcon market={t.market} slug={slug} />
+												{slug && <ExternalLink className="size-3 shrink-0" />}
 											</a>
 										);
 									})()}

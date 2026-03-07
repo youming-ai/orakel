@@ -1,9 +1,25 @@
+import { BtcIcon } from "@/components/icons";
 import { SimplifiedIndicators } from "@/components/market/SimplifiedIndicators";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { MarketSnapshot } from "@/contracts/http";
-import { fmtCents, fmtMinSec } from "@/lib/format";
+import { fmtCents, fmtMinSec, fmtPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+function MarketLabel({ id, spotPrice }: { id: string; spotPrice: number | null }) {
+	const isBtc = id.startsWith("BTC");
+	return (
+		<div className="flex items-center gap-2">
+			<span className="flex items-center gap-1.5">
+				{isBtc && <BtcIcon size={14} />}
+				<span className="font-semibold text-xs sm:text-sm">{id}</span>
+			</span>
+			{spotPrice !== null && (
+				<span className="text-xs font-medium tabular-nums text-muted-foreground">{fmtPrice(id, spotPrice)}</span>
+			)}
+		</div>
+	);
+}
 
 interface MarketCardProps {
 	market: MarketSnapshot;
@@ -40,7 +56,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 								isEntry ? (isLong ? "bg-emerald-500" : "bg-red-500") : "bg-muted-foreground/30",
 							)}
 						/>
-						<span className="font-semibold text-xs sm:text-sm">{m.id}</span>
+						<MarketLabel id={m.id} spotPrice={m.spotPrice} />
 					</div>
 					<div className="flex items-center gap-2">
 						{m.phase && (

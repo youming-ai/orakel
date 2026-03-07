@@ -184,11 +184,11 @@ describe("LiveSettler.settle (redeemer-only)", () => {
 		});
 		const trades = [
 			makeWonTrade({ id: "t1", marketId: "BTC-15m", side: "UP", price: 0.3, size: 10, pnl: 7.0 }),
-			makeWonTrade({ id: "t2", marketId: "BTC-1h", side: "DOWN", price: 0.5, size: 10, pnl: 5.0 }),
+			makeWonTrade({ id: "t2", marketId: "BTC-5m", side: "DOWN", price: 0.5, size: 10, pnl: 5.0 }),
 		];
 		const account = makeFakeAccount(trades);
 		const redeemFn = vi.fn().mockResolvedValue({ success: true, txHash: "0x111" });
-		const tokenMap: Record<string, string> = { "BTC-15m-UP": "token-btc-up", "BTC-1h-DOWN": "token-eth-down" };
+		const tokenMap: Record<string, string> = { "BTC-15m-UP": "token-btc-up", "BTC-5m-DOWN": "token-eth-down" };
 
 		const settler = new LiveSettler({
 			clobWs,
