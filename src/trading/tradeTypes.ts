@@ -123,6 +123,8 @@ export interface ComputeResult {
 	regimeInfo: RegimeResult;
 	finalUp: number;
 	finalDown: number;
+	blendSource: string;
+	volImpliedUp: number | null;
 	pLong: string;
 	pShort: string;
 	predictNarrative: string;

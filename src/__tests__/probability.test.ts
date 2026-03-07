@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { applyTimeAwareness, computeRealizedVolatility, scoreDirection } from "../engines/probability.ts";
-import type { MacdResult } from "../types.ts";
+import type { Candle } from "../core/marketDataTypes.ts";
+import {
+	aggregateCandles,
+	applyTimeAwareness,
+	blendProbabilities,
+	computeRealizedVolatility,
+	estimatePriceToBeatProbability,
+	scoreDirection,
+} from "../engines/probability.ts";
+import type { MacdResult } from "../trading/tradeTypes.ts";
 
 function buildMacd(overrides: Partial<MacdResult> = {}): MacdResult {
 	return {
@@ -222,5 +230,63 @@ describe("computeRealizedVolatility", () => {
 		const expected = Math.sqrt(((logRet * logRet * 4) / lookback) * 15);
 
 		expect(computeRealizedVolatility(closes, lookback)).toBeCloseTo(expected, 12);
+	});
+});
+
+describe("aggregateCandles", () => {
+	it("aggregates consecutive candles into larger buckets", () => {
+		const candles: Candle[] = [
+			{ openTime: 0, open: 100, high: 101, low: 99, close: 100, volume: 1, closeTime: 59_999 },
+			{ openTime: 60_000, open: 100, high: 102, low: 98, close: 101, volume: 2, closeTime: 119_999 },
+			{ openTime: 120_000, open: 101, high: 103, low: 100, close: 102, volume: 3, closeTime: 179_999 },
+		];
+
+		const aggregated = aggregateCandles(candles, 2);
+		expect(aggregated).toHaveLength(2);
+		expect(aggregated[0]).toMatchObject({ open: 100, high: 102, low: 98, close: 101, volume: 3 });
+		expect(aggregated[1]).toMatchObject({ open: 101, high: 103, low: 100, close: 102, volume: 3 });
+	});
+});
+
+describe("estimatePriceToBeatProbability", () => {
+	it("returns above 0.5 when current price is above priceToBeat", () => {
+		const probability = estimatePriceToBeatProbability({
+			currentPrice: 101,
+			priceToBeat: 100,
+			remainingMinutes: 15,
+			volatility15m: 0.01,
+		});
+
+		expect(probability).not.toBeNull();
+		expect(probability as number).toBeGreaterThan(0.5);
+	});
+
+	it("returns below 0.5 when current price is below priceToBeat", () => {
+		const probability = estimatePriceToBeatProbability({
+			currentPrice: 99,
+			priceToBeat: 100,
+			remainingMinutes: 15,
+			volatility15m: 0.01,
+		});
+
+		expect(probability).not.toBeNull();
+		expect(probability as number).toBeLessThan(0.5);
+	});
+});
+
+describe("blendProbabilities", () => {
+	it("falls back to ta_only when ptb probability is missing", () => {
+		expect(blendProbabilities(0.62, null)).toEqual({
+			finalUp: 0.62,
+			finalDown: 0.38,
+			blendSource: "ta_only",
+		});
+	});
+
+	it("blends ptb and ta probabilities", () => {
+		const result = blendProbabilities(0.4, 0.7, 0.25);
+		expect(result.blendSource).toBe("ptb_ta");
+		expect(result.finalUp).toBeCloseTo(0.625, 8);
+		expect(result.finalDown).toBeCloseTo(0.375, 8);
 	});
 });

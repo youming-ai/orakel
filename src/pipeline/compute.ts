@@ -1,8 +1,15 @@
-import type { AppConfig } from "../core/configTypes.ts";
+import type { AppConfig, StrategyConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
-import type { RawMarketData } from "../core/marketDataTypes.ts";
+import type { Candle, RawMarketData } from "../core/marketDataTypes.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
-import { applyTimeAwareness, computeRealizedVolatility, scoreDirection } from "../engines/probability.ts";
+import {
+	aggregateCandles,
+	applyTimeAwareness,
+	blendProbabilities,
+	computeRealizedVolatility,
+	estimatePriceToBeatProbability,
+	scoreDirection,
+} from "../engines/probability.ts";
 import { detectRegime } from "../engines/regime.ts";
 import { computeHeikenAshi, countConsecutive } from "../indicators/heikenAshi.ts";
 import { computeMacd } from "../indicators/macd.ts";
@@ -31,15 +38,18 @@ function countVwapCrosses(closes: number[], vwapSeries: number[], lookback: numb
 
 export function computeMarketDecision(
 	data: RawMarketData,
-	_priceToBeat: number | null,
+	priceToBeat: number | null,
 	config: AppConfig,
+	strategy: StrategyConfig,
 ): ComputeResult {
 	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin } = data;
 	if (poly.ok && poly.degraded) {
 		log.warn(`Polymarket snapshot degraded for ${market.id}; using fallback orderbook/price data`);
 	}
 	const effectiveTimeLeftMin = timeLeftMin ?? market.candleWindowMinutes;
-	const closes: number[] = candles.map((c) => Number(c.close));
+	const aggregationMinutes = Math.max(1, Number(strategy.candleAggregationMinutes ?? 1));
+	const sampledCandles: Candle[] = aggregateCandles(candles, aggregationMinutes);
+	const closes: number[] = sampledCandles.map((c) => Number(c.close));
 	const fallbackClose = Number.isFinite(lastPrice) ? lastPrice : 0;
 	for (let i = 0; i < closes.length; i += 1) {
 		if (!Number.isFinite(closes[i])) {
@@ -47,38 +57,45 @@ export function computeMarketDecision(
 			closes[i] = typeof prevClose === "number" && Number.isFinite(prevClose) ? prevClose : fallbackClose;
 		}
 	}
-	const vwapSeries = computeVwapSeries(candles);
+	const vwapSeries = computeVwapSeries(sampledCandles);
 	const vwapNowRaw = vwapSeries[vwapSeries.length - 1];
 	const vwapNow = vwapNowRaw === undefined ? null : vwapNowRaw;
-	const lookback = config.vwapSlopeLookbackMinutes;
+	const lookback = Math.max(1, Math.round(config.vwapSlopeLookbackMinutes / aggregationMinutes));
 	const vwapBack = vwapSeries[vwapSeries.length - lookback];
 	const vwapSlope =
 		vwapSeries.length >= lookback && vwapNow !== null && vwapBack !== undefined
 			? (vwapNow - vwapBack) / lookback
 			: null;
 
-	const rsiNow = computeRsi(closes, config.rsiPeriod);
+	const rsiPeriod = Math.max(2, Math.round(config.rsiPeriod / aggregationMinutes));
+	const rsiNow = computeRsi(closes, rsiPeriod);
 	const rsiForSlope: number[] = [];
 	for (let offset = 2; offset >= 0; offset--) {
 		if (offset === 0) {
 			if (rsiNow !== null) rsiForSlope.push(rsiNow);
 		} else {
 			const subLen = closes.length - offset;
-			if (subLen >= config.rsiPeriod + 1) {
-				const r = computeRsi(closes.slice(0, subLen), config.rsiPeriod);
+			if (subLen >= rsiPeriod + 1) {
+				const r = computeRsi(closes.slice(0, subLen), rsiPeriod);
 				if (r !== null) rsiForSlope.push(r);
 			}
 		}
 	}
 	const rsiSlope = slopeLast(rsiForSlope, 3);
 
-	const macd = computeMacd(closes, config.macdFast, config.macdSlow, config.macdSignal) as MacdResult | null;
-	const ha = computeHeikenAshi(candles);
+	const macdFast = Math.max(2, Math.round(config.macdFast / aggregationMinutes));
+	const macdSlow = Math.max(macdFast + 1, Math.round(config.macdSlow / aggregationMinutes));
+	const macdSignal = Math.max(2, Math.round(config.macdSignal / aggregationMinutes));
+	const macd = computeMacd(closes, macdFast, macdSlow, macdSignal) as MacdResult | null;
+	const ha = computeHeikenAshi(sampledCandles);
 	const consec = countConsecutive(ha);
 
-	const vwapCrossCount = countVwapCrosses(closes, vwapSeries, 20);
-	const volumeRecent = candles.slice(-20).reduce((a, c) => a + Number(c.volume), 0);
-	const volumeAvg = candles.slice(-120).reduce((a, c) => a + Number(c.volume), 0) / 6;
+	const recentBars = Math.max(1, Math.round(20 / aggregationMinutes));
+	const avgBars = Math.max(recentBars, Math.round(120 / aggregationMinutes));
+	const vwapCrossCount = countVwapCrosses(closes, vwapSeries, Math.max(3, recentBars));
+	const volumeRecent = sampledCandles.slice(-recentBars).reduce((a, c) => a + Number(c.volume), 0);
+	const volumeAvg =
+		sampledCandles.slice(-avgBars).reduce((a, c) => a + Number(c.volume), 0) / Math.max(1, avgBars / recentBars);
 
 	const failedVwapReclaim =
 		vwapNow !== null && vwapSeries.length >= 3
@@ -107,7 +124,7 @@ export function computeMarketDecision(
 		failedVwapReclaim,
 	});
 
-	const volLookback = Math.max(30, market.candleWindowMinutes * 4);
+	const volLookback = Math.max(5, Math.round(Math.max(30, market.candleWindowMinutes * 4) / aggregationMinutes));
 	const volatility15m = computeRealizedVolatility(closes, volLookback);
 	const binanceChainlinkDelta =
 		spotPrice !== null && currentPrice !== null && currentPrice > 0 ? (spotPrice - currentPrice) / currentPrice : null;
@@ -140,8 +157,22 @@ export function computeMarketDecision(
 	const orderbookImbalance = netImbalance;
 
 	const timeAware = applyTimeAwareness(scored.rawUp, effectiveTimeLeftMin, market.candleWindowMinutes);
-	const finalUp = timeAware.adjustedUp;
-	const finalDown = timeAware.adjustedDown;
+	const volImpliedUp = estimatePriceToBeatProbability({
+		currentPrice: currentPrice ?? lastPrice,
+		priceToBeat,
+		remainingMinutes: effectiveTimeLeftMin,
+		volatility15m,
+	});
+	const priceToBeatMovePct =
+		priceToBeat !== null &&
+		Number.isFinite(priceToBeat) &&
+		priceToBeat > 0 &&
+		Number.isFinite(currentPrice ?? lastPrice)
+			? ((currentPrice ?? lastPrice) - priceToBeat) / priceToBeat
+			: null;
+	const blended = blendProbabilities(timeAware.adjustedUp, volImpliedUp);
+	const finalUp = blended.finalUp;
+	const finalDown = blended.finalDown;
 
 	const marketUp = poly.ok ? (poly.prices?.up ?? null) : null;
 	const marketDown = poly.ok ? (poly.prices?.down ?? null) : null;
@@ -159,8 +190,10 @@ export function computeMarketDecision(
 		edgeDown: edge.edgeDown,
 		modelUp: finalUp,
 		modelDown: finalDown,
+		volatility15m,
+		priceToBeatMovePct,
 		regime: regimeInfo.regime,
-		strategy: config.strategy,
+		strategy,
 		marketId: market.id,
 	});
 
@@ -190,6 +223,8 @@ export function computeMarketDecision(
 		regimeInfo,
 		finalUp,
 		finalDown,
+		blendSource: blended.blendSource,
+		volImpliedUp,
 		pLong,
 		pShort,
 		predictNarrative,

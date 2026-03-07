@@ -1,10 +1,13 @@
-import { CONFIG } from "../core/config.ts";
+import { CONFIG, getStrategyForMarket } from "../core/config.ts";
 import type { MarketConfig } from "../core/configTypes.ts";
+import { createLogger } from "../core/logger.ts";
 import type { CandleWindowTiming, OrderBookSummary } from "../core/marketDataTypes.ts";
 import { persistSignal } from "../trading/persistence.ts";
 import type { MacdResult, StreamHandles, TradeDecision, TradeSignal } from "../trading/tradeTypes.ts";
 import { computeMarketDecision } from "./compute.ts";
 import { fetchMarketData, priceToBeatFromPolymarketMarket } from "./fetch.ts";
+
+const log = createLogger("process-market");
 
 interface ProcessMarketParams {
 	market: MarketConfig;
@@ -89,8 +92,12 @@ export async function processMarket({
 	}
 
 	const priceToBeat = state.priceToBeatState.slug === marketSlug ? state.priceToBeatState.value : null;
-	const result = computeMarketDecision(data, priceToBeat, CONFIG);
+	const strategy = getStrategyForMarket(market.id);
+	const result = computeMarketDecision(data, priceToBeat, CONFIG, strategy);
 	if (result.edge.vigTooHigh) {
+		log.info(
+			`${market.id} vig too high: rawSum=${result.edge.rawSum?.toFixed(4)} (>${1.08}), skipping signal generation`,
+		);
 		return {
 			ok: true,
 			market,
@@ -136,8 +143,8 @@ export async function processMarket({
 		spotPrice: data.spotPrice,
 		priceToBeat,
 		volatility15m: result.volatility15m,
-		blendSource: "ta_only",
-		volImpliedUp: null,
+		blendSource: result.blendSource,
+		volImpliedUp: result.volImpliedUp,
 		binanceChainlinkDelta: result.binanceChainlinkDelta,
 		orderbookImbalance: result.orderbookImbalance,
 		orderbook: poly.ok

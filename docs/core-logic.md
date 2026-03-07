@@ -4,7 +4,7 @@ Automated trading bot for Polymarket BTC multi-timeframe up/down markets.
 
 ## Overview
 
-Every second, process the active BTC markets (5m / 15m / 1h / 4h), estimate window-end direction probability using technical indicators, compare against Polymarket odds, and bet when edge is found.
+Every second, process the active BTC markets (5m / 15m / 1h), estimate window-end direction probability with a per-market model that blends technical indicators and `priceToBeat` distance/volatility, compare against Polymarket odds, and bet when edge is found.
 
 ```
 Startup → Establish data streams → 1s main loop { fetch → indicators → probability → edge → order } → 15min window end → settlement
@@ -39,8 +39,6 @@ Four BTC markets are fetched independently. Cache layer (`cache.ts`) prevents re
 | BTC-5m | BTCUSDT | btc-up-or-down-5m | Chainlink |
 | BTC-15m | BTCUSDT | btc-up-or-down-15m | Chainlink |
 | BTC-1h | BTCUSDT | btc-up-or-down-hourly | Binance |
-| BTC-4h | BTCUSDT | btc-up-or-down-4h | Chainlink |
-
 ---
 
 ## 2. Decision Engine — Four-Layer Pipeline
@@ -79,25 +77,24 @@ Point-based system combining all indicators. Each signal contributes +1~+3 to UP
 rawUp = upScore / (upScore + downScore)
 ```
 
-### 2.3 Volatility-Implied Probability (`computeVolatilityImpliedProb`)
+### 2.3 Price-To-Beat Probability (`estimatePriceToBeatProbability`)
 
-Adopts a Black-Scholes-style framework, calculating the probability that price will exceed the target at window end based on the relationship between current price and target price (`priceToBeat`), combined with remaining time and volatility.
+The model now explicitly uses the binary market settlement condition: whether final price will finish above `priceToBeat`.
 
-**Core Formula:**
+Current implementation:
 
 ```
-d = ln(currentPrice / priceToBeat)
-z = d / (volatility15m * sqrt(timeLeftMin / 15))
-rawProb = Phi(z)   // Standard normal cumulative distribution function
+distanceRatio = (currentPrice - priceToBeat) / currentPrice
+sigma = max(volatility15m, floor) * sqrt(timeLeftMin / 15)
+z = distanceRatio / sigma
+ptbProbUp = sigmoid(1.6 * z)
 ```
 
-**Fat-Tail Dampening (crypto adjustment):**
+Interpretation:
 
-Cryptocurrency markets have fatter tails than a normal distribution, so extreme z values are suppressed:
-
-- `|z| > 3`: Dampening factor 0.7, probability capped at 85%
-- `|z| > 2`: Dampening factor 0.8, probability capped at 90%
-- `|z| <= 2`: Use raw probability, no adjustment
+- current price already above `priceToBeat` pushes probability above 0.5
+- more remaining time increases uncertainty, pulling probability back toward 0.5
+- higher realized volatility also widens the uncertainty band
 
 ### 2.4 Time Decay — S-Curve
 
@@ -132,24 +129,26 @@ High volatility means faster price movement, equivalent to having more time rema
 
 ### 2.5 Probability Blending (`blendProbabilities`)
 
-Blends volatility-implied probability with technical analysis scoring at equal weights:
+Technical-analysis probability is first time-decayed toward 0.5, then blended with the `priceToBeat` probability.
 
-**Default Blending Formula (50% each):**
-
-```
-blendedUp = 0.5 * volImpliedUp + 0.5 * taRawUp
-```
-
-**Adjustments:**
-
-- **Binance Lead Signal**: If Binance price leads Polymarket by more than 0.1%, corresponding direction ±2%
-- **Orderbook Imbalance**: If `|imbalance| > 0.2`, corresponding direction ±2%
-
-**Final Clamp:**
+**Current Blend Formula:**
 
 ```
-finalUp = clamp(blendedUp + adjustments, 0.01, 0.99)
+taAdjustedUp = applyTimeAwareness(rawUp, timeLeftMin, windowMinutes)
+finalUp = 0.65 * ptbProbUp + 0.35 * taAdjustedUp
 ```
+
+Fallback:
+
+- if `priceToBeat` or volatility inputs are missing, fall back to `ta_only`
+- otherwise mark blend source as `ptb_ta`
+
+Per-market strategy config can also set:
+
+- time-left entry bounds
+- volatility bounds
+- candle aggregation minutes for longer windows
+- minimum directional move vs `priceToBeat` before entry is allowed
 
 ### 2.6 Regime Detection (`engines/regime.ts`)
 
@@ -251,6 +250,12 @@ Output: `ENTER(side=UP/DOWN, edge, strength)` or `NO_TRADE(reason)`
 
 Strength: `STRONG` (confidence >= 0.75 and edge >= 0.15), `GOOD` (confidence >= 0.5 and edge >= 0.08), `OPTIONAL` (other cases)
 
+Phase-2 calibration adds a direct `priceToBeat` move gate:
+
+- for `UP`, require `(currentPrice - priceToBeat) / priceToBeat >= minPriceToBeatMovePct`
+- for `DOWN`, require `(priceToBeat - currentPrice) / priceToBeat >= minPriceToBeatMovePct`
+- otherwise decision returns `NO_TRADE(ptb_move_below_...)`
+
 ### 2.11 Complete 17-Step Decision Flow
 
 Decision function executes the following sequential checks:
@@ -265,12 +270,13 @@ Decision function executes the following sequential checks:
 8. **Regime disabled check**: If regime multiplier >= 999 (REGIME_DISABLED) → NO_TRADE
 9. **Edge threshold check**: If `bestEdge < effectiveThreshold` → NO_TRADE
 10. **Min probability check**: If `modelProb < minProb` → NO_TRADE
-11. **Overconfidence hard cap check**: If `bestEdge > 0.40` → NO_TRADE
-12. **Overconfidence soft cap check**: If `bestEdge > 0.25` → re-check with penalized threshold (`threshold * 1.4`)
-13. **Calculate confidence score**: Call computeConfidence, weighted 5-factor score
-14. **Confidence threshold check**: If `confidence < minConfidence` → NO_TRADE
-15. **Determine trade strength**: STRONG / GOOD / OPTIONAL based on confidence and edge
-16. **Return ENTER**: Carrying direction (side), strength, edge value, confidence score
+11. **Price-to-beat move check**: If directional move vs `priceToBeat` is below `minPriceToBeatMovePct` → NO_TRADE
+12. **Overconfidence hard cap check**: If `bestEdge > 0.40` → NO_TRADE
+13. **Overconfidence soft cap check**: If `bestEdge > 0.25` → re-check with penalized threshold (`threshold * 1.4`)
+14. **Calculate confidence score**: Call computeConfidence, weighted 5-factor score
+15. **Confidence threshold check**: If `confidence < minConfidence` → NO_TRADE
+16. **Determine trade strength**: STRONG / GOOD / OPTIONAL based on confidence and edge
+17. **Return ENTER**: Carrying direction (side), strength, edge value, confidence score
 
 ---
 

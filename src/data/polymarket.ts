@@ -7,6 +7,11 @@ import type { OrderBookSummary } from "../core/marketDataTypes.ts";
 type JsonRecord = Record<string, unknown>;
 type GammaValue = unknown;
 
+export interface ClobPriceHistoryPoint {
+	timestampSec: number;
+	price: number;
+}
+
 const log = createLogger("polymarket");
 
 const GammaMarketEventSchema = z
@@ -123,20 +128,111 @@ export async function fetchMarketBySlug(slug: string): Promise<GammaMarket | nul
 export async function fetchMarketsBySeriesSlug({
 	seriesSlug,
 	limit = 50,
+	offset = 0,
+	active = true,
+	closed = false,
+	order,
+	ascending,
+	endDateMin,
+	endDateMax,
 }: {
 	seriesSlug: string;
 	limit?: number;
+	offset?: number;
+	active?: boolean;
+	closed?: boolean;
+	order?: string;
+	ascending?: boolean;
+	endDateMin?: string;
+	endDateMax?: string;
 }): Promise<GammaValue[]> {
 	const url = new URL("/markets", CONFIG.gammaBaseUrl);
 	url.searchParams.set("seriesSlug", seriesSlug);
-	url.searchParams.set("active", "true");
-	url.searchParams.set("closed", "false");
+	url.searchParams.set("active", String(active));
+	url.searchParams.set("closed", String(closed));
 	url.searchParams.set("enableOrderBook", "true");
 	url.searchParams.set("limit", String(limit));
+	url.searchParams.set("offset", String(offset));
+	if (order) url.searchParams.set("order", order);
+	if (typeof ascending === "boolean") url.searchParams.set("ascending", String(ascending));
+	if (endDateMin) url.searchParams.set("end_date_min", endDateMin);
+	if (endDateMax) url.searchParams.set("end_date_max", endDateMax);
 
 	const res = await fetchWithTimeout(url);
 	if (!res.ok) {
 		throw new Error(`Gamma markets(series) error: ${res.status} ${await res.text()}`);
+	}
+
+	const data: unknown = await res.json();
+	return Array.isArray(data) ? data : [];
+}
+
+export async function fetchHistoricalMarketsBySeriesSlug({
+	seriesId,
+	startTimeMs,
+	endTimeMs,
+	limit = 500,
+}: {
+	seriesId: string;
+	startTimeMs: number;
+	endTimeMs: number;
+	limit?: number;
+}): Promise<GammaMarket[]> {
+	const markets: GammaMarket[] = [];
+	const seenSlugs = new Set<string>();
+
+	for (let offset = 0; ; offset += limit) {
+		const page = flattenEventMarkets(
+			await fetchEventsBySeriesId({
+				seriesId,
+				limit,
+				offset,
+				active: false,
+				closed: true,
+			}),
+		);
+
+		if (page.length === 0) break;
+
+		for (const entry of page) {
+			const parsed = parseGammaMarket(entry);
+			if (!parsed || seenSlugs.has(parsed.slug)) continue;
+			seenSlugs.add(parsed.slug);
+
+			const endMs = safeTimeMs(parsed.endDate);
+			if (endMs === null || endMs < startTimeMs || endMs > endTimeMs) continue;
+			markets.push(parsed);
+		}
+
+		if (page.length < limit) break;
+	}
+
+	return markets;
+}
+
+export async function fetchEventsBySeriesId({
+	seriesId,
+	limit = 20,
+	offset = 0,
+	active = true,
+	closed = false,
+}: {
+	seriesId: string;
+	limit?: number;
+	offset?: number;
+	active?: boolean;
+	closed?: boolean;
+}): Promise<GammaValue[]> {
+	const url = new URL("/events", CONFIG.gammaBaseUrl);
+	url.searchParams.set("series_id", String(seriesId));
+	url.searchParams.set("active", String(active));
+	url.searchParams.set("closed", String(closed));
+	url.searchParams.set("limit", String(limit));
+	url.searchParams.set("offset", String(offset));
+
+	const res = await fetchWithTimeout(url);
+	if (!res.ok) {
+		throw new Error(`Gamma events(series_id) error: ${res.status} ${await res.text()}`);
 	}
 
 	const data: unknown = await res.json();
@@ -150,19 +246,12 @@ export async function fetchLiveEventsBySeriesId({
 	seriesId: string;
 	limit?: number;
 }): Promise<GammaValue[]> {
-	const url = new URL("/events", CONFIG.gammaBaseUrl);
-	url.searchParams.set("series_id", String(seriesId));
-	url.searchParams.set("active", "true");
-	url.searchParams.set("closed", "false");
-	url.searchParams.set("limit", String(limit));
-
-	const res = await fetchWithTimeout(url);
-	if (!res.ok) {
-		throw new Error(`Gamma events(series_id) error: ${res.status} ${await res.text()}`);
-	}
-
-	const data: unknown = await res.json();
-	return Array.isArray(data) ? data : [];
+	return fetchEventsBySeriesId({
+		seriesId,
+		limit,
+		active: true,
+		closed: false,
+	});
 }
 
 export function flattenEventMarkets(events: GammaValue[]): GammaValue[] {
@@ -203,6 +292,38 @@ function safeTimeMs(x: unknown): number | null {
 	if (!x) return null;
 	const t = new Date(String(x)).getTime();
 	return Number.isFinite(t) ? t : null;
+}
+
+export function parseOutcomeTokenIds(market: GammaMarket): {
+	upTokenId: string | null;
+	downTokenId: string | null;
+} {
+	const parseArray = (value: unknown): unknown[] => {
+		if (Array.isArray(value)) return value;
+		if (typeof value !== "string") return [];
+		try {
+			const parsed: unknown = JSON.parse(value);
+			return Array.isArray(parsed) ? parsed : [];
+		} catch {
+			return [];
+		}
+	};
+	const outcomes = parseArray(market.outcomes);
+	const clobTokenIds = parseArray(market.clobTokenIds);
+
+	let upTokenId: string | null = null;
+	let downTokenId: string | null = null;
+
+	for (let i = 0; i < outcomes.length; i += 1) {
+		const label = String(outcomes[i] ?? "").toLowerCase();
+		const tokenRaw = clobTokenIds[i];
+		const tokenId = tokenRaw ? String(tokenRaw) : null;
+		if (!tokenId) continue;
+		if (label === CONFIG.polymarket.upOutcomeLabel.toLowerCase()) upTokenId = tokenId;
+		if (label === CONFIG.polymarket.downOutcomeLabel.toLowerCase()) downTokenId = tokenId;
+	}
+
+	return { upTokenId, downTokenId };
 }
 
 export function pickLatestLiveMarket(markets: GammaValue[], nowMs: number = Date.now()): GammaValue | null {
@@ -294,6 +415,62 @@ export async function fetchClobPrice({ tokenId, side }: { tokenId: string; side:
 	const result = toNumber(rec?.price);
 	cache.set(result);
 	return result;
+}
+
+export async function fetchClobPriceHistory({
+	tokenId,
+	startTimeSec,
+	endTimeSec,
+	fidelityMinutes = 1,
+}: {
+	tokenId: string;
+	startTimeSec: number;
+	endTimeSec: number;
+	fidelityMinutes?: number;
+}): Promise<ClobPriceHistoryPoint[]> {
+	const maxAttempts = 4;
+	let lastError: Error | null = null;
+
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		try {
+			const url = new URL("/prices-history", CONFIG.clobBaseUrl);
+			url.searchParams.set("market", tokenId);
+			url.searchParams.set("startTs", String(startTimeSec));
+			url.searchParams.set("endTs", String(endTimeSec));
+			url.searchParams.set("fidelity", String(fidelityMinutes));
+
+			const res = await fetchWithTimeout(url, {}, 10_000);
+			if (!res.ok) {
+				const message = `CLOB prices-history error: ${res.status} ${await res.text()}`;
+				if (res.status >= 500 && attempt < maxAttempts) {
+					lastError = new Error(message);
+					await Bun.sleep(250 * attempt);
+					continue;
+				}
+				throw new Error(message);
+			}
+
+			const data: unknown = await res.json();
+			const rec = asRecord(data);
+			const history = Array.isArray(rec?.history) ? rec.history : [];
+
+			return history
+				.map((point) => {
+					const pointRec = asRecord(point);
+					const timestampSec = Number(pointRec?.t);
+					const price = Number(pointRec?.p);
+					if (!Number.isFinite(timestampSec) || !Number.isFinite(price)) return null;
+					return { timestampSec, price };
+				})
+				.filter((point): point is ClobPriceHistoryPoint => point !== null);
+		} catch (err) {
+			lastError = err instanceof Error ? err : new Error(String(err));
+			if (attempt >= maxAttempts) break;
+			await Bun.sleep(250 * attempt);
+		}
+	}
+
+	throw lastError ?? new Error("CLOB prices-history failed");
 }
 
 // P1-1: Cache orderbook for 3s

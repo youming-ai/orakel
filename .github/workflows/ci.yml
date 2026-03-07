@@ -24,14 +24,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Lint (Biome)
-        run: bunx biome lint src/
+      - name: Install frontend dependencies
+        run: cd web && bun install --frozen-lockfile
 
-      - name: Typecheck
-        run: bunx tsc --noEmit -p tsconfig.check.json
-
-      - name: Test
-        run: bun run test
+      - name: Check
+        run: bun run check:ci
 
   docker:
     name: Docker build

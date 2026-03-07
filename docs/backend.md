@@ -67,6 +67,8 @@ src/
 │   ├── signalPayload.ts
 │   ├── liveSettlerResolver.ts
 │   ├── liveSettlerStore.ts
+│   ├── orderManagerPersistence.ts
+│   ├── orderManagerStatus.ts
 │   ├── orderManager.ts
 │   ├── liveSettler.ts
 │   ├── persistence.ts
@@ -116,7 +118,6 @@ The runtime currently targets BTC multi-timeframe markets only:
 | `BTC-5m` | 5 min | Chainlink | `btc-up-or-down-5m` |
 | `BTC-15m` | 15 min | Chainlink | `btc-up-or-down-15m` |
 | `BTC-1h` | 60 min | Binance | `btc-up-or-down-hourly` |
-| `BTC-4h` | 240 min | Chainlink | `btc-up-or-down-4h` |
 
 Definitions live in [src/core/markets.ts](/Users/youming/GitHub/orakel/src/core/markets.ts).
 
@@ -184,6 +185,11 @@ The former monolithic `trader.ts` has been decomposed:
 - [signalPayload.ts](/Users/youming/GitHub/orakel/src/trading/signalPayload.ts)
   - trade signal payload shaping
   - websocket signal event shaping
+- [orderManagerPersistence.ts](/Users/youming/GitHub/orakel/src/trading/orderManagerPersistence.ts)
+  - pending order load/sync helpers
+- [orderManagerStatus.ts](/Users/youming/GitHub/orakel/src/trading/orderManagerStatus.ts)
+  - order status normalization
+  - active-window counting rules
 - [liveSettlerStore.ts](/Users/youming/GitHub/orakel/src/trading/liveSettlerStore.ts)
   - redeemed trade id persistence
 - [liveSettlerResolver.ts](/Users/youming/GitHub/orakel/src/trading/liveSettlerResolver.ts)
@@ -229,7 +235,7 @@ The shared type layer has started moving out of the old monolithic file, and the
 The backend is materially cleaner than before, but these are still open:
 
 - `src/index.ts` is smaller but still the composition root for startup and loop orchestration
-- `pipeline/compute.ts` still uses mostly global strategy config instead of fully per-market strategy plumbing
+- the strategy layer now uses per-market overrides and a replay/backtest entrypoint, but profitability calibration still needs broader historical runs and parameter tuning
 - `liveSettler.ts` is thinner now, but settlement/redeem behavior is still spread across trading and blockchain helpers
 - some persistence and reconciliation write paths still mix orchestration with storage updates
 
@@ -243,3 +249,19 @@ bun run typecheck
 ```
 
 Full-repo lint/build may still be blocked by pre-existing issues outside the refactor scope or local Node version constraints on the frontend build.
+
+## Replay Calibration
+
+The backtest entrypoint at [src/backtest/replay.ts](/Users/youming/GitHub/orakel/src/backtest/replay.ts) now supports both quote and fill modes:
+
+- `quote=fixed`: synthetic neutral Polymarket odds (`0.5/0.5`) for fast signal calibration
+- `quote=historical`: replay injects historical Polymarket token prices into `computeEdge()`
+- `quoteScope=traded`: optimization mode that first finds candidate windows with the fast replay, then loads historical quotes only for those windows
+- `fill=fixed`: synthetic even-odds fills for fast signal-quality replay
+- `fill=historical`: fills and PnL are repriced from historical Gamma market metadata plus CLOB `prices-history`
+
+That means replay is now split into two levels:
+
+- fast signal calibration
+- slower approximate trade replay with historical entry prices and binary-option PnL
+- slower still but more realistic replay where both edge computation and fills use historical Polymarket prices

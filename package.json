@@ -6,25 +6,32 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "concurrently \"bun run start\" \"cd web && bun run dev\"",
+    "backtest": "bun run src/backtest/replay.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:ci": "tsc --noEmit -p tsconfig.check.json",
+    "typecheck:web": "cd web && tsc --noEmit",
+    "typecheck:all": "tsc --noEmit -p tsconfig.check.json && cd web && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check src/",
+    "lint:web": "biome check web/src/",
+    "lint:all": "bun run lint && bun run lint:web",
     "lint:fix": "biome check --write src/",
-    "format": "biome format --write src/"
+    "lint:fix:web": "biome check --write web/src/",
+    "format": "biome format --write src/",
+    "check:ci": "bun run lint:all && bun run typecheck:all && bun run test"
   },
   "dependencies": {
-    "@polymarket/clob-client": "^5.5.0",
+    "@polymarket/clob-client": "^5.7.0",
     "drizzle-orm": "^0.45.1",
     "ethers": "^5.8.0",
-    "hono": "^4.12.4",
+    "hono": "^4.12.5",
     "postgres": "^3.4.8",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.5",
+    "@biomejs/biome": "^2.4.6",
     "@types/bun": "latest",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.2.1",

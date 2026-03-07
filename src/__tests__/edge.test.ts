@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { StrategyConfig } from "../core/configTypes.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
-import type { StrategyConfig } from "../types.ts";
 
 function makeStrategy(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
 	return {
@@ -11,6 +11,12 @@ function makeStrategy(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
 		minProbMid: 0.6,
 		minProbLate: 0.65,
 		maxGlobalTradesPerWindow: 100,
+		minTimeLeftMin: undefined,
+		maxTimeLeftMin: undefined,
+		minVolatility15m: undefined,
+		maxVolatility15m: undefined,
+		candleAggregationMinutes: undefined,
+		minPriceToBeatMovePct: undefined,
 		...overrides,
 	};
 }
@@ -69,7 +75,18 @@ describe("computeEdge", () => {
 		expect(result.arbitrage).toBe(true);
 	});
 
-	it("marks overpriced when rawSum is above 1.04", () => {
+	it("marks overpriced when rawSum is above 1.08", () => {
+		const result = computeEdge({
+			modelUp: 0.55,
+			modelDown: 0.45,
+			marketYes: 0.55,
+			marketNo: 0.54,
+		});
+
+		expect(result.overpriced).toBe(true);
+	});
+
+	it("does not mark overpriced when rawSum is between 1.04 and 1.08", () => {
 		const result = computeEdge({
 			modelUp: 0.55,
 			modelDown: 0.45,
@@ -77,7 +94,7 @@ describe("computeEdge", () => {
 			marketNo: 0.52,
 		});
 
-		expect(result.overpriced).toBe(true);
+		expect(result.overpriced).toBe(false);
 	});
 
 	it("clamps normalized market prices into [0, 1]", () => {
@@ -241,6 +258,63 @@ describe("decide", () => {
 
 		expect(result.action).toBe("NO_TRADE");
 		expect(result.reason).toBe("prob_below_0.55");
+	});
+
+	it("returns NO_TRADE when time left is below strategy minimum", () => {
+		const result = decide({
+			remainingMinutes: 1,
+			edgeUp: 0.2,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			strategy: makeStrategy({ minTimeLeftMin: 2 }),
+		});
+
+		expect(result.reason).toBe("time_left_below_2");
+	});
+
+	it("returns NO_TRADE when volatility is above strategy maximum", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.2,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			volatility15m: 0.08,
+			strategy: makeStrategy({ maxVolatility15m: 0.05 }),
+		});
+
+		expect(result.reason).toBe("vol_above_0.05");
+	});
+
+	it("returns NO_TRADE when price move vs priceToBeat is below strategy minimum", () => {
+		const result = decide({
+			remainingMinutes: 8,
+			edgeUp: 0.2,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			priceToBeatMovePct: 0.001,
+			strategy: makeStrategy({ minPriceToBeatMovePct: 0.002 }),
+		});
+
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("ptb_move_below_0.002");
+	});
+
+	it("applies priceToBeat move threshold directionally for DOWN entries", () => {
+		const result = decide({
+			remainingMinutes: 8,
+			edgeUp: 0.02,
+			edgeDown: 0.2,
+			modelUp: 0.2,
+			modelDown: 0.8,
+			priceToBeatMovePct: -0.003,
+			strategy: makeStrategy({ minPriceToBeatMovePct: 0.002 }),
+		});
+
+		expect(result.action).toBe("ENTER");
+		expect(result.side).toBe("DOWN");
 	});
 
 	it("enters with STRONG strength when edge >= 20%", () => {

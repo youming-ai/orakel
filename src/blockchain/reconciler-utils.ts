@@ -1,4 +1,4 @@
-import type { ReconStatus } from "../contracts/stateTypes.ts";
+import type { ReconStatus } from "./blockchainTypes.ts";
 
 // --- Local row types for type guards ---
 

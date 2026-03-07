@@ -1,23 +1,23 @@
 {
   "paper": {
     "risk": {
-      "maxTradeSizeUsdc": 5,
+      "maxTradeSizeUsdc": 10,
       "limitDiscount": 0.01,
       "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 4,
+      "maxOpenPositions": 3,
       "minLiquidity": 5000,
-      "maxTradesPerWindow": 4
+      "maxTradesPerWindow": 3
     },
     "initialBalance": 1000
   },
   "live": {
     "risk": {
-      "maxTradeSizeUsdc": 5,
+      "maxTradeSizeUsdc": 10,
       "limitDiscount": 0.01,
       "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 4,
+      "maxOpenPositions": 3,
       "minLiquidity": 5000,
-      "maxTradesPerWindow": 4
+      "maxTradesPerWindow": 3
     }
   },
   "strategy": {
@@ -28,8 +28,50 @@
       "minProbEarly": 0.55,
       "minProbMid": 0.6,
       "minProbLate": 0.65,
-      "maxGlobalTradesPerWindow": 4,
+      "maxGlobalTradesPerWindow": 3,
       "skipMarkets": []
+    },
+    "BTC-5m": {
+      "edgeThresholdEarly": 0.04,
+      "edgeThresholdMid": 0.07,
+      "edgeThresholdLate": 0.12,
+      "minProbEarly": 0.55,
+      "minProbMid": 0.6,
+      "minProbLate": 0.65,
+      "minTimeLeftMin": 1,
+      "maxTimeLeftMin": 4,
+      "minVolatility15m": 0.002,
+      "maxVolatility15m": 0.02,
+      "candleAggregationMinutes": 1,
+      "minPriceToBeatMovePct": 0.0012
+    },
+    "BTC-15m": {
+      "edgeThresholdEarly": 0.05,
+      "edgeThresholdMid": 0.09,
+      "edgeThresholdLate": 0.15,
+      "minProbEarly": 0.55,
+      "minProbMid": 0.61,
+      "minProbLate": 0.66,
+      "minTimeLeftMin": 3,
+      "maxTimeLeftMin": 10,
+      "minVolatility15m": 0.002,
+      "maxVolatility15m": 0.02,
+      "candleAggregationMinutes": 1,
+      "minPriceToBeatMovePct": 0.0018
+    },
+    "BTC-1h": {
+      "edgeThresholdEarly": 0.09,
+      "edgeThresholdMid": 0.14,
+      "edgeThresholdLate": 0.2,
+      "minProbEarly": 0.57,
+      "minProbMid": 0.64,
+      "minProbLate": 0.68,
+      "minTimeLeftMin": 15,
+      "maxTimeLeftMin": 28,
+      "minVolatility15m": 0.0015,
+      "maxVolatility15m": 0.025,
+      "candleAggregationMinutes": 5,
+      "minPriceToBeatMovePct": 0.0048
     }
   }
 }

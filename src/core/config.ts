@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { z } from "zod";
+import type { ConfigUpdateDto } from "../contracts/config.ts";
 import type { AppConfig, RiskConfig, StrategyConfig } from "./configTypes.ts";
 import { env } from "./env.ts";
 import { createLogger } from "./logger.ts";
@@ -71,6 +72,12 @@ const StrategyConfigSchema = z
 		minProbLate: z.coerce.number().min(0).max(1).optional(),
 		maxGlobalTradesPerWindow: z.coerce.number().int().min(1).optional(),
 		skipMarkets: z.array(z.string()).optional(),
+		minTimeLeftMin: z.coerce.number().min(0).optional(),
+		maxTimeLeftMin: z.coerce.number().min(0).optional(),
+		minVolatility15m: z.coerce.number().min(0).optional(),
+		maxVolatility15m: z.coerce.number().min(0).optional(),
+		candleAggregationMinutes: z.coerce.number().int().min(1).optional(),
+		minPriceToBeatMovePct: z.coerce.number().min(0).optional(),
 	})
 	.partial()
 	.transform((value) => ({
@@ -130,9 +137,148 @@ const ConfigFileSchema = z
 	});
 
 type ConfigFile = z.infer<typeof ConfigFileSchema>;
+const STRATEGY_PATCH_KEYS = new Set<keyof StrategyConfig>([
+	"edgeThresholdEarly",
+	"edgeThresholdMid",
+	"edgeThresholdLate",
+	"minProbEarly",
+	"minProbMid",
+	"minProbLate",
+	"maxGlobalTradesPerWindow",
+	"skipMarkets",
+	"minTimeLeftMin",
+	"maxTimeLeftMin",
+	"maxVolatility15m",
+	"minVolatility15m",
+	"candleAggregationMinutes",
+	"minPriceToBeatMovePct",
+]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+	return isObject(value) ? value : {};
+}
+
+function hasNestedStrategy(value: Record<string, unknown>): boolean {
+	return "default" in value;
+}
+
+function splitStrategyPatch(strategyPatch: Record<string, unknown>): {
+	defaultPatch: Record<string, unknown>;
+	perMarketPatches: Record<string, Record<string, unknown>>;
+} {
+	const defaultPatch: Record<string, unknown> = {};
+	const perMarketPatches: Record<string, Record<string, unknown>> = {};
+	const treatAsNested =
+		"default" in strategyPatch ||
+		Object.entries(strategyPatch).some(
+			([key, value]) => !STRATEGY_PATCH_KEYS.has(key as keyof StrategyConfig) && isObject(value),
+		);
+
+	if (!treatAsNested) {
+		return {
+			defaultPatch: strategyPatch,
+			perMarketPatches,
+		};
+	}
+
+	for (const [key, value] of Object.entries(strategyPatch)) {
+		if (key === "default" && isObject(value)) {
+			Object.assign(defaultPatch, value);
+			continue;
+		}
+
+		if (!STRATEGY_PATCH_KEYS.has(key as keyof StrategyConfig) && isObject(value)) {
+			perMarketPatches[key] = value;
+			continue;
+		}
+
+		defaultPatch[key] = value;
+	}
+
+	return {
+		defaultPatch,
+		perMarketPatches,
+	};
+}
+
+export function validateConfigFile(data: unknown): void {
+	ConfigFileSchema.parse(data);
+}
+
+export function readConfigFileObject(configPath: string): Record<string, unknown> {
+	const raw = fs.readFileSync(configPath, "utf8");
+	const parsed: unknown = JSON.parse(raw);
+	if (!isObject(parsed)) {
+		throw new Error("config file must be a JSON object");
+	}
+	return parsed;
+}
+
+export function applyConfigUpdate(currentConfigValue: unknown, patch: ConfigUpdateDto): Record<string, unknown> {
+	const currentConfig = asObject(currentConfigValue);
+	const currentPaper = asObject(currentConfig.paper);
+	const currentPaperRisk = asObject(currentPaper.risk);
+	const currentLive = asObject(currentConfig.live);
+	const currentLiveRisk = asObject(currentLive.risk);
+	const currentStrategy = asObject(currentConfig.strategy);
+	const { defaultPatch, perMarketPatches } = splitStrategyPatch(asObject(patch.strategy));
+	const defaultStrategyBase = hasNestedStrategy(currentStrategy) ? asObject(currentStrategy.default) : currentStrategy;
+
+	let nextStrategy: Record<string, unknown>;
+	if (hasNestedStrategy(currentStrategy) || Object.keys(perMarketPatches).length > 0) {
+		nextStrategy = {
+			...currentStrategy,
+			default: {
+				...defaultStrategyBase,
+				...defaultPatch,
+			},
+		};
+
+		for (const [marketId, marketPatch] of Object.entries(perMarketPatches)) {
+			nextStrategy[marketId] = {
+				...asObject(currentStrategy[marketId]),
+				...marketPatch,
+			};
+		}
+	} else {
+		nextStrategy = {
+			...defaultStrategyBase,
+			...defaultPatch,
+		};
+	}
+
+	const updated = {
+		...currentConfig,
+		strategy: nextStrategy,
+		paper: {
+			...currentPaper,
+			risk: {
+				...currentPaperRisk,
+				...asObject(patch.paperRisk),
+			},
+		},
+		live: {
+			...currentLive,
+			risk: {
+				...currentLiveRisk,
+				...asObject(patch.liveRisk),
+			},
+		},
+	};
+
+	validateConfigFile(updated);
+	return updated;
+}
+
+export async function persistConfigUpdate(configPath: string, patch: ConfigUpdateDto): Promise<AppConfig> {
+	const currentConfig = readConfigFileObject(configPath);
+	const updated = applyConfigUpdate(currentConfig, patch);
+	await atomicWriteConfig(configPath, updated);
+	return reloadConfig();
 }
 
 function readJsonConfig(): ConfigFile {
@@ -245,6 +391,12 @@ export const CONFIG: AppConfig = {
 		minProbLate: FILE_STRATEGY.minProbLate,
 		maxGlobalTradesPerWindow: FILE_STRATEGY.maxGlobalTradesPerWindow,
 		skipMarkets: FILE_STRATEGY.skipMarkets,
+		minTimeLeftMin: FILE_STRATEGY.minTimeLeftMin,
+		maxTimeLeftMin: FILE_STRATEGY.maxTimeLeftMin,
+		minVolatility15m: FILE_STRATEGY.minVolatility15m,
+		maxVolatility15m: FILE_STRATEGY.maxVolatility15m,
+		candleAggregationMinutes: FILE_STRATEGY.candleAggregationMinutes,
+		minPriceToBeatMovePct: FILE_STRATEGY.minPriceToBeatMovePct,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -280,6 +432,12 @@ export function reloadConfig(): AppConfig {
 		minProbLate: fileStrategy.minProbLate,
 		maxGlobalTradesPerWindow: fileStrategy.maxGlobalTradesPerWindow,
 		skipMarkets: fileStrategy.skipMarkets,
+		minTimeLeftMin: fileStrategy.minTimeLeftMin,
+		maxTimeLeftMin: fileStrategy.maxTimeLeftMin,
+		minVolatility15m: fileStrategy.minVolatility15m,
+		maxVolatility15m: fileStrategy.maxVolatility15m,
+		candleAggregationMinutes: fileStrategy.candleAggregationMinutes,
+		minPriceToBeatMovePct: fileStrategy.minPriceToBeatMovePct,
 	};
 
 	perMarketStrategy = fileConfig.perMarketStrategy;

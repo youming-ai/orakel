@@ -163,21 +163,14 @@ export function isPaperRunning(): boolean {
 }
 export function setPaperRunning(running: boolean): void {
 	_paperRunning = running;
-	if (running) {
-		// Clear pending states when actually running
-		_paperPendingStart = false;
-		_paperPendingSince = null;
-	}
+	clearPaperPending();
 }
 export function isLiveRunning(): boolean {
 	return _liveRunning;
 }
 export function setLiveRunning(running: boolean): void {
 	_liveRunning = running;
-	if (running) {
-		_livePendingStart = false;
-		_livePendingSince = null;
-	}
+	clearLivePending();
 }
 
 // Pending start - bot will start at next cycle boundary
@@ -241,4 +234,40 @@ export function clearLivePending(): void {
 	_livePendingStart = false;
 	_livePendingStop = false;
 	_livePendingSince = null;
+}
+
+export function applyPendingStarts(): boolean {
+	let changed = false;
+
+	if (_paperPendingStart && !_paperRunning) {
+		_paperRunning = true;
+		clearPaperPending();
+		changed = true;
+	}
+
+	if (_livePendingStart && !_liveRunning) {
+		_liveRunning = true;
+		clearLivePending();
+		changed = true;
+	}
+
+	return changed;
+}
+
+export function applyPendingStops(): boolean {
+	let changed = false;
+
+	if (_paperPendingStop && _paperRunning) {
+		_paperRunning = false;
+		clearPaperPending();
+		changed = true;
+	}
+
+	if (_livePendingStop && _liveRunning) {
+		_liveRunning = false;
+		clearLivePending();
+		changed = true;
+	}
+
+	return changed;
 }

@@ -1,27 +1,27 @@
-import fs from "node:fs";
 import { Hono } from "hono";
 import { getAccountSummary, getAllPositions } from "../../blockchain/accountState.ts";
 import { getReconStatus } from "../../blockchain/reconciler.ts";
 import { fetchRedeemablePositions, redeemAll } from "../../blockchain/redeemer.ts";
-import { atomicWriteConfig, CONFIG, reloadConfig } from "../../core/config.ts";
+import { CONFIG, persistConfigUpdate } from "../../core/config.ts";
 import { env } from "../../core/env.ts";
 import { createLogger } from "../../core/logger.ts";
 import {
-	getMarkets,
-	getUpdatedAt,
-	isLivePendingStart,
-	isLivePendingStop,
+	clearLivePending,
+	clearPaperPending,
 	isLiveRunning,
-	isPaperPendingStart,
-	isPaperPendingStop,
 	isPaperRunning,
+	setLivePendingStart,
+	setLivePendingStop,
 	setLiveRunning,
-	setPaperRunning,
+	setPaperPendingStart,
+	setPaperPendingStop,
 } from "../../core/state.ts";
 import { tradeQueries } from "../../db/queries.ts";
+import { publishCurrentStateSnapshot } from "../../runtime/snapshotPublisher.ts";
 import { liveAccount, paperAccount } from "../../trading/accountStats.ts";
 import { getLiveStartReadinessError } from "../../trading/liveGuards.ts";
 import { connectWallet, disconnectWallet, getClientStatus, getWallet, getWalletAddress } from "../../trading/trader.ts";
+import { buildDashboardStateDto } from "./statePayload.ts";
 
 const log = createLogger("api");
 
@@ -44,46 +44,7 @@ export const apiRoutes = new Hono()
 		});
 	})
 	.get("/state", (c) => {
-		const paperTodayStats = paperAccount.getTodayStats();
-		const liveTodayStats = liveAccount.getTodayStats();
-		const stopLoss = paperAccount.getStopReason();
-		const walletAddress = getWalletAddress();
-		const clientStatus = getClientStatus();
-
-		return c.json({
-			markets: getMarkets(),
-			updatedAt: getUpdatedAt(),
-			paperMode: CONFIG.paperMode !== false,
-			wallet: { address: walletAddress, connected: !!walletAddress },
-			paperDaily: { date: new Date().toDateString(), pnl: paperTodayStats.pnl, trades: paperTodayStats.trades },
-			liveDaily: { date: new Date().toDateString(), pnl: liveTodayStats.pnl, trades: liveTodayStats.trades },
-			config: {
-				strategy: CONFIG.strategy,
-				paperRisk: CONFIG.paperRisk,
-				liveRisk: CONFIG.liveRisk,
-			},
-			paperRunning: isPaperRunning(),
-			liveRunning: isLiveRunning(),
-			paperStats: paperAccount.getStats(),
-			liveStats: liveAccount.getStats(),
-			paperBalance: paperAccount.getBalance(),
-			liveBalance: liveAccount.getBalance(),
-			liveWallet: {
-				address: walletAddress,
-				connected: clientStatus.walletLoaded,
-				clientReady: clientStatus.clientReady,
-			},
-			paperPendingStart: isPaperPendingStart(),
-			paperPendingStop: isPaperPendingStop(),
-			livePendingStart: isLivePendingStart(),
-			livePendingStop: isLivePendingStop(),
-			paperPendingSince: null,
-			livePendingSince: null,
-			stopLoss: paperAccount.isStopped() ? stopLoss : null,
-			liveStopLoss: liveAccount.isStopped() ? liveAccount.getStopReason() : null,
-			todayStats: paperTodayStats,
-			liveTodayStats: liveTodayStats,
-		});
+		return c.json(buildDashboardStateDto());
 	})
 	.get("/logs", async (c) => {
 		const mode = c.req.query("mode");
@@ -132,39 +93,7 @@ export const apiRoutes = new Hono()
 	.put("/config", async (c) => {
 		try {
 			const body = await c.req.json();
-			const currentConfig = JSON.parse(fs.readFileSync("./config.json", "utf8"));
-			const updated: Record<string, unknown> = {};
-
-			if (body.strategy && typeof body.strategy === "object") {
-				updated.strategy = { ...currentConfig.strategy, ...body.strategy };
-			} else {
-				updated.strategy = currentConfig.strategy;
-			}
-
-			const currentPaper = currentConfig.paper && typeof currentConfig.paper === "object" ? currentConfig.paper : {};
-			const currentPaperRisk = currentPaper.risk && typeof currentPaper.risk === "object" ? currentPaper.risk : {};
-			if (body.paperRisk && typeof body.paperRisk === "object") {
-				updated.paper = {
-					...currentPaper,
-					risk: { ...currentPaperRisk, ...body.paperRisk },
-				};
-			} else {
-				updated.paper = currentPaper;
-			}
-
-			const currentLive = currentConfig.live && typeof currentConfig.live === "object" ? currentConfig.live : {};
-			const currentLiveRisk = currentLive.risk && typeof currentLive.risk === "object" ? currentLive.risk : {};
-			if (body.liveRisk && typeof body.liveRisk === "object") {
-				updated.live = {
-					...currentLive,
-					risk: { ...currentLiveRisk, ...body.liveRisk },
-				};
-			} else {
-				updated.live = currentLive;
-			}
-
-			await atomicWriteConfig("./config.json", updated);
-			reloadConfig();
+			await persistConfigUpdate("./config.json", body);
 
 			return c.json({
 				ok: true as const,
@@ -185,15 +114,25 @@ export const apiRoutes = new Hono()
 		}
 	})
 	.post("/paper/start", (c) => {
-		setPaperRunning(true);
-		return c.json({ ok: true as const, message: "Paper trading started" });
+		if (isPaperRunning()) {
+			return c.json({ ok: true as const, message: "Paper trading already running" });
+		}
+		setPaperPendingStart(true);
+		publishCurrentStateSnapshot();
+		return c.json({ ok: true as const, message: "Paper trading will start next cycle" });
 	})
 	.post("/paper/stop", (c) => {
-		setPaperRunning(false);
-		return c.json({ ok: true as const, message: "Paper trading stopped" });
+		if (!isPaperRunning()) {
+			return c.json({ ok: true as const, message: "Paper trading already stopped" });
+		}
+		setPaperPendingStop(true);
+		publishCurrentStateSnapshot();
+		return c.json({ ok: true as const, message: "Paper trading will stop after settlement" });
 	})
 	.post("/paper/cancel", (c) => {
-		return c.json({ ok: true as const, message: "Operation cancelled" });
+		clearPaperPending();
+		publishCurrentStateSnapshot();
+		return c.json({ ok: true as const, message: "Pending paper operation cancelled" });
 	})
 	.post("/paper/clear-stop", (c) => {
 		log.info("POST /paper/clear-stop — manually clearing stop loss flag");
@@ -250,6 +189,7 @@ export const apiRoutes = new Hono()
 	.post("/live/disconnect", (c) => {
 		setLiveRunning(false);
 		disconnectWallet();
+		publishCurrentStateSnapshot();
 		return c.json({ ok: true as const, liveRunning: false });
 	})
 	.post("/live/start", (c) => {
@@ -262,15 +202,25 @@ export const apiRoutes = new Hono()
 		if (startError) {
 			return c.json({ ok: false as const, error: startError }, 400);
 		}
-		setLiveRunning(true);
-		return c.json({ ok: true as const, message: "Live trading started" });
+		if (isLiveRunning()) {
+			return c.json({ ok: true as const, message: "Live trading already running" });
+		}
+		setLivePendingStart(true);
+		publishCurrentStateSnapshot();
+		return c.json({ ok: true as const, message: "Live trading will start next cycle" });
 	})
 	.post("/live/stop", (c) => {
-		setLiveRunning(false);
-		return c.json({ ok: true as const, message: "Live trading stopped" });
+		if (!isLiveRunning()) {
+			return c.json({ ok: true as const, message: "Live trading already stopped" });
+		}
+		setLivePendingStop(true);
+		publishCurrentStateSnapshot();
+		return c.json({ ok: true as const, message: "Live trading will stop after settlement" });
 	})
 	.post("/live/cancel", (c) => {
-		return c.json({ ok: true as const, message: "Operation cancelled" });
+		clearLivePending();
+		publishCurrentStateSnapshot();
+		return c.json({ ok: true as const, message: "Pending live operation cancelled" });
 	})
 	.get("/live/balance", (c) => {
 		const summary = getAccountSummary();

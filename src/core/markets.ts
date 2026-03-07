@@ -62,25 +62,6 @@ export const MARKETS: MarketConfig[] = [
 		},
 		pricePrecision: 0,
 	},
-	{
-		id: "BTC-4h",
-		coin: "BTC",
-		label: "Bitcoin 4h",
-		candleWindowMinutes: 240,
-		resolutionSource: "chainlink",
-		binanceSymbol: "BTCUSDT",
-		polymarket: {
-			seriesId: "10331",
-			seriesSlug: "btc-up-or-down-4h",
-			slugPrefix: "btc-updown-4h-",
-		},
-		chainlink: {
-			aggregator: "0xc907E116054Ad103354f2D350FD2514433D57F6f",
-			decimals: 8,
-			wsSymbol: "btc",
-		},
-		pricePrecision: 0,
-	},
 ];
 
 export function getMarketById(id: string): MarketConfig | null {

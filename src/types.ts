@@ -1,13 +1,11 @@
+export type { OnChainEvent, ReconResult, ReconStatus } from "./blockchain/blockchainTypes.ts";
 export type { RedeemResult } from "./blockchain/redeemTypes.ts";
 export type {
 	BalanceSnapshotPayload,
 	CtfPosition,
 	MarketSnapshot,
-	OnChainEvent,
 	PaperStats,
 	PaperTradeEntry,
-	ReconResult,
-	ReconStatus,
 	SignalNewPayload,
 	StateSnapshotPayload,
 	TradeExecutedPayload,

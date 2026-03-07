@@ -1,4 +1,14 @@
-import type { Side } from "../trading/tradeTypes.ts";
+export interface ConfidenceDto {
+	score: number;
+	factors: {
+		indicatorAlignment: number;
+		volatilityScore: number;
+		orderbookScore: number;
+		timingScore: number;
+		regimeScore: number;
+	};
+	level: "HIGH" | "MEDIUM" | "LOW";
+}
 
 export interface MarketSnapshot {
 	id: string;
@@ -32,13 +42,14 @@ export interface MarketSnapshot {
 	volImpliedUp: number | null;
 	binanceChainlinkDelta: number | null;
 	orderbookImbalance: number | null;
+	confidence?: ConfidenceDto;
 }
 
 export interface PaperTradeEntry {
 	id: string;
 	marketId: string;
 	windowStartMs: number;
-	side: Side;
+	side: "UP" | "DOWN";
 	price: number;
 	size: number;
 	priceToBeat: number;
@@ -77,6 +88,8 @@ export interface StateSnapshotPayload {
 	paperPendingStop: boolean;
 	livePendingStart: boolean;
 	livePendingStop: boolean;
+	paperPendingSince: number | null;
+	livePendingSince: number | null;
 	paperStats: PaperStats | null;
 	liveStats: PaperStats | null;
 	liveTodayStats: { pnl: number; trades: number; limit: number } | null;
@@ -123,26 +136,4 @@ export interface BalanceSnapshotPayload {
 	positions: CtfPosition[];
 	blockNumber: number;
 	timestamp: number;
-}
-
-export interface OnChainEvent {
-	type: "usdc_transfer" | "ctf_transfer_single" | "ctf_transfer_batch";
-	txHash: string;
-	blockNumber: number;
-	logIndex: number;
-	from: string;
-	to: string;
-	tokenId: string | null;
-	value: string;
-	timestamp: number;
-}
-
-export type ReconStatus = "unreconciled" | "pending" | "confirmed" | "disputed";
-
-export interface ReconResult {
-	orderId: string;
-	status: ReconStatus;
-	confidence: number;
-	txHash: string | null;
-	blockNumber: number | null;
 }

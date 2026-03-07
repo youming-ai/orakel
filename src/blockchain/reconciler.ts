@@ -1,6 +1,6 @@
-import type { ReconResult } from "../contracts/stateTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import { onchainQueries, tradeQueries } from "../db/queries.ts";
+import type { ReconResult } from "./blockchainTypes.ts";
 import { USDC_E_DECIMALS } from "./contracts.ts";
 import { statusFromConfidence } from "./reconciler-utils.ts";
 import {

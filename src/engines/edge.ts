@@ -25,7 +25,7 @@ export function computeEdge(params: {
 
 	const rawSum = marketYes + marketNo;
 	const arbitrage = rawSum < 0.98;
-	const overpriced = rawSum > 1.04;
+	const overpriced = rawSum > 1.08;
 
 	const marketUp = rawSum > 0 ? clamp(marketYes / rawSum, 0, 1) : null;
 	const marketDown = rawSum > 0 ? clamp(marketNo / rawSum, 0, 1) : null;
@@ -65,6 +65,8 @@ export function decide(params: {
 	edgeDown: number | null;
 	modelUp?: number | null;
 	modelDown?: number | null;
+	volatility15m?: number | null;
+	priceToBeatMovePct?: number | null;
 	regime?: Regime | null;
 	strategy: StrategyConfig;
 	marketId?: string;
@@ -76,6 +78,8 @@ export function decide(params: {
 		edgeDown,
 		modelUp = null,
 		modelDown = null,
+		volatility15m = null,
+		priceToBeatMovePct = null,
 		regime = null,
 		strategy,
 		marketId = "",
@@ -100,6 +104,30 @@ export function decide(params: {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "market_skipped_by_config" };
 	}
 
+	if (typeof strategy.minTimeLeftMin === "number" && remainingMinutes < strategy.minTimeLeftMin) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: `time_left_below_${strategy.minTimeLeftMin}` };
+	}
+
+	if (typeof strategy.maxTimeLeftMin === "number" && remainingMinutes > strategy.maxTimeLeftMin) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: `time_left_above_${strategy.maxTimeLeftMin}` };
+	}
+
+	if (
+		volatility15m !== null &&
+		typeof strategy.minVolatility15m === "number" &&
+		volatility15m < strategy.minVolatility15m
+	) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: `vol_below_${strategy.minVolatility15m}` };
+	}
+
+	if (
+		volatility15m !== null &&
+		typeof strategy.maxVolatility15m === "number" &&
+		volatility15m > strategy.maxVolatility15m
+	) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: `vol_above_${strategy.maxVolatility15m}` };
+	}
+
 	const threshold =
 		phase === "EARLY"
 			? Number(strategy?.edgeThresholdEarly ?? 0.05)
@@ -117,6 +145,8 @@ export function decide(params: {
 	const bestSide: Side = edgeUp > edgeDown ? "UP" : "DOWN";
 	const bestEdge = bestSide === "UP" ? edgeUp : edgeDown;
 	const bestModel = bestSide === "UP" ? modelUp : modelDown;
+	const directionalMovePct =
+		priceToBeatMovePct === null ? null : bestSide === "UP" ? priceToBeatMovePct : -priceToBeatMovePct;
 
 	if (bestEdge < threshold) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `edge_below_${threshold}` };
@@ -124,6 +154,20 @@ export function decide(params: {
 
 	if (bestModel !== null && bestModel < minProb) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${minProb}` };
+	}
+
+	if (
+		directionalMovePct !== null &&
+		typeof strategy.minPriceToBeatMovePct === "number" &&
+		directionalMovePct < strategy.minPriceToBeatMovePct
+	) {
+		return {
+			action: "NO_TRADE",
+			side: null,
+			phase,
+			regime,
+			reason: `ptb_move_below_${strategy.minPriceToBeatMovePct}`,
+		};
 	}
 
 	const strength: Strength = bestEdge >= 0.2 ? "STRONG" : bestEdge >= 0.1 ? "GOOD" : "OPTIONAL";

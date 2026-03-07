@@ -1,3 +1,4 @@
+import type { Candle } from "../core/marketDataTypes.ts";
 import { clamp } from "../core/utils.ts";
 import type { MacdResult, ScoreResult } from "../trading/tradeTypes.ts";
 
@@ -63,6 +64,103 @@ export function applyTimeAwareness(
 	const timeDecay = clamp(remainingMinutes / windowMinutes, 0, 1);
 	const adjustedUp = clamp(0.5 + (rawUp - 0.5) * timeDecay, 0, 1);
 	return { timeDecay, adjustedUp, adjustedDown: 1 - adjustedUp };
+}
+
+export function aggregateCandles(candles: Candle[], aggregationMinutes: number): Candle[] {
+	if (!Array.isArray(candles) || candles.length === 0 || aggregationMinutes <= 1) {
+		return candles;
+	}
+
+	const bucketMs = aggregationMinutes * 60_000;
+	const aggregated: Candle[] = [];
+	let currentBucket: Candle | null = null;
+	let currentBucketStart: number | null = null;
+
+	for (const candle of candles) {
+		const bucketStart = Math.floor(candle.openTime / bucketMs) * bucketMs;
+		if (currentBucket === null || currentBucketStart !== bucketStart) {
+			if (currentBucket) {
+				aggregated.push(currentBucket);
+			}
+			currentBucketStart = bucketStart;
+			currentBucket = {
+				openTime: bucketStart,
+				open: candle.open,
+				high: candle.high,
+				low: candle.low,
+				close: candle.close,
+				volume: candle.volume ?? 0,
+				closeTime: candle.closeTime,
+			};
+			continue;
+		}
+
+		currentBucket.high =
+			currentBucket.high === null
+				? candle.high
+				: candle.high === null
+					? currentBucket.high
+					: Math.max(currentBucket.high, candle.high);
+		currentBucket.low =
+			currentBucket.low === null
+				? candle.low
+				: candle.low === null
+					? currentBucket.low
+					: Math.min(currentBucket.low, candle.low);
+		currentBucket.close = candle.close ?? currentBucket.close;
+		currentBucket.closeTime = Math.max(currentBucket.closeTime, candle.closeTime);
+		currentBucket.volume = Number(currentBucket.volume ?? 0) + Number(candle.volume ?? 0);
+	}
+
+	if (currentBucket) {
+		aggregated.push(currentBucket);
+	}
+
+	return aggregated;
+}
+
+export function estimatePriceToBeatProbability(params: {
+	currentPrice: number | null;
+	priceToBeat: number | null;
+	remainingMinutes: number;
+	volatility15m: number | null;
+}): number | null {
+	const { currentPrice, priceToBeat, remainingMinutes, volatility15m } = params;
+	if (currentPrice === null || priceToBeat === null || currentPrice <= 0 || remainingMinutes <= 0) {
+		return null;
+	}
+
+	const distanceRatio = (currentPrice - priceToBeat) / currentPrice;
+	const timeScale = Math.sqrt(Math.max(remainingMinutes, 1) / 15);
+	const sigma = Math.max(volatility15m ?? 0, 0.0015) * Math.max(timeScale, 0.5);
+	const z = clamp(distanceRatio / sigma, -8, 8);
+	return clamp(1 / (1 + Math.exp(-z * 1.6)), 0, 1);
+}
+
+export function blendProbabilities(
+	taUp: number,
+	ptbUp: number | null,
+	taWeight: number = 0.35,
+): {
+	finalUp: number;
+	finalDown: number;
+	blendSource: string;
+} {
+	if (ptbUp === null) {
+		return {
+			finalUp: taUp,
+			finalDown: 1 - taUp,
+			blendSource: "ta_only",
+		};
+	}
+
+	const normalizedWeight = clamp(taWeight, 0, 1);
+	const finalUp = clamp(ptbUp * (1 - normalizedWeight) + taUp * normalizedWeight, 0, 1);
+	return {
+		finalUp,
+		finalDown: 1 - finalUp,
+		blendSource: "ptb_ta",
+	};
 }
 
 export function computeRealizedVolatility(closes: (number | null)[], lookback = 60): number | null {

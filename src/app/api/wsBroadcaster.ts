@@ -1,5 +1,6 @@
 import { createBunWebSocket } from "hono/bun";
 import type {
+	BalanceSnapshotPayload,
 	SignalNewPayload,
 	StateSnapshotPayload,
 	TradeExecutedPayload,
@@ -55,7 +56,7 @@ export function registerWsEventForwarding(): void {
 		broadcastToClients(JSON.stringify(msg));
 	});
 
-	botEvents.on("balance:snapshot", (msg: unknown) => {
+	botEvents.on("balance:snapshot", (msg: WsMessage<BalanceSnapshotPayload>) => {
 		broadcastToClients(JSON.stringify(msg));
 	});
 }

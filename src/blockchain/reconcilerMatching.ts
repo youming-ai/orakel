@@ -1,4 +1,4 @@
-import type { ReconResult } from "../contracts/stateTypes.ts";
+import type { ReconResult } from "./blockchainTypes.ts";
 import { rawToUsdc } from "./reconciler-utils.ts";
 
 export interface ReconTradeCandidate {

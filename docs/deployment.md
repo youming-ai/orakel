@@ -124,12 +124,11 @@ networks:
 
 ### 2.3 Data Persistence
 
-Volume mount `./data:/app/data` persists:
+Current compose mounts:
 
-- `bot.sqlite` — Trade records, signals, paper trades, daily stats, paper state
-- `paper-daily-state.json` — Legacy daily state
-- `live-daily-state.json` — Legacy daily state
-- `api-creds.json` — Derived API credentials (permissions 0o600)
+- `./config.json:/app/config.json:ro` — strategy/risk configuration
+
+Runtime state is persisted through PostgreSQL (`DATABASE_URL`) plus local logs such as `logs/paper-stats.json` and `logs/live-stats.json`.
 
 ---
 
@@ -142,10 +141,8 @@ Volume mount `./data:/app/data` persists:
 | `PAPER_MODE` | boolean | false | Enable paper trading at startup |
 | `API_PORT` | number | 9999 | API service port |
 | `API_TOKEN` | string | "" | API authentication token (protects write operations) |
-| `ACTIVE_MARKETS` | string (CSV) | "" | Enabled markets (e.g., `"BTC,ETH,SOL,XRP"`, empty = all) |
+| `ACTIVE_MARKETS` | string (CSV) | "" | Enabled markets (e.g., `"BTC-5m,BTC-15m,BTC-1h"`, empty = all supported markets) |
 | `LOG_LEVEL` | enum | info | Log level (`debug`/`info`/`warn`/`error`/`silent`) |
-| `PERSIST_BACKEND` | enum | sqlite | Write backend (`sqlite`/`csv`/`dual`) |
-| `READ_BACKEND` | enum | sqlite | Read backend (`sqlite`/`csv`) |
 | `POLYMARKET_SLUG` | string | "" | Polymarket market slug |
 | `POLYMARKET_AUTO_SELECT_LATEST` | boolean | true | Auto-select latest market |
 | `POLYMARKET_LIVE_WS_URL` | string | `wss://ws-live-data.polymarket.com` | Live data WebSocket |

@@ -1,5 +1,6 @@
 import { bootstrapApp } from "./app/bootstrap.ts";
 import { registerShutdownHandlers } from "./app/shutdown.ts";
+import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
 import { createTradeTracker } from "./core/tradeTracker.ts";
 import { onchainQueries } from "./db/queries.ts";
@@ -19,6 +20,7 @@ import type { StreamHandles } from "./trading/tradeTypes.ts";
 export type { ProcessMarketResult } from "./pipeline/processMarket.ts";
 
 const processMarket = processMarketPipeline;
+const log = createLogger("main");
 
 const paperTracker = createTradeTracker();
 const liveTracker = createTradeTracker();
@@ -166,4 +168,9 @@ async function main(): Promise<void> {
 	});
 }
 
-main();
+void main().catch((err: unknown) => {
+	log.error("Fatal startup error", {
+		error: err instanceof Error ? err.message : String(err),
+	});
+	process.exit(1);
+});

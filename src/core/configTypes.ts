@@ -37,8 +37,11 @@ export interface StrategyConfig {
 	maxGlobalTradesPerWindow: number;
 	skipMarkets?: string[];
 	minTimeLeftMin?: number;
+	maxTimeLeftMin?: number;
 	maxVolatility15m?: number;
 	minVolatility15m?: number;
+	candleAggregationMinutes?: number;
+	minPriceToBeatMovePct?: number;
 }
 
 export interface AppConfig {

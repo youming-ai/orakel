@@ -11,7 +11,6 @@ Automated trading bot for Polymarket **BTC Up/Down** multi-timeframe markets. Pa
 | BTC-5m | 5 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-5m` |
 | BTC-15m | 15 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-15m` |
 | BTC-1h | 1 hour | BTCUSDT | Binance BTC/USDT | `btc-up-or-down-hourly` |
-| BTC-4h | 4 hours | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-4h` |
 
 ## Features
 
@@ -66,8 +65,8 @@ Key env vars:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PAPER_MODE` | `true` | Start in paper trading mode |
-| `ACTIVE_MARKETS` | `BTC-5m,BTC-15m,BTC-1h,BTC-4h` | Enabled markets |
+| `PAPER_MODE` | `false` | Start in paper trading mode |
+| `ACTIVE_MARKETS` | `""` | Enabled markets (empty = all supported markets) |
 | `API_TOKEN` | `""` | Bearer token for API auth |
 | `PRIVATE_KEY` | `""` | Wallet key for live trading (auto-connects) |
 

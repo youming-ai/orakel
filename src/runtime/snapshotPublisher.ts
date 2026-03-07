@@ -1,17 +1,7 @@
+import { buildStateSnapshotPayload } from "../app/api/statePayload.ts";
 import type { MarketSnapshot } from "../contracts/stateTypes.ts";
-import {
-	emitStateSnapshot,
-	getUpdatedAt,
-	isLivePendingStart,
-	isLivePendingStop,
-	isLiveRunning,
-	isPaperPendingStart,
-	isPaperPendingStop,
-	isPaperRunning,
-	updateMarkets,
-} from "../core/state.ts";
+import { emitStateSnapshot, updateMarkets } from "../core/state.ts";
 import type { ProcessMarketResult } from "../pipeline/processMarket.ts";
-import { liveAccount, paperAccount } from "../trading/accountStats.ts";
 
 export function buildMarketSnapshots(results: ProcessMarketResult[]): MarketSnapshot[] {
 	return results.map(
@@ -61,22 +51,9 @@ export function buildMarketSnapshots(results: ProcessMarketResult[]): MarketSnap
 export function publishMarketSnapshots(results: ProcessMarketResult[]): void {
 	const snapshots = buildMarketSnapshots(results);
 	updateMarkets(snapshots);
-	emitStateSnapshot({
-		markets: snapshots,
-		updatedAt: getUpdatedAt(),
-		paperRunning: isPaperRunning(),
-		liveRunning: isLiveRunning(),
-		paperPendingStart: isPaperPendingStart(),
-		paperPendingStop: isPaperPendingStop(),
-		livePendingStart: isLivePendingStart(),
-		livePendingStop: isLivePendingStop(),
-		paperStats: paperAccount.getStats(),
-		liveStats: liveAccount.getStats(),
-		liveTodayStats: liveAccount.getTodayStats(),
-		paperBalance: paperAccount.getBalance(),
-		liveBalance: liveAccount.getBalance(),
-		todayStats: paperAccount.getTodayStats(),
-		stopLoss: paperAccount.isStopped() ? paperAccount.getStopReason() : null,
-		liveStopLoss: liveAccount.isStopped() ? liveAccount.getStopReason() : null,
-	});
+	publishCurrentStateSnapshot();
+}
+
+export function publishCurrentStateSnapshot(): void {
+	emitStateSnapshot(buildStateSnapshotPayload());
 }

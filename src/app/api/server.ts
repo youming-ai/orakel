@@ -3,19 +3,9 @@ import { serveStatic } from "hono/bun";
 import type { StateSnapshotPayload, WsMessage } from "../../contracts/stateTypes.ts";
 import { env } from "../../core/env.ts";
 import { createLogger } from "../../core/logger.ts";
-import {
-	getMarkets,
-	getUpdatedAt,
-	isLivePendingStart,
-	isLivePendingStop,
-	isLiveRunning,
-	isPaperPendingStart,
-	isPaperPendingStop,
-	isPaperRunning,
-} from "../../core/state.ts";
-import { liveAccount, paperAccount } from "../../trading/accountStats.ts";
 import { corsMiddleware, rateLimit, requireAuth } from "./middleware.ts";
 import { apiRoutes } from "./routes.ts";
+import { buildStateSnapshotPayload } from "./statePayload.ts";
 import {
 	addWsClient,
 	registerWsEventForwarding,
@@ -26,27 +16,6 @@ import {
 
 const PORT = env.API_PORT;
 const log = createLogger("api");
-
-function buildInitialSnapshot(): StateSnapshotPayload {
-	return {
-		markets: getMarkets(),
-		updatedAt: getUpdatedAt(),
-		paperRunning: isPaperRunning(),
-		liveRunning: isLiveRunning(),
-		paperPendingStart: isPaperPendingStart(),
-		paperPendingStop: isPaperPendingStop(),
-		livePendingStart: isLivePendingStart(),
-		livePendingStop: isLivePendingStop(),
-		paperStats: paperAccount.getStats(),
-		liveStats: liveAccount.getStats(),
-		liveTodayStats: liveAccount.getTodayStats(),
-		paperBalance: paperAccount.getBalance(),
-		liveBalance: liveAccount.getBalance(),
-		todayStats: paperAccount.getTodayStats(),
-		stopLoss: paperAccount.isStopped() ? paperAccount.getStopReason() : null,
-		liveStopLoss: liveAccount.isStopped() ? liveAccount.getStopReason() : null,
-	};
-}
 
 const app = new Hono();
 
@@ -74,7 +43,7 @@ app.get(
 			addWsClient(ws.raw as WebSocket);
 			const initialMessage: WsMessage<StateSnapshotPayload> = {
 				type: "state:snapshot",
-				data: buildInitialSnapshot(),
+				data: buildStateSnapshotPayload(),
 				ts: Date.now(),
 				version: 0,
 			};

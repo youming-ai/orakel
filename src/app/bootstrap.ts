@@ -21,7 +21,7 @@ export interface BootstrapResult {
 export async function bootstrapApp({ isLiveSettlerRunning }: BootstrapParams): Promise<BootstrapResult> {
 	startApiServer();
 	startConfigWatcher();
-	initAccountStats();
+	await initAccountStats();
 
 	let redeemTimerHandle: ReturnType<typeof setInterval> | null = null;
 

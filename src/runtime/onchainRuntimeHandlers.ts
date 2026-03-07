@@ -1,5 +1,6 @@
 import { applyEvent, updateFromSnapshot } from "../blockchain/accountState.ts";
-import type { BalanceSnapshotPayload, OnChainEvent } from "../contracts/stateTypes.ts";
+import type { OnChainEvent } from "../blockchain/blockchainTypes.ts";
+import type { BalanceSnapshotPayload } from "../contracts/stateTypes.ts";
 import { emitBalanceSnapshot, setOnchainBalance } from "../core/state.ts";
 import { onchainQueries } from "../db/queries.ts";
 

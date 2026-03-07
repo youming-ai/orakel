@@ -2,7 +2,7 @@ import { CONFIG } from "../core/config.ts";
 import type { MarketConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import type { CandleWindowTiming } from "../core/marketDataTypes.ts";
-import { isLiveRunning, isPaperRunning } from "../core/state.ts";
+import { applyPendingStarts, applyPendingStops, isLiveRunning, isPaperRunning } from "../core/state.ts";
 import type { TradeTracker } from "../core/tradeTracker.ts";
 import { getCandleWindowTiming, sleep } from "../core/utils.ts";
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
@@ -15,7 +15,7 @@ import type { LiveSettlerController } from "./liveSettlerRuntime.ts";
 import type { OnchainRuntime } from "./onchainRuntime.ts";
 import { ensureOrderPolling } from "./orderPolling.ts";
 import { runSettlementCycle } from "./settlementCycle.ts";
-import { publishMarketSnapshots } from "./snapshotPublisher.ts";
+import { publishCurrentStateSnapshot, publishMarketSnapshots } from "./snapshotPublisher.ts";
 import { dispatchTradeCandidates } from "./tradeDispatch.ts";
 
 const log = createLogger("main-loop");
@@ -184,6 +184,9 @@ export async function runMainLoop({
 	while (true) {
 		ensureOrderPolling({ orderManager });
 		onchainRuntime.ensurePipelines();
+		if (applyPendingStarts()) {
+			publishCurrentStateSnapshot();
+		}
 
 		const shouldRunLoop = isPaperRunning() || isLiveRunning();
 		if (!shouldRunLoop) {
@@ -202,6 +205,14 @@ export async function runMainLoop({
 			paperAccount,
 			liveAccount,
 		});
+		if (applyPendingStops()) {
+			publishCurrentStateSnapshot();
+		}
+
+		if (!isPaperRunning() && !isLiveRunning()) {
+			await sleep(1000);
+			continue;
+		}
 
 		liveSettler.ensure();
 		pruneTrackers(markets, paperTracker, liveTracker, orderTracker);

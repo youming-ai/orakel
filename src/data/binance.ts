@@ -57,6 +57,63 @@ export async function fetchKlines({
 	return result;
 }
 
+export async function fetchHistoricalKlines({
+	symbol,
+	interval,
+	startTime,
+	endTime,
+	limit = 1000,
+}: {
+	symbol: string;
+	interval: string;
+	startTime: number;
+	endTime: number;
+	limit?: number;
+}): Promise<Candle[]> {
+	const allCandles: Candle[] = [];
+	let cursor = startTime;
+	const batchLimit = Math.min(Math.max(1, limit), 1000);
+
+	while (cursor < endTime) {
+		const url = new URL("/api/v3/klines", CONFIG.binanceBaseUrl);
+		url.searchParams.set("symbol", String(symbol || ""));
+		url.searchParams.set("interval", interval);
+		url.searchParams.set("limit", String(batchLimit));
+		url.searchParams.set("startTime", String(cursor));
+		url.searchParams.set("endTime", String(endTime));
+
+		const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+		if (!res.ok) {
+			throw new Error(`Binance historical klines error: ${res.status} ${await res.text()}`);
+		}
+
+		const data: unknown = await res.json();
+		const rows = Array.isArray(data) ? data : [];
+		if (rows.length === 0) break;
+
+		const batch = rows.map((k) => {
+			const row = Array.isArray(k) ? k : [];
+			return {
+				openTime: Number(row[0]),
+				open: toNumber(row[1]),
+				high: toNumber(row[2]),
+				low: toNumber(row[3]),
+				close: toNumber(row[4]),
+				volume: toNumber(row[5]),
+				closeTime: Number(row[6]),
+			};
+		});
+
+		allCandles.push(...batch);
+		const lastOpenTime = batch[batch.length - 1]?.openTime;
+		if (lastOpenTime === undefined) break;
+		cursor = lastOpenTime + 60_000;
+		if (batch.length < batchLimit) break;
+	}
+
+	return allCandles;
+}
+
 export async function fetchLastPrice({ symbol }: { symbol: string }): Promise<number | null> {
 	const url = new URL("/api/v3/ticker/price", CONFIG.binanceBaseUrl);
 	url.searchParams.set("symbol", String(symbol || ""));
