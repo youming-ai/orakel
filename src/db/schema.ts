@@ -36,76 +36,25 @@ export const trades = pgTable("trades", {
 	marketSlug: text("market_slug"),
 });
 
-export const signals = pgTable("signals", {
-	id: serial("id").primaryKey(),
-	timestamp: text("timestamp").notNull(),
-	market: text("market").notNull(),
-	regime: text("regime"),
-	signal: text("signal"),
-	volImpliedUp: real("vol_implied_up"),
-	taRawUp: real("ta_raw_up"),
-	blendedUp: real("blended_up"),
-	blendSource: text("blend_source"),
-	volatility15m: real("volatility_15m"),
-	priceToBeat: real("price_to_beat"),
-	binanceChainlinkDelta: real("binance_chainlink_delta"),
-	orderbookImbalance: real("orderbook_imbalance"),
-	modelUp: real("model_up"),
-	modelDown: real("model_down"),
-	mktUp: real("mkt_up"),
-	mktDown: real("mkt_down"),
-	rawSum: real("raw_sum"),
-	arbitrage: integer("arbitrage"),
-	edgeUp: real("edge_up"),
-	edgeDown: real("edge_down"),
-	recommendation: text("recommendation"),
-	entryMinute: text("entry_minute"),
-	timeLeftMin: real("time_left_min"),
-	createdAt: integer("created_at").default(sql`floor(extract(epoch from now()))`),
-});
-
-export const dailyStats = pgTable(
-	"daily_stats",
+export const botState = pgTable(
+	"bot_state",
 	{
-		date: text("date").notNull(),
 		mode: text("mode").notNull(),
-		pnl: real("pnl").default(0),
-		trades: integer("trades").default(0),
-		wins: integer("wins").default(0),
-		losses: integer("losses").default(0),
+		initialBalance: real("initial_balance").notNull().default(1000),
+		currentBalance: real("current_balance").notNull().default(1000),
+		maxDrawdown: real("max_drawdown").notNull().default(0),
+		wins: integer("wins").notNull().default(0),
+		losses: integer("losses").notNull().default(0),
+		totalPnl: real("total_pnl").notNull().default(0),
+		stoppedAt: text("stopped_at"),
+		stopReason: text("stop_reason"),
+		dailyPnl: text("daily_pnl").notNull().default("[]"),
+		dailyCountedTradeIds: text("daily_counted_trade_ids").notNull().default("[]"),
 	},
 	(table) => ({
-		pk: primaryKey({ columns: [table.date, table.mode] }),
+		pk: primaryKey({ columns: [table.mode] }),
 	}),
 );
-
-export const paperState = pgTable("paper_state", {
-	id: integer("id").primaryKey(),
-	initialBalance: real("initial_balance").notNull().default(1000),
-	currentBalance: real("current_balance").notNull().default(1000),
-	maxDrawdown: real("max_drawdown").notNull().default(0),
-	wins: integer("wins").notNull().default(0),
-	losses: integer("losses").notNull().default(0),
-	totalPnl: real("total_pnl").notNull().default(0),
-	stoppedAt: text("stopped_at"),
-	stopReason: text("stop_reason"),
-	dailyPnl: text("daily_pnl").notNull().default("[]"),
-	dailyCountedTradeIds: text("daily_counted_trade_ids").notNull().default("[]"),
-});
-
-export const liveState = pgTable("live_state", {
-	id: integer("id").primaryKey(),
-	initialBalance: real("initial_balance").notNull().default(1000),
-	currentBalance: real("current_balance").notNull().default(1000),
-	maxDrawdown: real("max_drawdown").notNull().default(0),
-	wins: integer("wins").notNull().default(0),
-	losses: integer("losses").notNull().default(0),
-	totalPnl: real("total_pnl").notNull().default(0),
-	stoppedAt: text("stopped_at"),
-	stopReason: text("stop_reason"),
-	dailyPnl: text("daily_pnl").notNull().default("[]"),
-	dailyCountedTradeIds: text("daily_counted_trade_ids").notNull().default("[]"),
-});
 
 export const kvStore = pgTable("kv_store", {
 	key: text("key").primaryKey(),
@@ -147,15 +96,6 @@ export const onchainEvents = pgTable(
 		uniqueTxLog: unique().on(table.txHash, table.logIndex),
 	}),
 );
-
-export const balanceSnapshots = pgTable("balance_snapshots", {
-	id: serial("id").primaryKey(),
-	usdcBalance: text("usdc_balance").notNull(),
-	usdcFormatted: real("usdc_formatted").notNull(),
-	positionsJson: text("positions_json").notNull().default("[]"),
-	blockNumber: integer("block_number"),
-	createdAt: integer("created_at").default(sql`floor(extract(epoch from now()))`),
-});
 
 export const knownCtfTokens = pgTable("known_ctf_tokens", {
 	tokenId: text("token_id").primaryKey(),

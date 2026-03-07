@@ -24,15 +24,6 @@ export const onchainQueries = {
 			.limit(limit);
 	},
 
-	insertBalanceSnapshot: async (data: typeof schema.balanceSnapshots.$inferInsert) => {
-		return await db.insert(schema.balanceSnapshots).values(data);
-	},
-
-	getLatestBalanceSnapshot: async () => {
-		const result = await db.select().from(schema.balanceSnapshots).orderBy(desc(schema.balanceSnapshots.id)).limit(1);
-		return result[0] ?? null;
-	},
-
 	upsertKnownCtfToken: async (data: typeof schema.knownCtfTokens.$inferInsert) => {
 		return await db
 			.insert(schema.knownCtfTokens)

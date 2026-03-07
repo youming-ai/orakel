@@ -1,4 +1,3 @@
-export { dailyStatsQueries } from "../repositories/dailyStatsRepo.ts";
 export { kvQueries } from "../repositories/kvRepo.ts";
 export { pruneDatabase, resetLiveDbData, resetPaperDbData } from "../repositories/maintenanceRepo.ts";
 export { onchainQueries } from "../repositories/onchainRepo.ts";
