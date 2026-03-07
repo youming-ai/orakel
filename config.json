@@ -32,18 +32,18 @@
       "skipMarkets": []
     },
     "BTC-5m": {
-      "edgeThresholdEarly": 0.025,
-      "edgeThresholdMid": 0.045,
-      "edgeThresholdLate": 0.06,
-      "minProbEarly": 0.53,
-      "minProbMid": 0.56,
-      "minProbLate": 0.60,
-      "minTimeLeftMin": 1,
-      "maxTimeLeftMin": 4.5,
-      "minVolatility15m": 0.0015,
+      "edgeThresholdEarly": 0.02,
+      "edgeThresholdMid": 0.04,
+      "edgeThresholdLate": 0.055,
+      "minProbEarly": 0.52,
+      "minProbMid": 0.55,
+      "minProbLate": 0.58,
+      "minTimeLeftMin": 0.5,
+      "maxTimeLeftMin": 4.8,
+      "minVolatility15m": 0.0012,
       "maxVolatility15m": 0.03,
       "candleAggregationMinutes": 1,
-      "minPriceToBeatMovePct": 0.0008
+      "minPriceToBeatMovePct": 0.0006
     },
     "BTC-15m": {
       "edgeThresholdEarly": 0.03,
