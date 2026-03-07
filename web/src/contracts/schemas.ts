@@ -45,7 +45,7 @@ export const RiskConfigSchema = z.object({
 });
 
 export const ConfigSnapshotSchema = z.object({
-	strategy: z.record(z.unknown()),
+	strategy: z.record(z.string(), z.unknown()),
 	paperRisk: RiskConfigSchema,
 	liveRisk: RiskConfigSchema,
 });
@@ -168,7 +168,7 @@ export const DashboardStateSchema = z.object({
 export const PaperStatsResponseSchema = z.object({
 	stats: PaperStatsSchema,
 	trades: z.array(PaperTradeEntrySchema),
-	byMarket: z.record(MarketBreakdownSchema),
+	byMarket: z.record(z.string(), MarketBreakdownSchema),
 	balance: BalanceSchema,
 	stopLoss: StopLossStatusSchema.nullable(),
 	todayStats: TodayStatsSchema,

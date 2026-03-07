@@ -34,11 +34,11 @@ describe("bootstrapApp", () => {
 	});
 
 	it("should await account stats initialization before resolving", async () => {
-		let resolveInit: (() => void) | null = null;
+		const resolveHolder: { resolve: (() => void) | null } = { resolve: null };
 		initAccountStats.mockImplementationOnce(
 			() =>
 				new Promise<void>((resolve) => {
-					resolveInit = resolve;
+					resolveHolder.resolve = resolve;
 				}),
 		);
 
@@ -59,7 +59,7 @@ describe("bootstrapApp", () => {
 		expect(initAccountStats).toHaveBeenCalledOnce();
 		expect(resolved).toBe(false);
 
-		resolveInit?.();
+		resolveHolder.resolve?.();
 		await expect(bootstrapPromise).resolves.toEqual({
 			redeemTimerHandle: null,
 		});

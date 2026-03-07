@@ -67,6 +67,7 @@ describe("restoreRuntimeState", () => {
 			has: vi.fn().mockReturnValue(false),
 			record: vi.fn(),
 			canTradeGlobally: vi.fn().mockReturnValue(true),
+			prune: vi.fn(),
 		};
 		const liveAccount = {
 			getPendingTrades: vi.fn().mockReturnValue([
