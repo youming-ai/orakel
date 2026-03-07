@@ -49,3 +49,22 @@ export const CHART_HEIGHT = {
 	/** Default chart height: smaller on mobile, larger on desktop */
 	responsive: "w-full h-56 sm:h-72 lg:h-96",
 } as const;
+
+/**
+ * Add a starting point (cumulative = 0) to make chart animation start from zero line
+ */
+export function addTimelineStartPoint<T extends { cumulative: number }>(
+	timeline: T[],
+): Array<T & { isFirst: boolean }> {
+	if (timeline.length === 0) return [];
+	const firstPoint = timeline[0];
+	return [
+		{
+			...firstPoint,
+			cumulative: 0,
+			pnl: 0,
+			isFirst: true,
+		} as T & { isFirst: boolean },
+		...timeline.map((item) => ({ ...item, isFirst: false })),
+	];
+}

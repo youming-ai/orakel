@@ -1,9 +1,9 @@
+import { SimplifiedIndicators } from "@/components/market/SimplifiedIndicators";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { MarketSnapshot } from "@/contracts/http";
 import { fmtCents, fmtMinSec } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { SimplifiedIndicators } from "./market/MarketIndicators";
 
 interface MarketCardProps {
 	market: MarketSnapshot;
@@ -55,10 +55,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 				{/* Main Signal */}
 				<div className="text-center py-1 sm:py-2">
 					<div
-						className={cn(
-							"text-lg sm:text-2xl font-light tracking-tight",
-							isLong ? "text-emerald-500" : "text-red-500",
-						)}
+						className={cn("text-lg sm:text-2xl font-bold tracking-tight", isLong ? "text-emerald-500" : "text-red-500")}
 					>
 						{isLong ? "LONG" : "SHORT"} {isLong ? m.predictLong : m.predictShort}%
 					</div>

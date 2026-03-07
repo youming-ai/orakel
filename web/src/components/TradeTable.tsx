@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { TradeRecord } from "@/contracts/http";
 import { Button } from "@/components/ui/button";
+import type { TradeRecord } from "@/contracts/http";
 import { TRADE_TABLE_PAGE_SIZE } from "@/lib/constants";
 import { TradeTableDesktop } from "./trades/TradeTableDesktop";
 import { TradeTableMobile } from "./trades/TradeTableMobile";

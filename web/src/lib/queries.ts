@@ -1,5 +1,13 @@
-import { liveStatsQueryOptions, paperStatsQueryOptions, stateQueryOptions, useDashboardState, useLiveStats, usePaperStats } from "@/entities/account/queries";
-import { useTrades, tradesQueryOptions } from "@/entities/trade/queries";
+import { useDashboardStateWithWs } from "@/app/ws/useDashboardStateWithWs";
+import {
+	liveStatsQueryOptions,
+	paperStatsQueryOptions,
+	stateQueryOptions,
+	useDashboardState,
+	useLiveStats,
+	usePaperStats,
+} from "@/entities/account/queries";
+import { tradesQueryOptions, useTrades } from "@/entities/trade/queries";
 import {
 	useLiveCancel,
 	useLiveReset,
@@ -9,7 +17,6 @@ import {
 	usePaperReset,
 	usePaperToggle,
 } from "@/features/botControl/mutations";
-import { useDashboardStateWithWs } from "@/app/ws/useDashboardStateWithWs";
 
 export const queries = {
 	state: stateQueryOptions,

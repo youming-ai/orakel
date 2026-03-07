@@ -1,9 +1,9 @@
 import { useMemo } from "react";
+import { TradesTab } from "@/components/analytics/TradesTab";
 import { useLiveStats, usePaperStats, useTrades } from "@/lib/queries";
 import { buildMarketFromTrades } from "@/lib/stats";
 import { useUIStore } from "@/lib/store";
 import type { MarketRow } from "@/lib/types";
-import { TradesTab } from "./TradesTab";
 
 export function TradesPanel() {
 	const viewMode = useUIStore((s) => s.viewMode);
@@ -30,7 +30,7 @@ export function TradesPanel() {
 				resolvedCount: resolved,
 			});
 		}
-		const marketOrder = ["BTC-5m", "BTC-15m", "BTC-1h", "BTC-4h"];
+		const marketOrder = ["BTC-5m", "BTC-15m", "BTC-1h"];
 		return result.sort((a, b) => {
 			const aIndex = marketOrder.indexOf(a.market);
 			const bIndex = marketOrder.indexOf(b.market);

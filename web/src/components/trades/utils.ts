@@ -23,24 +23,23 @@ const MARKET_CONFIGS: Record<string, MarketConfig> = {
 	"BTC-5m": { windowMinutes: 5, slugPrefix: "btc-updown-5m-", slugFormat: "timestamp" },
 	"BTC-15m": { windowMinutes: 15, slugPrefix: "btc-updown-15m-", slugFormat: "timestamp" },
 	"BTC-1h": { windowMinutes: 60, slugPrefix: "bitcoin-up-or-down-", slugFormat: "descriptive" },
-	"BTC-4h": { windowMinutes: 240, slugPrefix: "btc-updown-4h-", slugFormat: "timestamp" },
 };
 
 export function getMarketCycleSlug(market: string, timestamp: string, marketSlug?: string | null): string | null {
 	if (!market || !timestamp) return null;
-	
+
 	// If marketSlug is available (from DB), use it directly for BTC-1h descriptive slugs
 	if (marketSlug) {
 		return marketSlug;
 	}
-	
+
 	const config = MARKET_CONFIGS[market];
 	if (!config) return null;
 
 	const tsSec = Math.floor(new Date(timestamp).getTime() / 1000);
 	if (Number.isNaN(tsSec)) return null;
 
-	// For timestamp-based slugs (5m, 15m, 4h): compute window start from timestamp
+	// For timestamp-based slugs (5m, 15m): compute window start from timestamp
 	const windowSeconds = config.windowMinutes * 60;
 	const windowStart = Math.floor(tsSec / windowSeconds) * windowSeconds;
 

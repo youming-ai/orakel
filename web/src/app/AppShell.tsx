@@ -1,10 +1,10 @@
 import { useCallback } from "react";
 import { Toaster } from "@/components/ui/toaster";
+import { ConfirmToggleDialog } from "@/features/botControl/ConfirmToggleDialog";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useDashboardStateWithWs, useLiveCancel, useLiveToggle, usePaperCancel, usePaperToggle } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
-import { ConfirmToggleDialog } from "@/features/botControl/ConfirmToggleDialog";
 import { AppRouter } from "./router";
 
 export function AppShell() {
@@ -63,11 +63,10 @@ export function AppShell() {
 						</>
 					) : (
 						<>
-							<div
+							<output
 								className={`inline-block h-6 w-6 rounded-full border-2 border-muted-foreground border-t-transparent${
 									prefersReducedMotion ? "" : " animate-spin"
 								}`}
-								role="status"
 								aria-label="Loading dashboard"
 							/>
 							<p className="text-sm text-muted-foreground">Connecting to bot...</p>

@@ -5,4 +5,5 @@ export const queryKeys = {
 	trades: (mode: ViewMode) => ["trades", mode] as const,
 	paperStats: ["paper-stats"] as const,
 	liveStats: ["live-stats"] as const,
+	onchainBalance: ["onchain-balance"] as const,
 };

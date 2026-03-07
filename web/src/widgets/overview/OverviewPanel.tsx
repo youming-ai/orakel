@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { OverviewTab } from "@/components/analytics/OverviewTab";
 import {
 	useDashboardStateWithWs,
 	useLiveReset,
@@ -10,7 +11,6 @@ import {
 } from "@/lib/queries";
 import { buildPnlTimeline, buildStatsFromTrades } from "@/lib/stats";
 import { useUIStore } from "@/lib/store";
-import { OverviewTab } from "./OverviewTab";
 
 export function OverviewPanel() {
 	const viewMode = useUIStore((s) => s.viewMode);

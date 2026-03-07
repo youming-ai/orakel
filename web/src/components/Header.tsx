@@ -1,9 +1,12 @@
-import { Activity, Loader2, Play, Zap } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Activity, Loader2, Play, Wallet, Zap } from "lucide-react";
 import { Link, useLocation } from "react-router";
 
+import type { BalanceSnapshotPayload } from "@/contracts/ws";
 import { fmtPrice } from "@/lib/format";
 import { useSnapshot } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { queryKeys } from "@/shared/query/queryKeys";
 
 interface HeaderProps {
 	viewMode: "paper" | "live";
@@ -84,6 +87,14 @@ export function Header({
 	const market = snapshot?.markets?.[0];
 	const marketBase = market?.ok ? market.id.split("-")[0] : null;
 	const marketSpotPrice = market?.ok ? fmtPrice(market.id, market.spotPrice) : null;
+	const qc = useQueryClient();
+	const onchainBalance = qc.getQueryData<BalanceSnapshotPayload>(queryKeys.onchainBalance);
+	const balanceValue =
+		viewMode === "live" && onchainBalance
+			? onchainBalance.usdcBalance
+			: viewMode === "paper"
+				? snapshot?.paperBalance?.current
+				: snapshot?.liveBalance?.current;
 	const isTradesActive = location.pathname === "/logs";
 	const isRunning = viewMode === "paper" ? paperRunning : liveRunning;
 	const pendingStart = viewMode === "paper" ? paperPendingStart : livePendingStart;
@@ -96,8 +107,8 @@ export function Header({
 	const cfg = statusConfig[status];
 
 	return (
-		<div className="sticky top-3 z-50 mb-0.5 flex justify-center px-3 pointer-events-none">
-			<header className="pointer-events-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full max-w-5xl overflow-hidden relative">
+		<div className="sticky top-3 z-50 mb-0.5 max-w-7xl mx-auto px-3 sm:px-6 pointer-events-none">
+			<header className="pointer-events-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full overflow-hidden relative">
 				{/* Logo */}
 				<div className="flex items-center gap-2.5 cursor-default select-none min-w-0">
 					<Link to="/" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity no-underline shrink-0">
@@ -129,6 +140,14 @@ export function Header({
 							</span>
 							<span className="text-sm sm:text-base font-semibold tracking-tight tabular-nums text-foreground leading-none">
 								{marketSpotPrice}
+							</span>
+						</div>
+					)}
+					{balanceValue != null && (
+						<div className="flex items-center gap-1.5 px-1.5 py-0.5 shrink-0">
+							<Wallet className="size-3 text-muted-foreground hidden sm:block" />
+							<span className="text-xs sm:text-sm font-semibold tabular-nums text-foreground leading-none">
+								${balanceValue.toFixed(2)}
 							</span>
 						</div>
 					)}

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { QUERY_REFETCH_TRADES_MS, QUERY_STALE_TRADES_MS } from "@/lib/constants";
 import type { ViewMode } from "@/lib/types";

@@ -1,1 +1,1 @@
-export { MarketCard } from "@/components/MarketCard";
+export { MarketCard } from "@/components/cards";

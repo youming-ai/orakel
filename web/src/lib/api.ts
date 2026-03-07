@@ -1,6 +1,12 @@
-import type { ConfigPayload, DashboardState, PaperStatsResponse, TradeRecord } from "@/contracts/http";
+import { z } from "zod";
+import type { ConfigPayload } from "@/contracts/http";
+import {
+	DashboardStateSchema,
+	OkResponseSchema,
+	PaperStatsResponseSchema,
+	TradeRecordSchema,
+} from "@/contracts/schemas";
 
-// Use fetch directly to avoid Hono version mismatch between web and root
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 const API_TOKEN = import.meta.env.VITE_API_TOKEN || "";
 
@@ -9,7 +15,6 @@ function authHeaders(): Record<string, string> {
 	return { Authorization: `Bearer ${API_TOKEN}` };
 }
 
-/** Expose token for WebSocket authentication (query param) */
 export function getApiToken(): string {
 	return API_TOKEN;
 }
@@ -59,18 +64,18 @@ async function put<T>(path: string, data: unknown): Promise<T> {
 }
 
 export const api = {
-	getState: () => get<DashboardState>("/state"),
-	getTrades: (mode: string) => get<TradeRecord[]>(`/logs?mode=${mode}`),
-	getPaperStats: () => get<PaperStatsResponse>("/paper-stats"),
-	getLiveStats: () => get<PaperStatsResponse>("/live-stats"),
-	saveConfig: (data: ConfigPayload) => put<{ ok: boolean }>("/config", data),
-	paperStart: () => post<{ ok: boolean }>("/paper/start"),
-	paperStop: () => post<{ ok: boolean }>("/paper/stop"),
-	paperCancel: () => post<{ ok: boolean }>("/paper/cancel"),
-	liveStart: () => post<{ ok: boolean }>("/live/start"),
-	liveStop: () => post<{ ok: boolean }>("/live/stop"),
-	liveCancel: () => post<{ ok: boolean }>("/live/cancel"),
-	paperClearStop: () => post<{ ok: boolean }>("/paper/clear-stop"),
-	paperReset: () => post<{ ok: boolean }>("/paper/reset"),
-	liveReset: () => post<{ ok: boolean }>("/live/reset"),
+	getState: () => get<unknown>("/state").then((d) => DashboardStateSchema.parse(d)),
+	getTrades: (mode: string) => get<unknown>(`/logs?mode=${mode}`).then((d) => z.array(TradeRecordSchema).parse(d)),
+	getPaperStats: () => get<unknown>("/paper-stats").then((d) => PaperStatsResponseSchema.parse(d)),
+	getLiveStats: () => get<unknown>("/live-stats").then((d) => PaperStatsResponseSchema.parse(d)),
+	saveConfig: (data: ConfigPayload) => put<unknown>("/config", data).then((d) => OkResponseSchema.parse(d)),
+	paperStart: () => post<unknown>("/paper/start").then((d) => OkResponseSchema.parse(d)),
+	paperStop: () => post<unknown>("/paper/stop").then((d) => OkResponseSchema.parse(d)),
+	paperCancel: () => post<unknown>("/paper/cancel").then((d) => OkResponseSchema.parse(d)),
+	liveStart: () => post<unknown>("/live/start").then((d) => OkResponseSchema.parse(d)),
+	liveStop: () => post<unknown>("/live/stop").then((d) => OkResponseSchema.parse(d)),
+	liveCancel: () => post<unknown>("/live/cancel").then((d) => OkResponseSchema.parse(d)),
+	paperClearStop: () => post<unknown>("/paper/clear-stop").then((d) => OkResponseSchema.parse(d)),
+	paperReset: () => post<unknown>("/paper/reset").then((d) => OkResponseSchema.parse(d)),
+	liveReset: () => post<unknown>("/live/reset").then((d) => OkResponseSchema.parse(d)),
 };

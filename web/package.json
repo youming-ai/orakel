@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "bunx @biomejs/biome check src/ --config-path ../biome.json",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
@@ -24,7 +26,8 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.11",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "vite": "^7.3.1",

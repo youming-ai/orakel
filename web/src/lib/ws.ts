@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { WsMessageSchema } from "@/contracts/schemas";
 import type { WsMessage } from "@/contracts/ws";
 import { getApiToken } from "./api.ts";
 
@@ -130,18 +131,23 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
 			ws.onmessage = (event) => {
 				try {
-					const msg: WsMessage = JSON.parse(event.data);
-					// Dispatch to all registered handlers
+					const parsed = WsMessageSchema.safeParse(JSON.parse(event.data));
+					if (!parsed.success) {
+						// biome-ignore lint/suspicious/noConsole: malformed WS payloads must be visible
+						console.error("[ws] Invalid message:", parsed.error);
+						return;
+					}
+					const msg = parsed.data;
 					for (const handler of handlersRef.current) {
 						try {
 							handler(msg);
 						} catch (e) {
-							// biome-ignore lint/suspicious/noConsole: WS handler errors must be visible for debugging
+							// biome-ignore lint/suspicious/noConsole: handler failures must be visible during debugging
 							console.error("[ws] Handler error:", e);
 						}
 					}
 				} catch (e) {
-					// biome-ignore lint/suspicious/noConsole: WS parse errors indicate broken server messages
+					// biome-ignore lint/suspicious/noConsole: parse failures must be visible
 					console.error("[ws] Parse error:", e);
 				}
 			};
