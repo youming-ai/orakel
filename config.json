@@ -4,9 +4,9 @@
       "maxTradeSizeUsdc": 10,
       "limitDiscount": 0.01,
       "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 3,
+      "maxOpenPositions": 2,
       "minLiquidity": 5000,
-      "maxTradesPerWindow": 3
+      "maxTradesPerWindow": 2
     },
     "initialBalance": 1000
   },
@@ -15,9 +15,9 @@
       "maxTradeSizeUsdc": 10,
       "limitDiscount": 0.01,
       "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 3,
+      "maxOpenPositions": 2,
       "minLiquidity": 5000,
-      "maxTradesPerWindow": 3
+      "maxTradesPerWindow": 2
     }
   },
   "strategy": {
@@ -28,36 +28,36 @@
       "minProbEarly": 0.55,
       "minProbMid": 0.6,
       "minProbLate": 0.65,
-      "maxGlobalTradesPerWindow": 3,
+      "maxGlobalTradesPerWindow": 1,
       "skipMarkets": []
     },
     "BTC-5m": {
-      "edgeThresholdEarly": 0.02,
-      "edgeThresholdMid": 0.04,
-      "edgeThresholdLate": 0.055,
-      "minProbEarly": 0.52,
-      "minProbMid": 0.55,
-      "minProbLate": 0.58,
-      "minTimeLeftMin": 0.5,
-      "maxTimeLeftMin": 4.8,
-      "minVolatility15m": 0.0012,
+      "edgeThresholdEarly": 0.03,
+      "edgeThresholdMid": 0.05,
+      "edgeThresholdLate": 0.07,
+      "minProbEarly": 0.53,
+      "minProbMid": 0.56,
+      "minProbLate": 0.6,
+      "minTimeLeftMin": 1.2,
+      "maxTimeLeftMin": 3.8,
+      "minVolatility15m": 0.0014,
       "maxVolatility15m": 0.03,
       "candleAggregationMinutes": 1,
-      "minPriceToBeatMovePct": 0.0006
+      "minPriceToBeatMovePct": 0.0009
     },
     "BTC-15m": {
-      "edgeThresholdEarly": 0.03,
-      "edgeThresholdMid": 0.06,
-      "edgeThresholdLate": 0.08,
-      "minProbEarly": 0.53,
-      "minProbMid": 0.57,
-      "minProbLate": 0.62,
-      "minTimeLeftMin": 3,
-      "maxTimeLeftMin": 12,
-      "minVolatility15m": 0.0015,
+      "edgeThresholdEarly": 0.035,
+      "edgeThresholdMid": 0.065,
+      "edgeThresholdLate": 0.09,
+      "minProbEarly": 0.54,
+      "minProbMid": 0.58,
+      "minProbLate": 0.63,
+      "minTimeLeftMin": 4,
+      "maxTimeLeftMin": 11,
+      "minVolatility15m": 0.0018,
       "maxVolatility15m": 0.03,
-      "candleAggregationMinutes": 1,
-      "minPriceToBeatMovePct": 0.0012
-		}
-	}
+      "candleAggregationMinutes": 3,
+      "minPriceToBeatMovePct": 0.0015
+    }
+  }
 }

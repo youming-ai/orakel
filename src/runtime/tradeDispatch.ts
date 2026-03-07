@@ -8,6 +8,22 @@ import { executeTrade } from "../trading/trader.ts";
 
 const log = createLogger("trade-dispatch");
 
+function parseMarketStartMsFromSlug(marketSlug: string | undefined): number | null {
+	if (!marketSlug) return null;
+	const match = /-(\d+)$/.exec(marketSlug);
+	if (!match) return null;
+	const timestampSeconds = Number(match[1]);
+	if (!Number.isFinite(timestampSeconds)) return null;
+	return timestampSeconds * 1_000;
+}
+
+function getSettlementExposureKey(candidate: ProcessMarketResult, fallbackEndMs: number): string {
+	const marketStartMs = parseMarketStartMsFromSlug(candidate.signalPayload?.marketSlug ?? candidate.marketSlug);
+	const settleMs =
+		marketStartMs === null ? fallbackEndMs : marketStartMs + candidate.market.candleWindowMinutes * 60_000;
+	return `${candidate.market.coin}:${settleMs}`;
+}
+
 export interface WindowTradeTracker {
 	has(marketId: string, startMs: number): boolean;
 	record(marketId: string, startMs: number): void;
@@ -47,6 +63,8 @@ export async function dispatchTradeCandidates({
 	onLiveOrderPlaced,
 }: TradeDispatchParams): Promise<void> {
 	const maxGlobalTrades = CONFIG.strategy.maxGlobalTradesPerWindow;
+	const paperSettlementKeys = new Set<string>();
+	const liveSettlementKeys = new Set<string>();
 	const candidates = results
 		.filter((r) => r.ok && r.rec?.action === "ENTER" && r.signalPayload)
 		.filter((r) => {
@@ -80,6 +98,7 @@ export async function dispatchTradeCandidates({
 		const market = candidate.market;
 		const timing = getCandleWindowTiming(market.candleWindowMinutes);
 		const windowKey = String(timing.startMs);
+		const settlementKey = getSettlementExposureKey(candidate, timing.endMs);
 		const sideBook = signal.side === "UP" ? (candidate.orderbook?.up ?? null) : (candidate.orderbook?.down ?? null);
 		const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
 
@@ -91,6 +110,7 @@ export async function dispatchTradeCandidates({
 			const hasPaperLiquidity = sideLiquidity !== null && sideLiquidity >= minPaperLiquidity;
 
 			if (
+				!paperSettlementKeys.has(settlementKey) &&
 				!paperTracker.has(market.id, timing.startMs) &&
 				paperAffordCheck.canTrade &&
 				hasPaperLiquidity &&
@@ -100,6 +120,7 @@ export async function dispatchTradeCandidates({
 				const result = await executeTrade(signal, { marketConfig: market, riskConfig: CONFIG.paperRisk }, "paper");
 				if (result?.success) {
 					paperTracker.record(market.id, timing.startMs);
+					paperSettlementKeys.add(settlementKey);
 				} else {
 					log.warn(`Paper trade failed for ${market.id}: ${result?.reason ?? result?.error ?? "unknown_error"}`);
 				}
@@ -130,6 +151,7 @@ export async function dispatchTradeCandidates({
 		const liveTradeSize = Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0);
 		const liveAffordCheck = liveAccount.canAffordTradeWithStopCheck(liveTradeSize);
 		const canPlace =
+			!liveSettlementKeys.has(settlementKey) &&
 			!orderTracker.hasOrder(market.id, windowKey) &&
 			!orderTracker.onCooldown() &&
 			orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
@@ -150,6 +172,7 @@ export async function dispatchTradeCandidates({
 
 		orderTracker.record(market.id, windowKey);
 		liveTracker.record(market.id, timing.startMs);
+		liveSettlementKeys.add(settlementKey);
 		successfulTradesThisTick += 1;
 
 		if (result.orderId && (result.isGtdOrder ?? true)) {
