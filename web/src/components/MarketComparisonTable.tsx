@@ -1,4 +1,4 @@
-import { BtcIcon } from "@/components/icons";
+import { BtcIcon, EthIcon } from "@/components/icons";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { MarketRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -6,9 +6,11 @@ import { EmptyPlaceholder } from "./EmptyPlaceholder";
 
 function MarketCell({ market }: { market: string }) {
 	const isBtc = market.startsWith("BTC");
+	const isEth = market.startsWith("ETH");
 	return (
 		<span className="flex items-center gap-1.5">
 			{isBtc && <BtcIcon size={14} />}
+			{isEth && <EthIcon size={14} />}
 			<span>{market}</span>
 		</span>
 	);

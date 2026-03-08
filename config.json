@@ -2,22 +2,28 @@
   "paper": {
     "risk": {
       "maxTradeSizeUsdc": 10,
-      "limitDiscount": 0.01,
+      "limitDiscount": 0.04,
       "dailyMaxLossUsdc": 100,
       "maxOpenPositions": 2,
       "minLiquidity": 5000,
-      "maxTradesPerWindow": 2
+      "maxTradesPerWindow": 2,
+      "useKellySizing": true,
+      "kellyFraction": 0.25,
+      "kellyMinSize": 1
     },
     "initialBalance": 1000
   },
   "live": {
     "risk": {
       "maxTradeSizeUsdc": 10,
-      "limitDiscount": 0.01,
+      "limitDiscount": 0.04,
       "dailyMaxLossUsdc": 100,
       "maxOpenPositions": 2,
       "minLiquidity": 5000,
-      "maxTradesPerWindow": 2
+      "maxTradesPerWindow": 2,
+      "useKellySizing": false,
+      "kellyFraction": 0.25,
+      "kellyMinSize": 1
     }
   },
   "strategy": {
@@ -29,21 +35,32 @@
       "minProbMid": 0.6,
       "minProbLate": 0.65,
       "maxGlobalTradesPerWindow": 2,
-      "skipMarkets": []
+      "skipMarkets": [],
+      "edgeDownBias": 0.02,
+      "liveSkipPriceMin": 0.40,
+      "liveSkipPriceMax": 0.49,
+      "divergenceThreshold": 0.004,
+      "divergenceBoostFactor": 0.5,
+      "divergenceBoostMax": 0.02,
+      "minExpectedEdge": 0.05,
+      "maxEntryPrice": 0.58
     },
-    "BTC-5m": {
-      "edgeThresholdEarly": 0.025,
-      "edgeThresholdMid": 0.045,
-      "edgeThresholdLate": 0.06,
-      "minProbEarly": 0.52,
-      "minProbMid": 0.55,
-      "minProbLate": 0.58,
-      "minTimeLeftMin": 0.7,
-      "maxTimeLeftMin": 4.4,
-      "minVolatility15m": 0.0012,
+    "ETH-15m": {
+      "edgeThresholdEarly": 0.03,
+      "edgeThresholdMid": 0.06,
+      "edgeThresholdLate": 0.085,
+      "minProbEarly": 0.53,
+      "minProbMid": 0.57,
+      "minProbLate": 0.62,
+      "minTimeLeftMin": 3,
+      "maxTimeLeftMin": 11.5,
+      "minVolatility15m": 0.0016,
       "maxVolatility15m": 0.03,
-      "candleAggregationMinutes": 1,
-      "minPriceToBeatMovePct": 0.0005
+      "candleAggregationMinutes": 2,
+      "minPriceToBeatMovePct": 0.0008,
+      "edgeDownBias": 0.02,
+      "minExpectedEdge": 0.05,
+      "maxEntryPrice": 0.58
     },
     "BTC-15m": {
       "edgeThresholdEarly": 0.03,
@@ -57,7 +74,10 @@
       "minVolatility15m": 0.0016,
       "maxVolatility15m": 0.03,
       "candleAggregationMinutes": 2,
-      "minPriceToBeatMovePct": 0.0008
+      "minPriceToBeatMovePct": 0.0008,
+      "edgeDownBias": 0.02,
+      "minExpectedEdge": 0.05,
+      "maxEntryPrice": 0.58
     }
   }
 }

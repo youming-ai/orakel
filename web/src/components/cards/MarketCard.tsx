@@ -1,4 +1,4 @@
-import { BtcIcon } from "@/components/icons";
+import { BtcIcon, EthIcon } from "@/components/icons";
 import { SimplifiedIndicators } from "@/components/market/SimplifiedIndicators";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,10 +8,12 @@ import { cn } from "@/lib/utils";
 
 function MarketLabel({ id, spotPrice }: { id: string; spotPrice: number | null }) {
 	const isBtc = id.startsWith("BTC");
+	const isEth = id.startsWith("ETH");
 	return (
 		<div className="flex items-center gap-2">
 			<span className="flex items-center gap-1.5">
 				{isBtc && <BtcIcon size={18} />}
+				{isEth && <EthIcon size={18} />}
 				<span className="font-semibold text-sm sm:text-base">{id}</span>
 			</span>
 			{spotPrice !== null && (

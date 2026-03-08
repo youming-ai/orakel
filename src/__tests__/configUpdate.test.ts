@@ -38,7 +38,7 @@ describe("applyConfigUpdate", () => {
 					maxGlobalTradesPerWindow: 3,
 					skipMarkets: [],
 				},
-				"BTC-5m": {
+				"ETH-15m": {
 					edgeThresholdEarly: 0.04,
 					minTimeLeftMin: 1,
 				},
@@ -88,7 +88,7 @@ describe("applyConfigUpdate", () => {
 					maxGlobalTradesPerWindow: 3,
 					skipMarkets: [],
 				},
-				"BTC-5m": {
+				"ETH-15m": {
 					edgeThresholdEarly: 0.04,
 					minTimeLeftMin: 1,
 				},

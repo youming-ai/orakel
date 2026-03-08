@@ -26,7 +26,7 @@ interface OverviewTabProps {
 	markets: MarketSnapshot[];
 }
 
-const MARKET_ORDER = ["BTC-5m", "BTC-15m"];
+const MARKET_ORDER = ["BTC-15m", "ETH-15m"];
 
 export function OverviewTab({
 	stopLoss,

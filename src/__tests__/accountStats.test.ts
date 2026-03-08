@@ -47,13 +47,13 @@ function addTestTrade(
 	}> = {},
 ): string {
 	return mgr.addTrade({
-		marketId: overrides.marketId ?? "BTC-15m",
+		marketId: overrides.marketId ?? "ETH-15m",
 		windowStartMs: overrides.windowStartMs ?? 1000,
 		side: overrides.side ?? "UP",
 		price: overrides.price ?? 0.4,
 		size: overrides.size ?? 10,
-		priceToBeat: overrides.priceToBeat ?? 50000,
-		currentPriceAtEntry: overrides.currentPriceAtEntry ?? 50100,
+		priceToBeat: overrides.priceToBeat ?? 2100,
+		currentPriceAtEntry: overrides.currentPriceAtEntry ?? 2110,
 		timestamp: new Date().toISOString(),
 	});
 }
@@ -68,7 +68,7 @@ describe("addTrade + resolveTrades", () => {
 		expect(mgr.getStats().pending).toBe(1);
 
 		// Resolve: UP side wins when finalPrice > priceToBeat
-		const prices = new Map([["BTC-15m", 60000]]);
+		const prices = new Map([["ETH-15m", 2200]]);
 		const resolved = await mgr.resolveTrades(1000, prices);
 		expect(resolved).toBe(1);
 
@@ -86,7 +86,7 @@ describe("addTrade + resolveTrades", () => {
 		addTestTrade(mgr, { side: "UP", price: 0.4, size: 10 });
 
 		// Resolve: UP side loses when finalPrice <= priceToBeat
-		const prices = new Map([["BTC-15m", 49000]]);
+		const prices = new Map([["ETH-15m", 1900]]);
 		const resolved = await mgr.resolveTrades(1000, prices);
 		expect(resolved).toBe(1);
 
@@ -102,7 +102,7 @@ describe("addTrade + resolveTrades", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr); // windowStartMs = 1000
 
-		const prices = new Map([["BTC-15m", 60000]]);
+		const prices = new Map([["ETH-15m", 2200]]);
 		// Pass a different windowStartMs
 		const resolved = await mgr.resolveTrades(2000, prices);
 		expect(resolved).toBe(0);
@@ -113,7 +113,7 @@ describe("addTrade + resolveTrades", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { side: "UP", price: 0.5, size: 20 });
 
-		const prices = new Map([["BTC-15m", 49000]]);
+		const prices = new Map([["ETH-15m", 1900]]);
 		await mgr.resolveTrades(1000, prices);
 
 		const balance = mgr.getBalance();
@@ -126,7 +126,7 @@ describe("addTrade + resolveTrades", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, { price: 0.4, size: 10 });
 
-		const prices = new Map([["BTC-15m", 60000]]);
+		const prices = new Map([["ETH-15m", 2200]]);
 		await mgr.resolveTrades(1000, prices);
 
 		const todayStats = mgr.getTodayStats();
@@ -140,7 +140,7 @@ describe("addTrade + resolveTrades", () => {
 
 		expect(mgr.getWonTrades()).toHaveLength(0);
 
-		const prices = new Map([["BTC-15m", 60000]]);
+		const prices = new Map([["ETH-15m", 2200]]);
 		await mgr.resolveTrades(1000, prices);
 
 		const won = mgr.getWonTrades();
@@ -153,8 +153,8 @@ describe("addTrade + resolveTrades", () => {
 describe("resolveSingle side-awareness (BUG 1)", () => {
 	it("DOWN trade should WIN when settlePrice <= priceToBeat", async () => {
 		const mgr = makeManager(100);
-		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 50000 });
-		const prices = new Map([["BTC-15m", 49000]]);
+		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 2100 });
+		const prices = new Map([["ETH-15m", 1900]]);
 		await mgr.resolveTrades(1000, prices);
 		const stats = mgr.getStats();
 		expect(stats.wins).toBe(1);
@@ -165,8 +165,8 @@ describe("resolveSingle side-awareness (BUG 1)", () => {
 
 	it("DOWN trade should LOSE when settlePrice > priceToBeat", async () => {
 		const mgr = makeManager(100);
-		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 50000 });
-		const prices = new Map([["BTC-15m", 51000]]);
+		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 2100 });
+		const prices = new Map([["ETH-15m", 2200]]);
 		await mgr.resolveTrades(1000, prices);
 		const stats = mgr.getStats();
 		expect(stats.wins).toBe(0);
@@ -177,8 +177,8 @@ describe("resolveSingle side-awareness (BUG 1)", () => {
 
 	it("DOWN trade should WIN when settlePrice equals priceToBeat", async () => {
 		const mgr = makeManager(100);
-		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 50000 });
-		const prices = new Map([["BTC-15m", 50000]]);
+		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 2100 });
+		const prices = new Map([["ETH-15m", 2100]]);
 		await mgr.resolveTrades(1000, prices);
 		expect(mgr.getStats().wins).toBe(1);
 		expect(mgr.getStats().losses).toBe(0);
@@ -186,8 +186,8 @@ describe("resolveSingle side-awareness (BUG 1)", () => {
 
 	it("UP trade still resolves correctly (regression)", async () => {
 		const mgr = makeManager(100);
-		addTestTrade(mgr, { side: "UP", price: 0.4, size: 10, priceToBeat: 50000 });
-		const prices = new Map([["BTC-15m", 60000]]);
+		addTestTrade(mgr, { side: "UP", price: 0.4, size: 10, priceToBeat: 2100 });
+		const prices = new Map([["ETH-15m", 2200]]);
 		await mgr.resolveTrades(1000, prices);
 		expect(mgr.getStats().wins).toBe(1);
 		expect(mgr.getStats().totalPnl).toBeCloseTo(6.0, 2);
@@ -197,14 +197,14 @@ describe("resolveSingle side-awareness (BUG 1)", () => {
 describe("resolveTrades marketId filtering (BUG 4)", () => {
 	it("should only resolve trades matching the given marketId", async () => {
 		const mgr = makeManager(100);
-		addTestTrade(mgr, { marketId: "BTC-5m", windowStartMs: 1000, side: "UP", price: 0.4, size: 10 });
 		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: 1000, side: "UP", price: 0.4, size: 10 });
+		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: 1000, side: "UP", price: 0.4, size: 10 });
 
 		const prices = new Map([
-			["BTC-5m", 60000],
 			["BTC-15m", 60000],
+			["ETH-15m", 2200],
 		]);
-		const resolved = await mgr.resolveTrades(1000, prices, "BTC-5m");
+		const resolved = await mgr.resolveTrades(1000, prices, "BTC-15m");
 		expect(resolved).toBe(1);
 		expect(mgr.getStats().pending).toBe(1);
 		expect(mgr.getStats().wins).toBe(1);
@@ -212,12 +212,12 @@ describe("resolveTrades marketId filtering (BUG 4)", () => {
 
 	it("should resolve all matching trades when marketId is omitted", async () => {
 		const mgr = makeManager(100);
-		addTestTrade(mgr, { marketId: "BTC-5m", windowStartMs: 1000 });
 		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: 1000 });
+		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: 1000 });
 
 		const prices = new Map([
-			["BTC-5m", 60000],
 			["BTC-15m", 60000],
+			["ETH-15m", 2200],
 		]);
 		const resolved = await mgr.resolveTrades(1000, prices);
 		expect(resolved).toBe(2);
@@ -226,13 +226,13 @@ describe("resolveTrades marketId filtering (BUG 4)", () => {
 });
 
 describe("resolveExpiredTrades cross-timeframe (BUG 2)", () => {
-	it("should not resolve BTC-15m trade when called with 5min window and BTC-5m marketId", async () => {
+	it("should not resolve ETH-15m trade when called with 5min window and BTC-15m marketId", async () => {
 		const mgr = makeManager(100);
 		const eightMinAgo = Date.now() - 8 * 60_000;
-		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: eightMinAgo, side: "UP" });
+		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: eightMinAgo, side: "UP" });
 
-		const prices = new Map([["BTC-15m", 60000]]);
-		const resolved = await mgr.resolveExpiredTrades(prices, 5, "BTC-5m");
+		const prices = new Map([["ETH-15m", 2200]]);
+		const resolved = await mgr.resolveExpiredTrades(prices, 5, "BTC-15m");
 		expect(resolved).toBe(0);
 		expect(mgr.getStats().pending).toBe(1);
 	});
@@ -240,10 +240,10 @@ describe("resolveExpiredTrades cross-timeframe (BUG 2)", () => {
 	it("should resolve expired trades matching the given marketId", async () => {
 		const mgr = makeManager(100);
 		const tenMinAgo = Date.now() - 10 * 60_000;
-		addTestTrade(mgr, { marketId: "BTC-5m", windowStartMs: tenMinAgo, side: "UP" });
+		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: tenMinAgo, side: "UP" });
 
-		const prices = new Map([["BTC-5m", 60000]]);
-		const resolved = await mgr.resolveExpiredTrades(prices, 5, "BTC-5m");
+		const prices = new Map([["ETH-15m", 2200]]);
+		const resolved = await mgr.resolveExpiredTrades(prices, 5, "ETH-15m");
 		expect(resolved).toBe(1);
 		expect(mgr.getStats().wins).toBe(1);
 	});
@@ -251,12 +251,12 @@ describe("resolveExpiredTrades cross-timeframe (BUG 2)", () => {
 	it("should resolve all expired when marketId is omitted", async () => {
 		const mgr = makeManager(100);
 		const tenMinAgo = Date.now() - 10 * 60_000;
-		addTestTrade(mgr, { marketId: "BTC-5m", windowStartMs: tenMinAgo });
 		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: tenMinAgo });
+		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: tenMinAgo });
 
 		const prices = new Map([
-			["BTC-5m", 60000],
 			["BTC-15m", 60000],
+			["ETH-15m", 2200],
 		]);
 		const resolved = await mgr.resolveExpiredTrades(prices, 5);
 		expect(resolved).toBe(2);
@@ -268,14 +268,14 @@ describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, {
 			windowStartMs: 1,
-			marketId: "BTC-5m",
+			marketId: "ETH-15m",
 			side: "UP",
 			price: 0.4,
 			size: 10,
-			priceToBeat: 50000,
+			priceToBeat: 2100,
 		});
 
-		const prices = new Map([["BTC-5m", 60000]]);
+		const prices = new Map([["ETH-15m", 2200]]);
 		await mgr.forceResolveStuckTrades(10, prices);
 
 		const stats = mgr.getStats();
@@ -299,14 +299,14 @@ describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, {
 			windowStartMs: 1,
-			marketId: "BTC-5m",
+			marketId: "ETH-15m",
 			side: "DOWN",
 			price: 0.4,
 			size: 10,
-			priceToBeat: 50000,
+			priceToBeat: 2100,
 		});
 
-		const prices = new Map([["BTC-5m", 49000]]);
+		const prices = new Map([["ETH-15m", 1900]]);
 		await mgr.forceResolveStuckTrades(10, prices);
 
 		expect(mgr.getStats().wins).toBe(1);
@@ -317,14 +317,14 @@ describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 		const mgr = makeManager(100);
 		addTestTrade(mgr, {
 			windowStartMs: 1,
-			marketId: "BTC-5m",
+			marketId: "ETH-15m",
 			side: "UP",
 			price: 0.5,
 			size: 20,
-			priceToBeat: 50000,
+			priceToBeat: 2100,
 		});
 
-		const prices = new Map([["BTC-5m", 40000]]);
+		const prices = new Map([["ETH-15m", 1600]]);
 		await mgr.forceResolveStuckTrades(10, prices);
 
 		const stats = mgr.getStats();

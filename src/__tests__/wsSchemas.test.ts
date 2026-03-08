@@ -12,8 +12,8 @@ import {
 
 const mockTradeRecord = {
 	timestamp: "2026-03-07T10:00:00Z",
-	market: "BTC-5m",
-	marketSlug: "btc-up-or-down-5m",
+	market: "ETH-15m",
+	marketSlug: "eth-up-or-down-15m",
 	side: "UP",
 	amount: "100",
 	price: "0.52",
@@ -177,7 +177,7 @@ describe("WS message schemas", () => {
 			const message = {
 				type: "signal:new" as const,
 				data: {
-					marketId: "BTC-5m",
+					marketId: "ETH-15m",
 					timestamp: "2026-03-07T10:00:00Z",
 					regime: "TREND_UP",
 					signal: "ENTER" as const,
@@ -198,7 +198,7 @@ describe("WS message schemas", () => {
 	describe("TradeExecutedPayloadSchema", () => {
 		it("should parse valid trade executed payload", () => {
 			const payload = {
-				marketId: "BTC-5m",
+				marketId: "ETH-15m",
 				mode: "paper" as const,
 				side: "UP" as const,
 				price: 0.52,
@@ -213,7 +213,7 @@ describe("WS message schemas", () => {
 
 		it("should reject invalid mode", () => {
 			const payload = {
-				marketId: "BTC-5m",
+				marketId: "ETH-15m",
 				mode: "invalid" as const,
 				side: "UP" as const,
 				price: 0.52,
@@ -236,7 +236,7 @@ describe("WS message schemas", () => {
 					{
 						tokenId: "0x123",
 						balance: "1000000000000000000",
-						marketId: "BTC-5m",
+						marketId: "ETH-15m",
 						side: "UP",
 					},
 				],

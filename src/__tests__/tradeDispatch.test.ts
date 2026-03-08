@@ -56,31 +56,32 @@ vi.mock("../core/logger.ts", () => ({
 	}),
 }));
 
-function makeMarket(id: "BTC-5m" | "BTC-15m"): MarketConfig {
-	const candleWindowMinutes = id === "BTC-5m" ? 5 : 15;
+function makeMarket(id: "BTC-15m" | "ETH-15m"): MarketConfig {
+	const candleWindowMinutes = 15;
+	const isBtc = id === "BTC-15m";
 	return {
 		id,
-		coin: "BTC",
+		coin: isBtc ? "BTC" : "ETH",
 		label: id,
 		candleWindowMinutes,
 		resolutionSource: "chainlink",
-		binanceSymbol: "BTCUSDT",
+		binanceSymbol: isBtc ? "BTCUSDT" : "ETHUSDT",
 		polymarket: {
-			seriesId: id === "BTC-5m" ? "10684" : "10192",
-			seriesSlug: id === "BTC-5m" ? "btc-up-or-down-5m" : "btc-up-or-down-15m",
-			slugPrefix: id === "BTC-5m" ? "btc-updown-5m-" : "btc-updown-15m-",
+			seriesId: isBtc ? "10192" : "10191",
+			seriesSlug: isBtc ? "btc-up-or-down-15m" : "eth-up-or-down-15m",
+			slugPrefix: isBtc ? "btc-updown-15m-" : "eth-updown-15m-",
 		},
 		chainlink: {
-			aggregator: "0xc907E116054Ad103354f2D350FD2514433D57F6f",
+			aggregator: isBtc ? "0xc907E116054Ad103354f2D350FD2514433D57F6f" : "0xF9680D99D6C9589e2a93a78A04A279e509205945",
 			decimals: 8,
-			wsSymbol: "btc",
+			wsSymbol: isBtc ? "btc" : "eth",
 		},
-		pricePrecision: 0,
+		pricePrecision: isBtc ? 0 : 2,
 	};
 }
 
 function makeSignalPayload(params: {
-	marketId: "BTC-5m" | "BTC-15m";
+	marketId: "BTC-15m" | "ETH-15m";
 	marketSlug: string;
 	side: "UP" | "DOWN";
 	modelUp?: number;
@@ -100,7 +101,7 @@ function makeSignalPayload(params: {
 		modelDown,
 		marketUp: 0.5,
 		marketDown: 0.5,
-		timeLeftMin: marketId === "BTC-5m" ? 4 : 4,
+		timeLeftMin: 4,
 		spotPrice: 90_500,
 		priceToBeat: 90_000,
 		currentPrice: 90_550,
@@ -117,7 +118,7 @@ function makeSignalPayload(params: {
 }
 
 function makeResult(params: {
-	marketId: "BTC-5m" | "BTC-15m";
+	marketId: "BTC-15m" | "ETH-15m";
 	marketSlug: string;
 	side: "UP" | "DOWN";
 	edge: number;
@@ -135,7 +136,7 @@ function makeResult(params: {
 			strength: "GOOD",
 			edge,
 		},
-		timeLeftMin: timeLeftMin ?? (marketId === "BTC-5m" ? 4 : 4),
+		timeLeftMin: timeLeftMin ?? 4,
 		rawSum: 1.01,
 		orderbook: {
 			up: {
@@ -219,8 +220,8 @@ describe("dispatchTradeCandidates", () => {
 					edge: 0.12,
 				}),
 				makeResult({
-					marketId: "BTC-5m",
-					marketSlug: "btc-updown-5m-1772898900",
+					marketId: "BTC-15m",
+					marketSlug: "btc-updown-15m-1772898300",
 					side: "DOWN",
 					edge: 0.11,
 				}),
@@ -277,8 +278,8 @@ describe("dispatchTradeCandidates", () => {
 					edge: 0.12,
 				}),
 				makeResult({
-					marketId: "BTC-5m",
-					marketSlug: "btc-updown-5m-1772898900",
+					marketId: "ETH-15m",
+					marketSlug: "eth-updown-15m-1772898900",
 					side: "UP",
 					edge: 0.11,
 				}),
@@ -296,11 +297,11 @@ describe("dispatchTradeCandidates", () => {
 		expect(executeTrade).toHaveBeenCalledTimes(2);
 		expect(executeTrade).toHaveBeenLastCalledWith(
 			expect.objectContaining({
-				marketId: "BTC-5m",
-				marketSlug: "btc-updown-5m-1772898900",
+				marketId: "ETH-15m",
+				marketSlug: "eth-updown-15m-1772898900",
 			}),
 			expect.objectContaining({
-				marketConfig: expect.objectContaining({ id: "BTC-5m" }),
+				marketConfig: expect.objectContaining({ id: "ETH-15m" }),
 			}),
 			"live",
 		);
@@ -324,8 +325,8 @@ describe("dispatchTradeCandidates", () => {
 					edge: 0.12,
 				}),
 				makeResult({
-					marketId: "BTC-5m",
-					marketSlug: "btc-updown-5m-1772898600",
+					marketId: "ETH-15m",
+					marketSlug: "eth-updown-15m-1772898600",
 					side: "DOWN",
 					edge: 0.11,
 				}),
@@ -353,8 +354,8 @@ describe("dispatchTradeCandidates", () => {
 		await dispatchTradeCandidates({
 			results: [
 				makeResult({
-					marketId: "BTC-5m",
-					marketSlug: "btc-updown-5m-1772898900",
+					marketId: "ETH-15m",
+					marketSlug: "eth-updown-15m-1772898900",
 					side: "UP",
 					edge: 0.09,
 					timeLeftMin: 4.4,
@@ -373,8 +374,8 @@ describe("dispatchTradeCandidates", () => {
 		expect(executeTrade).toHaveBeenCalledOnce();
 		expect(executeTrade).toHaveBeenCalledWith(
 			expect.objectContaining({
-				marketId: "BTC-5m",
-				marketSlug: "btc-updown-5m-1772898900",
+				marketId: "ETH-15m",
+				marketSlug: "eth-updown-15m-1772898900",
 			}),
 			expect.any(Object),
 			"live",

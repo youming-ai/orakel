@@ -37,7 +37,7 @@ describe("replayCore", () => {
 	it("summarizes replay trades by market", () => {
 		const summary = summarizeReplayTrades([
 			{
-				marketId: "BTC-5m",
+				marketId: "ETH-15m",
 				windowStartMs: 0,
 				entryTimeMs: 1,
 				timeLeftMin: 2,
@@ -53,7 +53,7 @@ describe("replayCore", () => {
 				won: true,
 			},
 			{
-				marketId: "BTC-5m",
+				marketId: "ETH-15m",
 				windowStartMs: 2,
 				entryTimeMs: 3,
 				timeLeftMin: 1,
@@ -73,6 +73,6 @@ describe("replayCore", () => {
 		expect(summary.totalTrades).toBe(2);
 		expect(summary.wins).toBe(1);
 		expect(summary.winRate).toBe(0.5);
-		expect(summary.byMarket["BTC-5m"]?.trades).toBe(2);
+		expect(summary.byMarket["ETH-15m"]?.trades).toBe(2);
 	});
 });

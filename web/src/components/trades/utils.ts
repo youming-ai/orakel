@@ -17,11 +17,11 @@ type MarketConfig = {
 	slugFormat: "timestamp" | "descriptive";
 };
 
-// Maps marketId (e.g., "BTC-5m") to config for generating Polymarket URLs
+// Maps marketId (e.g., "BTC-15m") to config for generating Polymarket URLs
 // Matches src/core/markets.ts slugPrefix values
 const MARKET_CONFIGS: Record<string, MarketConfig> = {
-	"BTC-5m": { windowMinutes: 5, slugPrefix: "btc-updown-5m-", slugFormat: "timestamp" },
 	"BTC-15m": { windowMinutes: 15, slugPrefix: "btc-updown-15m-", slugFormat: "timestamp" },
+	"ETH-15m": { windowMinutes: 15, slugPrefix: "eth-updown-15m-", slugFormat: "timestamp" },
 };
 
 export function getMarketCycleSlug(market: string, timestamp: string, marketSlug?: string | null): string | null {

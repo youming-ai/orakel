@@ -30,7 +30,7 @@ export function TradesPanel() {
 				resolvedCount: resolved,
 			});
 		}
-		const marketOrder = ["BTC-5m", "BTC-15m"];
+		const marketOrder = ["BTC-15m", "ETH-15m"];
 		return result.sort((a, b) => {
 			const aIndex = marketOrder.indexOf(a.market);
 			const bIndex = marketOrder.indexOf(b.market);
