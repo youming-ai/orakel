@@ -11,8 +11,8 @@ function MarketLabel({ id, spotPrice }: { id: string; spotPrice: number | null }
 	return (
 		<div className="flex items-center gap-2">
 			<span className="flex items-center gap-1.5">
-				{isBtc && <BtcIcon size={14} />}
-				<span className="font-semibold text-xs sm:text-sm">{id}</span>
+				{isBtc && <BtcIcon size={18} />}
+				<span className="font-semibold text-sm sm:text-base">{id}</span>
 			</span>
 			{spotPrice !== null && (
 				<span className="text-xs font-medium tabular-nums text-muted-foreground">{fmtPrice(id, spotPrice)}</span>

@@ -43,7 +43,7 @@
       "minVolatility15m": 0.0012,
       "maxVolatility15m": 0.03,
       "candleAggregationMinutes": 1,
-      "minPriceToBeatMovePct": 0.0007
+      "minPriceToBeatMovePct": 0.0005
     },
     "BTC-15m": {
       "edgeThresholdEarly": 0.03,
@@ -57,7 +57,7 @@
       "minVolatility15m": 0.0016,
       "maxVolatility15m": 0.03,
       "candleAggregationMinutes": 2,
-      "minPriceToBeatMovePct": 0.0012
+      "minPriceToBeatMovePct": 0.0008
     }
   }
 }

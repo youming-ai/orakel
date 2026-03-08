@@ -50,7 +50,6 @@ async function main(): Promise<void> {
 	const { streams, clobWs }: { streams: StreamHandles; clobWs: ReturnType<typeof createMarketStreams>["clobWs"] } =
 		createMarketStreams(markets);
 	liveSettler = createLiveSettlerController({
-		clobWs,
 		liveAccount,
 	});
 	const orderTracker: RuntimeOrderTracker = {

@@ -1,26 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("node:fs", () => ({
-	default: {
-		existsSync: vi.fn().mockReturnValue(false),
-		readFileSync: vi.fn().mockReturnValue("[]"),
-		writeFileSync: vi.fn(),
-		mkdirSync: vi.fn(),
-	},
-	existsSync: vi.fn().mockReturnValue(false),
-	readFileSync: vi.fn().mockReturnValue("[]"),
-	writeFileSync: vi.fn(),
-	mkdirSync: vi.fn(),
-}));
-
-vi.mock("../core/db.ts", () => ({
-	onchainStatements: {
-		upsertKnownCtfToken: () => ({ run: vi.fn() }),
-	},
-}));
+vi.mock("../core/db.ts", () => ({}));
 
 vi.mock("../blockchain/redeemer.ts", () => ({
-	fetchRedeemablePositions: vi.fn().mockResolvedValue([]),
+	fetchRedeemablePositions: vi.fn(),
+	redeemByConditionId: vi.fn(),
+}));
+
+vi.mock("../db/queries.ts", () => ({
+	kvQueries: {
+		get: vi.fn().mockResolvedValue(null),
+		set: vi.fn().mockResolvedValue(undefined),
+	},
 }));
 
 const mockLog = vi.hoisted(() => ({
@@ -34,215 +25,110 @@ vi.mock("../core/logger.ts", () => ({
 	createLogger: () => mockLog,
 }));
 
-import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
-import type { AccountStatsManager, TradeEntry } from "../trading/accountStats.ts";
+import type { Wallet } from "ethers";
+import { fetchRedeemablePositions, redeemByConditionId } from "../blockchain/redeemer.ts";
 import { LiveSettler } from "../trading/liveSettler.ts";
 
-function makeFakeClobWs(overrides: Partial<ClobWsHandle> = {}): ClobWsHandle {
-	return {
-		subscribe: vi.fn(),
-		unsubscribe: vi.fn(),
-		getBestBidAsk: vi.fn().mockReturnValue(null),
-		getTickSize: vi.fn().mockReturnValue(null),
-		isResolved: vi.fn().mockReturnValue(false),
-		getWinningAssetId: vi.fn().mockReturnValue(null),
-		close: vi.fn(),
-		...overrides,
-	};
+function makeMockWallet(): Wallet {
+	return { address: "0xtest123" } as Wallet;
 }
 
-function makeFakeAccount(wonTrades: TradeEntry[] = []): {
-	getWonTrades: () => TradeEntry[];
-} {
-	return {
-		getWonTrades: () => wonTrades,
-	};
-}
-
-/** Create a resolved + won trade (the default state LiveSettler now expects) */
-function makeWonTrade(overrides: Partial<TradeEntry> = {}): TradeEntry {
-	return {
-		id: "trade-1",
-		marketId: "BTC-15m",
-		windowStartMs: 1000,
-		side: "UP",
-		price: 0.4,
-		size: 10,
-		priceToBeat: 50000,
-		currentPriceAtEntry: 50100,
-		timestamp: new Date().toISOString(),
-		resolved: true,
-		won: true,
-		pnl: 6.0, // 10 * (1 - 0.4)
-		settlePrice: 50100,
-		...overrides,
-	};
-}
-
-describe("LiveSettler.settle (redeemer-only)", () => {
+describe("LiveSettler (simplified)", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(fetchRedeemablePositions).mockReset();
+		vi.mocked(redeemByConditionId).mockReset();
 	});
 
-	it("should skip won trades whose tokenId is not yet resolved on-chain", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(false) });
-		const account = makeFakeAccount([makeWonTrade()]);
-		const redeemFn = vi.fn();
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: null,
-			lookupTokenId: () => "token-up-123",
-			lookupConditionId: () => "cond-123",
-			redeemFn,
-		});
-
-		const redeemed = await settler.settle();
-		expect(redeemed).toBe(0);
-		expect(redeemFn).not.toHaveBeenCalled();
+	it("should do nothing when wallet is null", async () => {
+		const settler = new LiveSettler(null);
+		const count = await settler.settle();
+		expect(count).toBe(0);
+		expect(fetchRedeemablePositions).not.toHaveBeenCalled();
 	});
 
-	it("should redeem won trade when on-chain resolution is available", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
-		const account = makeFakeAccount([makeWonTrade({ price: 0.4, size: 10, pnl: 6.0 })]);
-		const redeemFn = vi.fn().mockResolvedValue({ success: true, txHash: "0xabc" });
-		const fakeWallet = {} as never;
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: fakeWallet,
-			lookupTokenId: () => "token-up-123",
-			lookupConditionId: () => "cond-123",
-			redeemFn,
-		});
+	it("should skip already redeemed positions", async () => {
+		const wallet = makeMockWallet();
+		vi.mocked(fetchRedeemablePositions).mockResolvedValue([
+			{ conditionId: "0xabc123", redeemable: true, currentValue: 10, title: "Test Market" },
+		]);
+		vi.mocked(redeemByConditionId).mockResolvedValue({ success: true, txHash: "0xtx1" });
 
-		const redeemed = await settler.settle();
-		expect(redeemed).toBe(1);
-		expect(redeemFn).toHaveBeenCalledWith(fakeWallet, "cond-123");
-		expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining("Redeemed: BTC-15m UP"));
+		const settler = new LiveSettler(wallet);
+
+		// First settle
+		const count1 = await settler.settle();
+		expect(count1).toBe(1);
+		expect(redeemByConditionId).toHaveBeenCalledTimes(1);
+
+		// Second settle - should skip
+		const count2 = await settler.settle();
+		expect(count2).toBe(0);
+		expect(redeemByConditionId).toHaveBeenCalledTimes(1); // still 1
 	});
 
-	it("should NOT redeem when redeem call fails", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
-		const account = makeFakeAccount([makeWonTrade()]);
-		const redeemFn = vi.fn().mockResolvedValue({ success: false, txHash: null, error: "rpc_fail" });
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: {} as never,
-			lookupTokenId: () => "token-up-123",
-			lookupConditionId: () => "cond-123",
-			redeemFn,
-		});
+	it("should handle redeem failures gracefully", async () => {
+		const wallet = makeMockWallet();
+		vi.mocked(fetchRedeemablePositions).mockResolvedValue([
+			{ conditionId: "0xfail", redeemable: true, currentValue: 10, title: "Fail Market" },
+			{ conditionId: "0xsucc", redeemable: true, currentValue: 5, title: "Success Market" },
+		]);
+		vi.mocked(redeemByConditionId)
+			.mockResolvedValueOnce({ success: false, txHash: null, error: "not_resolved" })
+			.mockResolvedValueOnce({ success: true, txHash: "0xtx2" });
 
-		const redeemed = await settler.settle();
-		expect(redeemed).toBe(0);
-		expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining("Redeem failed"));
+		const settler = new LiveSettler(wallet);
+		const count = await settler.settle();
+
+		expect(count).toBe(1);
+		expect(redeemByConditionId).toHaveBeenCalledTimes(2);
 	});
 
-	it("should skip trades with no tokenId mapping", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
-		const account = makeFakeAccount([makeWonTrade()]);
-		const redeemFn = vi.fn();
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: null,
-			lookupTokenId: () => null,
-			lookupConditionId: () => null,
-			redeemFn,
-		});
+	it("should handle empty positions", async () => {
+		const wallet = makeMockWallet();
+		vi.mocked(fetchRedeemablePositions).mockResolvedValue([]);
 
-		const redeemed = await settler.settle();
-		expect(redeemed).toBe(0);
-		expect(redeemFn).not.toHaveBeenCalled();
+		const settler = new LiveSettler(wallet);
+		const count = await settler.settle();
+
+		expect(count).toBe(0);
+		expect(redeemByConditionId).not.toHaveBeenCalled();
 	});
 
-	it("should skip won trade when wallet is null", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
-		const account = makeFakeAccount([makeWonTrade()]);
-		const redeemFn = vi.fn();
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: null,
-			lookupTokenId: () => "token-up-123",
-			lookupConditionId: () => "cond-123",
-			redeemFn,
-		});
+	it("should prevent concurrent settle calls", async () => {
+		const wallet = makeMockWallet();
 
-		const redeemed = await settler.settle();
-		expect(redeemed).toBe(0);
-		expect(redeemFn).not.toHaveBeenCalled();
-		expect(mockLog.warn).toHaveBeenCalledWith("Cannot redeem: wallet not connected");
+		vi.mocked(fetchRedeemablePositions).mockResolvedValue([
+			{ conditionId: "0xslow", redeemable: true, currentValue: 10, title: "Slow Market" },
+		]);
+		vi.mocked(redeemByConditionId).mockResolvedValue({ success: true, txHash: "0xtx" });
+
+		const settler = new LiveSettler(wallet);
+
+		// Start two settle calls concurrently
+		const [count1, count2] = await Promise.all([settler.settle(), settler.settle()]);
+
+		// Only one should have run (due to running flag)
+		expect(count1 + count2).toBeLessThanOrEqual(1);
 	});
 
-	it("should handle multiple won trades in one settle call", async () => {
-		const resolvedTokens = new Set(["token-btc-up", "token-eth-down"]);
-		const clobWs = makeFakeClobWs({
-			isResolved: vi.fn().mockImplementation((tid: string) => resolvedTokens.has(tid)),
-		});
-		const trades = [
-			makeWonTrade({ id: "t1", marketId: "BTC-15m", side: "UP", price: 0.3, size: 10, pnl: 7.0 }),
-			makeWonTrade({ id: "t2", marketId: "BTC-5m", side: "DOWN", price: 0.5, size: 10, pnl: 5.0 }),
-		];
-		const account = makeFakeAccount(trades);
-		const redeemFn = vi.fn().mockResolvedValue({ success: true, txHash: "0x111" });
-		const tokenMap: Record<string, string> = { "BTC-15m-UP": "token-btc-up", "BTC-5m-DOWN": "token-eth-down" };
+	it("should start and stop timer", () => {
+		const settler = new LiveSettler(makeMockWallet());
 
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: {} as never,
-			lookupTokenId: (m, s) => tokenMap[`${m}-${s}`] ?? null,
-			lookupConditionId: () => "cond-xxx",
-			redeemFn,
-		});
-
-		const redeemed = await settler.settle();
-		expect(redeemed).toBe(2);
-		expect(redeemFn).toHaveBeenCalledTimes(2);
+		expect(settler.isRunning()).toBe(false);
+		settler.start();
+		expect(settler.isRunning()).toBe(true);
+		settler.stop();
+		expect(settler.isRunning()).toBe(false);
 	});
 
-	it("should not re-redeem already redeemed trades on subsequent calls", async () => {
-		const clobWs = makeFakeClobWs({ isResolved: vi.fn().mockReturnValue(true) });
-		const wonTrade = makeWonTrade();
-		const account = makeFakeAccount([wonTrade]);
-		const redeemFn = vi.fn().mockResolvedValue({ success: true, txHash: "0xdef" });
+	it("should not start twice", () => {
+		const settler = new LiveSettler(makeMockWallet());
 
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: {} as never,
-			lookupTokenId: () => "token-up-123",
-			lookupConditionId: () => "cond-123",
-			redeemFn,
-		});
+		settler.start();
+		settler.start(); // second call should be no-op
 
-		// First call redeems
-		const first = await settler.settle();
-		expect(first).toBe(1);
-		expect(redeemFn).toHaveBeenCalledTimes(1);
-
-		// Second call skips (already redeemed)
-		const second = await settler.settle();
-		expect(second).toBe(0);
-		expect(redeemFn).toHaveBeenCalledTimes(1);
-	});
-
-	it("should return 0 when no won trades exist", async () => {
-		const clobWs = makeFakeClobWs();
-		const account = makeFakeAccount([]);
-		const settler = new LiveSettler({
-			clobWs,
-			liveAccount: account as unknown as AccountStatsManager,
-			wallet: null,
-			lookupTokenId: () => null,
-			lookupConditionId: () => null,
-			redeemFn: vi.fn(),
-		});
-
-		const redeemed = await settler.settle();
-		expect(redeemed).toBe(0);
+		expect(settler.isRunning()).toBe(true);
+		settler.stop();
 	});
 });

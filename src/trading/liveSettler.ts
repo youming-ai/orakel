@@ -1,116 +1,82 @@
 import type { Wallet } from "ethers";
-import type { RedeemOneResult } from "../blockchain/redeemer.ts";
+import { fetchRedeemablePositions, redeemByConditionId } from "../blockchain/redeemer.ts";
 import { createLogger } from "../core/logger.ts";
-import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
-import type { AccountStatsManager } from "./accountStats.ts";
-import { resolveRedeemConditionId } from "./liveSettlerResolver.ts";
-import { loadRedeemedTradeIds, saveRedeemedTradeIds } from "./liveSettlerStore.ts";
+import { kvQueries } from "../db/queries.ts";
 
 const log = createLogger("live-settler");
 
-const DEFAULT_POLL_INTERVAL_MS = 15_000;
-
-/**
- * LiveSettler is now a pure redeemer.
- * Settlement (won/lost determination) is handled by resolveTrades() in the main
- * loop using the same spot-price logic as paper. This class only redeems
- * on-chain winnings for already-settled won trades.
- */
-export interface LiveSettlerDeps {
-	clobWs: ClobWsHandle;
-	liveAccount: AccountStatsManager;
-	wallet: Wallet | null;
-	lookupTokenId: (marketId: string, side: string) => string | null | Promise<string | null>;
-	lookupConditionId: (tokenId: string) => string | null | Promise<string | null>;
-	redeemFn: (wallet: Wallet, conditionId: string) => Promise<RedeemOneResult>;
-}
+const POLL_INTERVAL_MS = 15_000;
+const REDEEMED_KEY = "redeemed_condition_ids";
 
 export class LiveSettler {
-	private deps: LiveSettlerDeps;
+	private wallet: Wallet | null;
 	private timer: ReturnType<typeof setInterval> | null = null;
-	private settling = false;
-	/** Track successfully redeemed trade IDs to avoid re-attempts */
-	private redeemedIds = new Set<string>();
+	private running = false;
+	private redeemed = new Set<string>();
 
-	constructor(deps: LiveSettlerDeps) {
-		this.deps = deps;
-		void this.loadRedeemedIds();
+	constructor(wallet: Wallet | null) {
+		this.wallet = wallet;
+		void this.load();
 	}
 
-	private async loadRedeemedIds(): Promise<void> {
-		this.redeemedIds = await loadRedeemedTradeIds();
-	}
-
-	private async saveRedeemedIds(): Promise<void> {
-		await saveRedeemedTradeIds(this.redeemedIds);
-	}
-
-	/**
-	 * Redeem on-chain winnings for already-settled (resolved + won) trades.
-	 * Returns the number of trades successfully redeemed this cycle.
-	 */
-	async settle(): Promise<number> {
-		if (this.settling) return 0;
-		this.settling = true;
-
-		let redeemed = 0;
-
+	private async load(): Promise<void> {
 		try {
-			const wonTrades = this.deps.liveAccount.getWonTrades();
-
-			for (const trade of wonTrades) {
-				if (this.redeemedIds.has(trade.id)) continue;
-
-				const tokenId = await this.deps.lookupTokenId(trade.marketId, trade.side);
-				if (!tokenId) {
-					continue;
-				}
-
-				const conditionId = await resolveRedeemConditionId({
-					tokenId,
-					wallet: this.deps.wallet,
-					lookupConditionId: this.deps.lookupConditionId,
-				});
-				if (!conditionId) {
-					log.warn(`No conditionId for token ${tokenId.slice(0, 12)}..., skipping redeem`);
-					continue;
-				}
-
-				if (!this.deps.wallet) {
-					log.warn("Cannot redeem: wallet not connected");
-					continue;
-				}
-
-				const result = await this.deps.redeemFn(this.deps.wallet, conditionId);
-
-				if (!result.success) {
-					log.warn(`Redeem failed for ${trade.id} (${conditionId.slice(0, 10)}...): ${result.error}`);
-					continue;
-				}
-
-				this.redeemedIds.add(trade.id);
-				void this.saveRedeemedIds();
-				redeemed++;
-				log.info(`Redeemed: ${trade.marketId} ${trade.side} pnl=$${(trade.pnl ?? 0).toFixed(2)} tx=${result.txHash}`);
+			const json = await kvQueries.get(REDEEMED_KEY);
+			if (json) {
+				const ids = JSON.parse(json) as string[];
+				this.redeemed = new Set(ids);
+				log.info(`Loaded ${ids.length} redeemed condition IDs`);
 			}
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : String(err);
-			log.error("settle() error:", msg);
+		} catch (err) {
+			log.warn("Failed to load redeemed IDs:", err);
+		}
+	}
+
+	private async save(): Promise<void> {
+		try {
+			await kvQueries.set(REDEEMED_KEY, JSON.stringify([...this.redeemed]));
+		} catch (err) {
+			log.warn("Failed to save redeemed IDs:", err);
+		}
+	}
+
+	async settle(): Promise<number> {
+		if (this.running || !this.wallet) return 0;
+		this.running = true;
+
+		let count = 0;
+		try {
+			const positions = await fetchRedeemablePositions(this.wallet.address);
+
+			for (const pos of positions) {
+				const cid = pos.conditionId.toLowerCase();
+				if (this.redeemed.has(cid)) continue;
+
+				const result = await redeemByConditionId(this.wallet, pos.conditionId);
+				if (result.success) {
+					this.redeemed.add(cid);
+					void this.save();
+					count++;
+					const value = pos.currentValue ? `$${pos.currentValue.toFixed(2)}` : "";
+					log.info(`Redeemed: ${pos.title?.slice(0, 30)}... ${value} tx=${result.txHash?.slice(0, 10)}...`);
+				} else if (result.error && !result.error.includes("not_resolved")) {
+					log.warn(`Redeem failed: ${pos.conditionId.slice(0, 10)}... - ${result.error}`);
+				}
+			}
+		} catch (err) {
+			log.error("settle() error:", err instanceof Error ? err.message : String(err));
 		} finally {
-			this.settling = false;
+			this.running = false;
 		}
 
-		return redeemed;
+		return count;
 	}
 
-	start(intervalMs?: number): void {
+	start(): void {
 		if (this.timer) return;
-		const ms = intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-		this.timer = setInterval(() => {
-			void this.settle();
-		}, ms);
+		this.timer = setInterval(() => void this.settle(), POLL_INTERVAL_MS);
 		void this.settle();
-		log.info(`LiveSettler started (poll every ${ms}ms)`);
+		log.info(`LiveSettler started (poll every ${POLL_INTERVAL_MS}ms)`);
 	}
 
 	stop(): void {
