@@ -141,7 +141,7 @@ Runtime state is persisted through PostgreSQL (`DATABASE_URL`) plus local logs s
 | `PAPER_MODE` | boolean | false | Enable paper trading at startup |
 | `API_PORT` | number | 9999 | API service port |
 | `API_TOKEN` | string | "" | API authentication token (protects write operations) |
-| `ACTIVE_MARKETS` | string (CSV) | "" | Enabled markets (e.g., `"BTC-5m,BTC-15m"`, empty = all supported markets) |
+| `ACTIVE_MARKETS` | string (CSV) | "" | Enabled markets (e.g., `"BTC-15m,ETH-15m"`, empty = all supported markets) |
 | `LOG_LEVEL` | enum | info | Log level (`debug`/`info`/`warn`/`error`/`silent`) |
 | `POLYMARKET_SLUG` | string | "" | Polymarket market slug |
 | `POLYMARKET_AUTO_SELECT_LATEST` | boolean | true | Auto-select latest market |

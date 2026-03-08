@@ -1,6 +1,6 @@
 # Orakel
 
-Automated trading bot for Polymarket **BTC Up/Down** multi-timeframe markets. Paper trading, live trading, web dashboard, Docker deployment.
+Automated trading bot for Polymarket **Crypto Up/Down** multi-timeframe markets. Paper trading, live trading, web dashboard, Docker deployment.
 
 **Tech Stack**: Bun + TypeScript + Hono + PostgreSQL (backend), React 19 + Vite + shadcn/ui + Tailwind v4 (frontend)
 
@@ -8,8 +8,8 @@ Automated trading bot for Polymarket **BTC Up/Down** multi-timeframe markets. Pa
 
 | Market | Timeframe | Binance Pair | Resolution Source | Polymarket Series |
 |--------|-----------|--------------|-------------------|-------------------|
-| BTC-5m | 5 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-5m` |
 | BTC-15m | 15 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-15m` |
+| ETH-15m | 15 min | ETHUSDT | Chainlink ETH/USD | `eth-up-or-down-15m` |
 
 ## Features
 

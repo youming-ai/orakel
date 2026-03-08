@@ -1,6 +1,6 @@
 # AGENTS.md — Orakel
 
-Automated trading bot for Polymarket crypto up/down markets (5m, 15m).
+Automated trading bot for Polymarket crypto up/down markets (15m).
 Backend: Bun + TypeScript + Hono + PostgreSQL (Drizzle ORM). Frontend: React 19 + Vite + shadcn/ui + Tailwind v4.
 
 ## Build & Run Commands

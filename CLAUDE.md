@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Orakel is a production-grade automated trading bot for Polymarket's BTC Up/Down binary options markets across multiple timeframes (5m, 15m). It combines real-time data fusion from Binance, Polymarket, and Chainlink with technical analysis and regime-aware strategy.
+Orakel is a production-grade automated trading bot for Polymarket's Crypto Up/Down binary options markets across multiple timeframes (15m). It combines real-time data fusion from Binance, Polymarket, and Chainlink with technical analysis and regime-aware strategy.
 
 **Tech Stack:** Bun Runtime, TypeScript, Hono API, PostgreSQL (Drizzle ORM), React 19, Vite, shadcn/ui, Tailwind v4, Zustand, TanStack Query
 
@@ -129,7 +129,7 @@ Query logic is organized into `src/repositories/` modules: tradeRepo, dailyStats
 1. **Environment Variables** (`.env`, validated by Zod in `src/core/env.ts`):
    - `PAPER_MODE=true` — Paper vs live trading
    - `API_PORT=9999` — API server port
-	- `ACTIVE_MARKETS=BTC-5m,BTC-15m` — Enabled markets
+   - `ACTIVE_MARKETS=BTC-15m,ETH-15m` — Enabled markets
    - `PRIVATE_KEY` — 64-char hex for live trading (auto-connects wallet)
    - `AUTO_REDEEM_ENABLED=false` — Auto-redeem settled positions
    - See `src/core/env.ts` for full list

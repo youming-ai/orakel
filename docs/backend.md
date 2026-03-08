@@ -111,12 +111,12 @@ This is still one process, but the side effects are no longer all embedded inlin
 
 ## Supported Markets
 
-The runtime currently targets BTC multi-timeframe markets only:
+The runtime currently targets Crypto multi-timeframe markets:
 
 | Market | Window | Resolution Source | Polymarket Series |
 |--------|--------|-------------------|-------------------|
-| `BTC-5m` | 5 min | Chainlink | `btc-up-or-down-5m` |
 | `BTC-15m` | 15 min | Chainlink | `btc-up-or-down-15m` |
+| `ETH-15m` | 15 min | Chainlink | `eth-up-or-down-15m` |
 
 Definitions live in [src/core/markets.ts](/Users/youming/GitHub/orakel/src/core/markets.ts).
 

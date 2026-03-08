@@ -1,10 +1,10 @@
 # Orakel Bot Core Logic
 
-Automated trading bot for Polymarket BTC multi-timeframe up/down markets.
+Automated trading bot for Polymarket Crypto multi-timeframe up/down markets.
 
 ## Overview
 
-Every second, process the active BTC markets (5m / 15m), estimate window-end direction probability with a per-market model that blends technical indicators and `priceToBeat` distance/volatility, compare against Polymarket odds, and bet when edge is found.
+Every second, process the active Crypto markets (15m), estimate window-end direction probability with a per-market model that blends technical indicators and `priceToBeat` distance/volatility, compare against Polymarket odds, and bet when edge is found.
 
 ```
 Startup → Establish data streams → 1s main loop { fetch → indicators → probability → edge → order } → 15min window end → settlement
@@ -36,8 +36,8 @@ Four BTC markets are fetched independently. Cache layer (`cache.ts`) prevents re
 
 | Market | Binance Symbol | Polymarket Series | Resolution Source |
 |--------|---------------|-------------------|-------------------|
-| BTC-5m | BTCUSDT | btc-up-or-down-5m | Chainlink |
 | BTC-15m | BTCUSDT | btc-up-or-down-15m | Chainlink |
+| ETH-15m | ETHUSDT | eth-up-or-down-15m | Chainlink |
 ---
 
 ## 2. Decision Engine — Four-Layer Pipeline
