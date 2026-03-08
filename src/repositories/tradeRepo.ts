@@ -73,6 +73,10 @@ export const tradeQueries = {
 export const unifiedTradeQueries = {
 	upsert: async (data: typeof schema.trades.$inferInsert) => {
 		if (!data.tradeId) throw new Error("tradeId is required for upsert");
+
+		// 确保 status 正确计算
+		const computedStatus = data.status ?? (data.resolved ? (data.won ? "won" : "lost") : "open");
+
 		return await db
 			.insert(schema.trades)
 			.values(data)
@@ -83,7 +87,7 @@ export const unifiedTradeQueries = {
 					won: data.won,
 					pnl: data.pnl,
 					settlePrice: data.settlePrice,
-					status: data.status,
+					status: computedStatus,
 				},
 			});
 	},
