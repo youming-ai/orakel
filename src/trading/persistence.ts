@@ -1,4 +1,3 @@
-// import { signalQueries } from "../db/queries.ts";
 import { emitSignalNew } from "../core/state.ts";
 import { buildSignalNewPayload, buildTradeSignalPayload, type SignalPayloadParams } from "./signalPayload.ts";
 import type { TradeSignal } from "./tradeTypes.ts";

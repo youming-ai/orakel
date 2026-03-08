@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ReconStatus } from "../blockchain/blockchainTypes.ts";
 import {
 	isEventRow,
 	isKnownTokenRow,
@@ -6,7 +7,6 @@ import {
 	rawToUsdc,
 	statusFromConfidence,
 } from "../blockchain/reconciler-utils.ts";
-import type { ReconStatus } from "../types.ts";
 
 describe("statusFromConfidence", () => {
 	describe("confidence thresholds", () => {

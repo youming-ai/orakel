@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { Candle } from "../core/marketDataTypes.ts";
 import { computeSessionVwap, computeVwapSeries } from "../indicators/vwap.ts";
-import type { Candle } from "../types.ts";
 
 function makeCandle(o: number, h: number, l: number, c: number, v: number): Candle {
 	return { openTime: 0, open: o, high: h, low: l, close: c, volume: v, closeTime: 0 };

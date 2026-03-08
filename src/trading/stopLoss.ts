@@ -122,33 +122,6 @@ export function checkStopLoss(
 }
 
 /**
- * 获取需要止损的交易 ID 列表
- */
-export function getTradesToStop(results: StopLossResult[]): string[] {
-	return results.filter((r) => r.shouldStop).map((r) => r.tradeId);
-}
-
-/**
- * 计算止损统计
- */
-export function calculateStopLossStats(results: StopLossResult[]): {
-	totalChecked: number;
-	triggeredCount: number;
-	avgLossPercent: number;
-	maxLossPercent: number;
-} {
-	const triggered = results.filter((r) => r.shouldStop);
-	const totalChecked = results.length;
-
-	return {
-		totalChecked,
-		triggeredCount: triggered.length,
-		avgLossPercent: triggered.length > 0 ? triggered.reduce((sum, r) => sum + r.lossPercent, 0) / triggered.length : 0,
-		maxLossPercent: triggered.length > 0 ? Math.max(...triggered.map((r) => r.lossPercent)) : 0,
-	};
-}
-
-/**
  * 格式化价格用于日志
  */
 function entryPriceToString(price: number, side: "UP" | "DOWN"): string {

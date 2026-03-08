@@ -125,48 +125,6 @@ export async function fetchMarketBySlug(slug: string): Promise<GammaMarket | nul
 	return parsed;
 }
 
-export async function fetchMarketsBySeriesSlug({
-	seriesSlug,
-	limit = 50,
-	offset = 0,
-	active = true,
-	closed = false,
-	order,
-	ascending,
-	endDateMin,
-	endDateMax,
-}: {
-	seriesSlug: string;
-	limit?: number;
-	offset?: number;
-	active?: boolean;
-	closed?: boolean;
-	order?: string;
-	ascending?: boolean;
-	endDateMin?: string;
-	endDateMax?: string;
-}): Promise<GammaValue[]> {
-	const url = new URL("/markets", CONFIG.gammaBaseUrl);
-	url.searchParams.set("seriesSlug", seriesSlug);
-	url.searchParams.set("active", String(active));
-	url.searchParams.set("closed", String(closed));
-	url.searchParams.set("enableOrderBook", "true");
-	url.searchParams.set("limit", String(limit));
-	url.searchParams.set("offset", String(offset));
-	if (order) url.searchParams.set("order", order);
-	if (typeof ascending === "boolean") url.searchParams.set("ascending", String(ascending));
-	if (endDateMin) url.searchParams.set("end_date_min", endDateMin);
-	if (endDateMax) url.searchParams.set("end_date_max", endDateMax);
-
-	const res = await fetchWithTimeout(url);
-	if (!res.ok) {
-		throw new Error(`Gamma markets(series) error: ${res.status} ${await res.text()}`);
-	}
-
-	const data: unknown = await res.json();
-	return Array.isArray(data) ? data : [];
-}
-
 export async function fetchHistoricalMarketsBySeriesSlug({
 	seriesId,
 	startTimeMs,

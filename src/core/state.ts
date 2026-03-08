@@ -48,10 +48,6 @@ export const botEvents = new EventEmitter();
 
 let _stateVersion = 0;
 
-export function getStateVersion(): number {
-	return _stateVersion;
-}
-
 export function incrementStateVersion(): number {
 	_stateVersion += 1;
 	return _stateVersion;
