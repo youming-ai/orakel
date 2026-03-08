@@ -10,6 +10,7 @@ import { pruneDatabase } from "../db/queries.ts";
 import type { MarketState, ProcessMarketResult } from "../pipeline/processMarket.ts";
 import type { AccountStatsManager } from "../trading/accountStats.ts";
 import type { OrderManager } from "../trading/orderManager.ts";
+import { DEFAULT_STOP_LOSS_CONFIG, type StopLossConfig, StopLossMonitor } from "../trading/stopLoss.ts";
 import type { StreamHandles } from "../trading/tradeTypes.ts";
 import type { LiveSettlerController } from "./liveSettlerRuntime.ts";
 import type { OnchainRuntime } from "./onchainRuntime.ts";
@@ -67,6 +68,19 @@ interface MainLoopParams {
 		priceToBeat: number | null;
 		currentPriceAtEntry: number | null;
 	}) => void;
+	enableStopLoss?: boolean;
+	stopLossConfig?: StopLossConfig;
+	onStopLoss?: (mode: "paper" | "live", tradeId: string, reason: string) => void;
+}
+
+// Module-level references for shutdown cleanup
+let activeStopLossMonitors: StopLossMonitor[] = [];
+
+export function cleanupStopLossMonitors(): void {
+	for (const monitor of activeStopLossMonitors) {
+		monitor.stop();
+	}
+	activeStopLossMonitors = [];
 }
 
 async function runMaintenance(paperAccount: AccountStatsManager, liveAccount: AccountStatsManager): Promise<void> {
@@ -174,9 +188,50 @@ export async function runMainLoop({
 	processMarket,
 	renderDashboard,
 	onLiveOrderPlaced,
+	enableStopLoss = true,
+	stopLossConfig,
+	onStopLoss,
 }: MainLoopParams): Promise<never> {
 	let consecutiveAllFails = 0;
 	let lastPruneMs = 0;
+
+	if (enableStopLoss) {
+		const slConfig = stopLossConfig ?? DEFAULT_STOP_LOSS_CONFIG;
+		const buildPriceMap = (): Map<string, number> => {
+			const prices = new Map<string, number>();
+			for (const market of markets) {
+				const state = states.get(market.id);
+				if (state?.prevCurrentPrice !== null && state?.prevCurrentPrice !== undefined) {
+					prices.set(market.id, state.prevCurrentPrice);
+				}
+			}
+			return prices;
+		};
+
+		const paperMonitor = new StopLossMonitor({
+			config: slConfig,
+			onStopLoss: (tradeId, reason) => {
+				log.warn(`[PAPER] Stop loss triggered: ${tradeId} - ${reason}`);
+				onStopLoss?.("paper", tradeId, reason);
+			},
+			getPendingTrades: () => paperAccount.getPendingTrades(),
+			getCurrentPrices: buildPriceMap,
+		});
+
+		const liveMonitor = new StopLossMonitor({
+			config: slConfig,
+			onStopLoss: (tradeId, reason) => {
+				log.warn(`[LIVE] Stop loss triggered: ${tradeId} - ${reason}`);
+				onStopLoss?.("live", tradeId, reason);
+			},
+			getPendingTrades: () => liveAccount.getPendingTrades(),
+			getCurrentPrices: buildPriceMap,
+		});
+
+		paperMonitor.start();
+		liveMonitor.start();
+		activeStopLossMonitors = [paperMonitor, liveMonitor];
+	}
 
 	await runMaintenance(paperAccount, liveAccount);
 	lastPruneMs = Date.now();

@@ -21,6 +21,7 @@ import {
 	pickLatestLiveMarket,
 	summarizeOrderBook,
 } from "../data/polymarket.ts";
+import { aggregatePrices } from "../data/priceAggregator.ts";
 import type { StreamHandles } from "../trading/tradeTypes.ts";
 
 const log = createLogger("pipeline-fetch");
@@ -276,12 +277,13 @@ export async function fetchMarketData(
 							decimals: market.chainlink.decimals,
 						});
 
-		const [klines1mRaw, lastPriceRaw, chainlink, poly] = await withTimeout(
+		const [klines1mRaw, lastPriceRaw, chainlink, poly, aggregatedPrice] = await withTimeout(
 			Promise.all([
 				fetchKlines({ symbol: market.binanceSymbol, interval: "1m", limit: 240 }),
 				fetchLastPrice({ symbol: market.binanceSymbol }),
 				chainlinkPromise,
 				fetchPolymarketSnapshot(market),
+				aggregatePrices(market.binanceSymbol),
 			]),
 			15_000,
 			`fetchMarketData(${market.id})`,
@@ -316,6 +318,7 @@ export async function fetchMarketData(
 			marketStartMs,
 			candles,
 			poly,
+			aggregatedPrice,
 		};
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);

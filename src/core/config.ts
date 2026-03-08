@@ -28,6 +28,9 @@ const RISK_DEFAULTS = {
 	maxOpenPositions: 2,
 	minLiquidity: 15_000,
 	maxTradesPerWindow: 1,
+	useKellySizing: false,
+	kellyFraction: 0.25,
+	kellyMinSize: 1,
 };
 
 const STRATEGY_DEFAULTS: {
@@ -58,6 +61,9 @@ const RiskConfigSchema = z
 		maxOpenPositions: z.coerce.number().optional(),
 		minLiquidity: z.coerce.number().optional(),
 		maxTradesPerWindow: z.coerce.number().optional(),
+		useKellySizing: z.coerce.boolean().optional(),
+		kellyFraction: z.coerce.number().min(0).max(1).optional(),
+		kellyMinSize: z.coerce.number().min(0).optional(),
 	})
 	.partial()
 	.transform((value) => ({ ...RISK_DEFAULTS, ...value }));
@@ -78,6 +84,8 @@ const StrategyConfigSchema = z
 		maxVolatility15m: z.coerce.number().min(0).optional(),
 		candleAggregationMinutes: z.coerce.number().int().min(1).optional(),
 		minPriceToBeatMovePct: z.coerce.number().min(0).optional(),
+		minExpectedEdge: z.coerce.number().min(0).max(1).optional(),
+		maxEntryPrice: z.coerce.number().min(0).max(1).optional(),
 	})
 	.partial()
 	.transform((value) => ({
@@ -152,6 +160,8 @@ const STRATEGY_PATCH_KEYS = new Set<keyof StrategyConfig>([
 	"minVolatility15m",
 	"candleAggregationMinutes",
 	"minPriceToBeatMovePct",
+	"minExpectedEdge",
+	"maxEntryPrice",
 ]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -335,7 +345,7 @@ const FILE_STRATEGY = FILE_CONFIG.strategy;
 const FILE_PAPER_RISK = FILE_CONFIG.paper.risk;
 const FILE_LIVE_RISK = FILE_CONFIG.live.risk;
 
-const DEFAULT_MARKET = MARKETS.find((m) => m.id === "BTC-15m") ?? MARKETS[0] ?? null;
+const DEFAULT_MARKET = MARKETS.find((m) => m.coin === "BTC") ?? MARKETS[0] ?? null;
 
 function buildRiskConfig(primary: z.infer<typeof RiskConfigSchema>): RiskConfig {
 	return {
@@ -345,6 +355,9 @@ function buildRiskConfig(primary: z.infer<typeof RiskConfigSchema>): RiskConfig 
 		maxOpenPositions: primary.maxOpenPositions,
 		minLiquidity: primary.minLiquidity,
 		maxTradesPerWindow: primary.maxTradesPerWindow,
+		useKellySizing: primary.useKellySizing,
+		kellyFraction: primary.kellyFraction,
+		kellyMinSize: primary.kellyMinSize,
 	};
 }
 
@@ -397,6 +410,8 @@ export const CONFIG: AppConfig = {
 		maxVolatility15m: FILE_STRATEGY.maxVolatility15m,
 		candleAggregationMinutes: FILE_STRATEGY.candleAggregationMinutes,
 		minPriceToBeatMovePct: FILE_STRATEGY.minPriceToBeatMovePct,
+		minExpectedEdge: FILE_STRATEGY.minExpectedEdge,
+		maxEntryPrice: FILE_STRATEGY.maxEntryPrice,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -438,6 +453,8 @@ export function reloadConfig(): AppConfig {
 		maxVolatility15m: fileStrategy.maxVolatility15m,
 		candleAggregationMinutes: fileStrategy.candleAggregationMinutes,
 		minPriceToBeatMovePct: fileStrategy.minPriceToBeatMovePct,
+		minExpectedEdge: fileStrategy.minExpectedEdge,
+		maxEntryPrice: fileStrategy.maxEntryPrice,
 	};
 
 	perMarketStrategy = fileConfig.perMarketStrategy;

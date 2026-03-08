@@ -42,9 +42,15 @@ export function computeMarketDecision(
 	config: AppConfig,
 	strategy: StrategyConfig,
 ): ComputeResult {
-	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin } = data;
+	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin, aggregatedPrice } = data;
 	if (poly.ok && poly.degraded) {
 		log.warn(`Polymarket snapshot degraded for ${market.id}; using fallback orderbook/price data`);
+	}
+
+	const divergenceThreshold = strategy.divergenceThreshold ?? 0.004;
+	const priceDivergence = aggregatedPrice?.divergence?.maxDivergence ?? null;
+	if (priceDivergence !== null && priceDivergence > divergenceThreshold) {
+		log.info(`${market.id} price divergence: ${(priceDivergence * 100).toFixed(3)}% - confidence boost applied`);
 	}
 	const effectiveTimeLeftMin = timeLeftMin ?? market.candleWindowMinutes;
 	const aggregationMinutes = Math.max(1, Number(strategy.candleAggregationMinutes ?? 1));
@@ -181,13 +187,27 @@ export function computeMarketDecision(
 		modelDown: finalDown,
 		marketYes: marketUp,
 		marketNo: marketDown,
+		edgeDownBias: strategy.edgeDownBias ?? 0,
 	});
+
+	// Apply divergence-based edge boost when cross-exchange price divergence exceeds threshold
+	let boostedEdge = edge;
+	if (priceDivergence !== null && priceDivergence > divergenceThreshold) {
+		const boostFactor = strategy.divergenceBoostFactor ?? 0.5;
+		const boostMax = strategy.divergenceBoostMax ?? 0.02;
+		const boost = Math.min(priceDivergence * boostFactor, boostMax);
+		boostedEdge = {
+			...edge,
+			edgeUp: edge.edgeUp !== null ? edge.edgeUp + boost : null,
+			edgeDown: edge.edgeDown !== null ? edge.edgeDown + boost : null,
+		};
+	}
 
 	const rec: TradeDecision = decide({
 		remainingMinutes: effectiveTimeLeftMin,
 		windowMinutes: market.candleWindowMinutes,
-		edgeUp: edge.edgeUp,
-		edgeDown: edge.edgeDown,
+		edgeUp: boostedEdge.edgeUp,
+		edgeDown: boostedEdge.edgeDown,
 		modelUp: finalUp,
 		modelDown: finalDown,
 		volatility15m,
@@ -195,6 +215,7 @@ export function computeMarketDecision(
 		regime: regimeInfo.regime,
 		strategy,
 		marketId: market.id,
+		marketYes: marketUp,
 	});
 
 	const pLong = Number.isFinite(finalUp) ? (finalUp * 100).toFixed(0) : "-";

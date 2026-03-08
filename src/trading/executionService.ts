@@ -18,6 +18,23 @@ import { getClient } from "./walletService.ts";
 
 const log = createLogger("execution-service");
 
+function computeKellySize(
+	modelProb: number,
+	entryPrice: number,
+	balance: number,
+	riskConfig: RiskConfig,
+): number | null {
+	if (!riskConfig.useKellySizing) return null;
+	if (entryPrice >= 1 || entryPrice <= 0 || !Number.isFinite(modelProb)) return null;
+	const kellyFull = (modelProb - entryPrice) / (1 - entryPrice);
+	if (kellyFull <= 0) return 0;
+	const kellyAdjusted = kellyFull * (riskConfig.kellyFraction ?? 0.25);
+	const dollarRisk = balance * kellyAdjusted;
+	const tokens = dollarRisk / entryPrice;
+	const minSize = riskConfig.kellyMinSize ?? 1;
+	return Math.min(riskConfig.maxTradeSizeUsdc, Math.max(minSize, tokens));
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
 	if (value && typeof value === "object") {
 		return value as Record<string, unknown>;
@@ -69,8 +86,17 @@ async function executeTradeInternal(
 
 		const timing = getCandleWindowTiming(options.marketConfig?.candleWindowMinutes ?? 15);
 		const account = getAccount("paper");
-		const actualCost = Number(riskConfig.maxTradeSizeUsdc || 0) * price;
 		const paperBalance = account.getBalance().current;
+
+		const modelProb = isUp ? signal.modelUp : signal.modelDown;
+		const kellySize = computeKellySize(modelProb, price, paperBalance, riskConfig);
+		if (kellySize === 0) {
+			log.info(`Kelly says skip: modelProb=${modelProb.toFixed(3)} price=${price} (negative EV)`);
+			return { success: false, reason: "kelly_negative_ev" };
+		}
+		const paperTradeSize = kellySize ?? Number(riskConfig.maxTradeSizeUsdc || 0);
+
+		const actualCost = paperTradeSize * price;
 		if (paperBalance < actualCost) {
 			log.warn(`Insufficient balance for actual cost: ${actualCost.toFixed(2)} > ${paperBalance.toFixed(2)}`);
 			return { success: false, reason: "insufficient_balance_actual_cost" };
@@ -82,7 +108,7 @@ async function executeTradeInternal(
 				windowStartMs: timing.startMs,
 				side: signal.side,
 				price,
-				size: Number(riskConfig.maxTradeSizeUsdc || 0),
+				size: paperTradeSize,
 				priceToBeat: signal.priceToBeat ?? 0,
 				currentPriceAtEntry: signal.currentPrice,
 				timestamp: paperTradeTimestamp,
@@ -92,13 +118,15 @@ async function executeTradeInternal(
 			"filled",
 		);
 
-		log.info(`Simulated fill: ${side} at ${price}¢ | ${marketSlug} (${tradeId})`);
+		log.info(
+			`Simulated fill: ${side} at ${price}¢ size=${paperTradeSize.toFixed(2)} | ${marketSlug} (${tradeId})${kellySize !== null ? " [kelly]" : ""}`,
+		);
 		emitTradeExecuted({
 			marketId: signal.marketId,
 			mode,
 			side,
 			price,
-			size: Number(riskConfig.maxTradeSizeUsdc || 0),
+			size: paperTradeSize,
 			timestamp: paperTradeTimestamp,
 			orderId: tradeId,
 			status: "filled",
@@ -150,8 +178,17 @@ async function executeTradeInternal(
 	}
 
 	const liveAccount = getAccount("live");
-	const actualCost = Number(riskConfig.maxTradeSizeUsdc || 0) * price;
 	const liveBalance = liveAccount.getBalance().current;
+
+	const liveModelProb = isUp ? signal.modelUp : signal.modelDown;
+	const liveKellySize = computeKellySize(liveModelProb, price, liveBalance, riskConfig);
+	if (liveKellySize === 0) {
+		log.info(`Kelly says skip live: modelProb=${liveModelProb.toFixed(3)} price=${price} (negative EV)`);
+		return { success: false, reason: "kelly_negative_ev" };
+	}
+	const tradeSize = liveKellySize ?? Number(riskConfig.maxTradeSizeUsdc || 0);
+
+	const actualCost = tradeSize * price;
 	if (liveBalance < actualCost) {
 		log.warn(`Insufficient balance for actual cost: ${actualCost.toFixed(2)} > ${liveBalance.toFixed(2)}`);
 		return { success: false, reason: "insufficient_balance_actual_cost" };
@@ -159,7 +196,6 @@ async function executeTradeInternal(
 
 	try {
 		const negRisk = false;
-		const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
 		const isLatePhase = signal.phase === "LATE";
 		const isHighConfidence = signal.strength === "STRONG" || signal.strength === "GOOD";
 		const timing = getCandleWindowTiming(options.marketConfig?.candleWindowMinutes ?? 15);
@@ -233,7 +269,7 @@ async function executeTradeInternal(
 					windowStartMs: timing.startMs,
 					side,
 					price,
-					size: Number(riskConfig.maxTradeSizeUsdc || 0),
+					size: tradeSize,
 					priceToBeat: signal.priceToBeat ?? null,
 					currentPriceAtEntry: signal.currentPrice ?? null,
 					tokenId,
@@ -254,7 +290,7 @@ async function executeTradeInternal(
 				mode,
 				side,
 				price,
-				size: Number(riskConfig.maxTradeSizeUsdc || 0),
+				size: tradeSize,
 				timestamp: liveTradeTimestamp,
 				orderId: finalOrderId,
 				status: resultStatus || defaultStatus,
@@ -267,7 +303,7 @@ async function executeTradeInternal(
 						windowStartMs: timing.startMs,
 						side,
 						price,
-						size: Number(riskConfig.maxTradeSizeUsdc || 0),
+						size: tradeSize,
 						priceToBeat: signal.priceToBeat ?? 0,
 						currentPriceAtEntry: signal.currentPrice,
 						timestamp: liveTradeTimestamp,

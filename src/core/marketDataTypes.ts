@@ -1,4 +1,5 @@
 import type { GammaMarket } from "../data/polymarket.ts";
+import type { AggregatedPrice } from "../data/priceAggregator.ts";
 import type { MarketConfig } from "./configTypes.ts";
 
 export type { GammaMarket } from "../data/polymarket.ts";
@@ -70,6 +71,7 @@ export interface RawMarketData {
 	marketStartMs: number | null;
 	candles: Candle[];
 	poly: PolymarketSnapshot;
+	aggregatedPrice?: AggregatedPrice | null;
 }
 
 export interface RawMarketDataError {

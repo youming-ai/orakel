@@ -25,6 +25,12 @@ export interface RiskConfig {
 	maxOpenPositions: number;
 	minLiquidity: number;
 	maxTradesPerWindow: number;
+	/** Enable Kelly criterion position sizing (default: false) */
+	useKellySizing?: boolean;
+	/** Fractional Kelly multiplier — 0.25 = quarter Kelly (default: 0.25) */
+	kellyFraction?: number;
+	/** Minimum token count per trade when Kelly is enabled (default: 1) */
+	kellyMinSize?: number;
 }
 
 export interface StrategyConfig {
@@ -42,6 +48,21 @@ export interface StrategyConfig {
 	minVolatility15m?: number;
 	candleAggregationMinutes?: number;
 	minPriceToBeatMovePct?: number;
+	/** Bias added to edgeDown before comparison (default 0) */
+	edgeDownBias?: number;
+	/** Skip live trades when marketYes is within this range [min, max] */
+	liveSkipPriceMin?: number;
+	liveSkipPriceMax?: number;
+	/** Min cross-exchange price divergence to trigger edge boost (default 0.004 = 0.4%) */
+	divergenceThreshold?: number;
+	/** Multiplier for divergence-based edge boost (default 0.5) */
+	divergenceBoostFactor?: number;
+	/** Max edge boost from divergence (default 0.02) */
+	divergenceBoostMax?: number;
+	/** Minimum expected edge (modelProb - marketProb) to enter a trade (default: undefined = disabled) */
+	minExpectedEdge?: number;
+	/** Maximum normalized market price for entry — rejects trades where the chosen side's implied prob is too high (default: undefined = disabled) */
+	maxEntryPrice?: number;
 }
 
 export interface AppConfig {

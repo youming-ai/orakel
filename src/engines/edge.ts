@@ -7,8 +7,10 @@ export function computeEdge(params: {
 	modelDown: number;
 	marketYes: number | null;
 	marketNo: number | null;
+	/** Additive bias applied to edgeDown (default 0) */
+	edgeDownBias?: number;
 }): EdgeResult {
-	const { modelUp, modelDown, marketYes, marketNo } = params;
+	const { modelUp, modelDown, marketYes, marketNo, edgeDownBias = 0 } = params;
 
 	if (marketYes === null || marketNo === null) {
 		return {
@@ -50,7 +52,7 @@ export function computeEdge(params: {
 		marketUp,
 		marketDown,
 		edgeUp,
-		edgeDown,
+		edgeDown: edgeDown + edgeDownBias,
 		rawSum,
 		arbitrage,
 		overpriced,
@@ -70,6 +72,8 @@ export function decide(params: {
 	regime?: Regime | null;
 	strategy: StrategyConfig;
 	marketId?: string;
+	marketYes?: number | null;
+	isLive?: boolean;
 }): TradeDecision {
 	const {
 		remainingMinutes,
@@ -83,6 +87,8 @@ export function decide(params: {
 		regime = null,
 		strategy,
 		marketId = "",
+		marketYes = null,
+		isLive = false,
 	} = params;
 
 	const ratio = windowMinutes > 0 ? remainingMinutes / windowMinutes : 0;
@@ -97,6 +103,14 @@ export function decide(params: {
 	}
 	if (!Number.isFinite(edgeUp) || !Number.isFinite(edgeDown)) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: "edge_not_finite" };
+	}
+
+	const skipMin = strategy.liveSkipPriceMin;
+	const skipMax = strategy.liveSkipPriceMax;
+	if (isLive && marketYes !== null && skipMin !== undefined && skipMax !== undefined) {
+		if (marketYes >= skipMin && marketYes <= skipMax) {
+			return { action: "NO_TRADE", side: null, phase, regime, reason: `price_range_filtered_${skipMin}_${skipMax}` };
+		}
 	}
 
 	const skipMarkets = strategy?.skipMarkets ?? [];
@@ -154,6 +168,23 @@ export function decide(params: {
 
 	if (bestModel !== null && bestModel < minProb) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${minProb}` };
+	}
+
+	if (typeof strategy.minExpectedEdge === "number" && bestEdge < strategy.minExpectedEdge) {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: `expected_edge_below_${strategy.minExpectedEdge}` };
+	}
+
+	if (typeof strategy.maxEntryPrice === "number" && bestModel !== null) {
+		const bestMarketPrice = bestModel - bestEdge;
+		if (bestMarketPrice > strategy.maxEntryPrice) {
+			return {
+				action: "NO_TRADE",
+				side: null,
+				phase,
+				regime,
+				reason: `entry_price_above_${strategy.maxEntryPrice}`,
+			};
+		}
 	}
 
 	if (
