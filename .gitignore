@@ -24,3 +24,6 @@ logs/
 
 # build output
 dist/
+
+# backtest results
+backtest-results-*.json

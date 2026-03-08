@@ -12,6 +12,8 @@ export async function resetLiveDbData(): Promise<void> {
 	await db.delete(schema.botState).where(eq(schema.botState.mode, "live"));
 	await db.delete(schema.trades).where(eq(schema.trades.mode, "live"));
 	await db.delete(schema.onchainEvents);
+	await db.delete(schema.knownCtfTokens);
+	await db.delete(schema.kvStore);
 }
 
 const PRUNE_LIMITS = {
