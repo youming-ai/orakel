@@ -75,13 +75,10 @@ export async function dispatchTradeCandidates({
 			return true;
 		})
 		.filter((r) => {
-			const timeLeftMin = r.timeLeftMin ?? 0;
+			const timeLeftMin = r.timeLeftMin;
 			const windowMin = r.market.candleWindowMinutes;
-			const buffer = Math.max(1, windowMin * 0.2);
-			const elapsed = windowMin - timeLeftMin;
-			if (elapsed < buffer) return false;
-			if (timeLeftMin < buffer) return false;
-			return true;
+			if (timeLeftMin === null || timeLeftMin === undefined) return true;
+			return timeLeftMin > 0 && timeLeftMin < windowMin;
 		})
 		.sort((a, b) => {
 			const edgeA = Number(a.rec?.edge ?? 0);

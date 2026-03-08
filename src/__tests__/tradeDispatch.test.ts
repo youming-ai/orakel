@@ -121,8 +121,9 @@ function makeResult(params: {
 	marketSlug: string;
 	side: "UP" | "DOWN";
 	edge: number;
+	timeLeftMin?: number;
 }): ProcessMarketResult {
-	const { marketId, marketSlug, side, edge } = params;
+	const { marketId, marketSlug, side, edge, timeLeftMin } = params;
 	return {
 		ok: true,
 		market: makeMarket(marketId),
@@ -134,7 +135,7 @@ function makeResult(params: {
 			strength: "GOOD",
 			edge,
 		},
-		timeLeftMin: marketId === "BTC-5m" ? 4 : 4,
+		timeLeftMin: timeLeftMin ?? (marketId === "BTC-5m" ? 4 : 4),
 		rawSum: 1.01,
 		orderbook: {
 			up: {
@@ -342,5 +343,41 @@ describe("dispatchTradeCandidates", () => {
 		expect(executeTrade).toHaveBeenCalledTimes(2);
 		expect(orderTracker.record).toHaveBeenCalledTimes(2);
 		expect(liveTracker.record).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not add a hidden dispatch buffer once strategy already emitted ENTER", async () => {
+		const { dispatchTradeCandidates } = await import("../runtime/tradeDispatch.ts");
+		const liveTracker = makeLiveTracker();
+		const orderTracker = makeOrderTracker();
+
+		await dispatchTradeCandidates({
+			results: [
+				makeResult({
+					marketId: "BTC-5m",
+					marketSlug: "btc-updown-5m-1772898900",
+					side: "UP",
+					edge: 0.09,
+					timeLeftMin: 4.4,
+				}),
+			],
+			paperTracker: {
+				has: vi.fn(),
+				record: vi.fn(),
+				canTradeGlobally: vi.fn(),
+			},
+			liveTracker,
+			orderTracker,
+			onLiveOrderPlaced: vi.fn(),
+		});
+
+		expect(executeTrade).toHaveBeenCalledOnce();
+		expect(executeTrade).toHaveBeenCalledWith(
+			expect.objectContaining({
+				marketId: "BTC-5m",
+				marketSlug: "btc-updown-5m-1772898900",
+			}),
+			expect.any(Object),
+			"live",
+		);
 	});
 });

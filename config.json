@@ -28,36 +28,36 @@
       "minProbEarly": 0.55,
       "minProbMid": 0.6,
       "minProbLate": 0.65,
-      "maxGlobalTradesPerWindow": 1,
+      "maxGlobalTradesPerWindow": 2,
       "skipMarkets": []
     },
     "BTC-5m": {
-      "edgeThresholdEarly": 0.03,
-      "edgeThresholdMid": 0.05,
-      "edgeThresholdLate": 0.07,
-      "minProbEarly": 0.53,
-      "minProbMid": 0.56,
-      "minProbLate": 0.6,
-      "minTimeLeftMin": 1.2,
-      "maxTimeLeftMin": 3.8,
-      "minVolatility15m": 0.0014,
+      "edgeThresholdEarly": 0.025,
+      "edgeThresholdMid": 0.045,
+      "edgeThresholdLate": 0.06,
+      "minProbEarly": 0.52,
+      "minProbMid": 0.55,
+      "minProbLate": 0.58,
+      "minTimeLeftMin": 0.7,
+      "maxTimeLeftMin": 4.4,
+      "minVolatility15m": 0.0012,
       "maxVolatility15m": 0.03,
       "candleAggregationMinutes": 1,
-      "minPriceToBeatMovePct": 0.0009
+      "minPriceToBeatMovePct": 0.0007
     },
     "BTC-15m": {
-      "edgeThresholdEarly": 0.035,
-      "edgeThresholdMid": 0.065,
-      "edgeThresholdLate": 0.09,
-      "minProbEarly": 0.54,
-      "minProbMid": 0.58,
-      "minProbLate": 0.63,
-      "minTimeLeftMin": 3.5,
-      "maxTimeLeftMin": 11,
-      "minVolatility15m": 0.0018,
+      "edgeThresholdEarly": 0.03,
+      "edgeThresholdMid": 0.06,
+      "edgeThresholdLate": 0.085,
+      "minProbEarly": 0.53,
+      "minProbMid": 0.57,
+      "minProbLate": 0.62,
+      "minTimeLeftMin": 3,
+      "maxTimeLeftMin": 11.5,
+      "minVolatility15m": 0.0016,
       "maxVolatility15m": 0.03,
       "candleAggregationMinutes": 2,
-      "minPriceToBeatMovePct": 0.0013
+      "minPriceToBeatMovePct": 0.0012
     }
   }
 }
