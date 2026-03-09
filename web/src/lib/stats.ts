@@ -1,24 +1,5 @@
-import type { MarketBreakdown, PaperStats, PaperTradeEntry, TradeRecord } from "@/contracts/http";
+import type { MarketBreakdown, PaperStats, PaperTradeEntry } from "@/contracts/http";
 import { fmtTime } from "./format";
-
-export function liveTradesAsPaper(trades: TradeRecord[]): PaperTradeEntry[] {
-	if (!Array.isArray(trades)) return [];
-	return trades.map((t) => ({
-		id: t.orderId,
-		marketId: t.market,
-		windowStartMs: new Date(t.timestamp).getTime(),
-		side: (t.side.includes("UP") ? "UP" : "DOWN") as "UP" | "DOWN",
-		price: Number.parseFloat(t.price) || 0,
-		size: Number.parseFloat(t.amount) || 0,
-		priceToBeat: 0,
-		currentPriceAtEntry: null,
-		timestamp: t.timestamp,
-		resolved: t.status === "settled_won" || t.status === "settled_lost" || t.won !== null,
-		won: t.won === null ? null : Boolean(t.won),
-		pnl: t.pnl,
-		settlePrice: null,
-	}));
-}
 
 export function buildStatsFromTrades(trades: PaperTradeEntry[]): PaperStats {
 	let wins = 0;

@@ -99,14 +99,12 @@ const ConfigFileSchema = z
 		paper: z
 			.object({
 				risk: RiskConfigSchema.optional(),
-				initialBalance: z.coerce.number().optional(),
 			})
 			.partial()
 			.optional(),
 		live: z
 			.object({
 				risk: RiskConfigSchema.optional(),
-				initialBalance: z.coerce.number().optional(),
 			})
 			.partial()
 			.optional(),
@@ -132,11 +130,9 @@ const ConfigFileSchema = z
 		return {
 			paper: {
 				risk: RiskConfigSchema.parse(value.paper?.risk ?? {}),
-				initialBalance: value.paper?.initialBalance ?? 1000,
 			},
 			live: {
 				risk: RiskConfigSchema.parse(value.live?.risk ?? {}),
-				initialBalance: value.live?.initialBalance ?? 1000,
 			},
 			strategy: defaultStrategy,
 			perMarketStrategy,
@@ -306,7 +302,7 @@ function readJsonConfig(): ConfigFile {
 			const { risk, ...rest } = config;
 			const migrated = {
 				...rest,
-				paper: { risk, initialBalance: 1000 },
+				paper: { risk },
 				live: { risk },
 				strategy: config.strategy || {},
 			};
@@ -420,9 +416,6 @@ export const CONFIG: AppConfig = {
 	paperRisk: buildRiskConfig(FILE_PAPER_RISK),
 	liveRisk: buildRiskConfig(FILE_LIVE_RISK),
 };
-
-export const PAPER_INITIAL_BALANCE: number = FILE_CONFIG.paper.initialBalance;
-export const LIVE_INITIAL_BALANCE: number = FILE_CONFIG.live.initialBalance;
 
 let perMarketStrategy: Record<string, z.infer<typeof StrategyConfigSchema>> = FILE_CONFIG.perMarketStrategy;
 

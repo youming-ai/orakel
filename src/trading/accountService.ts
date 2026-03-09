@@ -21,14 +21,11 @@ export class AccountStatsManager {
 	private state: PersistedAccountState;
 	private dailyCountedTradeIdSet = new Set<string>();
 	private log: ReturnType<typeof createLogger>;
-	private initialBalanceDefault: number;
-	private reservedBalance = 0;
 
-	constructor(mode: AccountMode, initialBalance: number) {
+	constructor(mode: AccountMode) {
 		this.mode = mode;
-		this.initialBalanceDefault = initialBalance;
 		this.log = createLogger(`${mode}Stats`);
-		this.state = createEmptyAccountState(initialBalance);
+		this.state = createEmptyAccountState();
 	}
 
 	private getRiskConfig(): RiskConfig {
@@ -37,15 +34,15 @@ export class AccountStatsManager {
 
 	async init(): Promise<void> {
 		try {
-			this.state = await loadAccountState(this.mode, this.initialBalanceDefault);
+			this.state = await loadAccountState(this.mode);
 			for (const id of this.state.dailyCountedTradeIds) {
 				this.dailyCountedTradeIdSet.add(id);
 			}
 			this.syncTradeLog();
-			this.log.info(`Loaded ${this.state.trades.length} trades, balance=${this.state.currentBalance.toFixed(2)}`);
+			this.log.info(`Loaded ${this.state.trades.length} trades, pnl=${this.state.totalPnl.toFixed(2)}`);
 		} catch (err) {
 			this.log.error("Failed to load from database, using defaults:", err);
-			this.state = createEmptyAccountState(this.initialBalanceDefault);
+			this.state = createEmptyAccountState();
 		}
 	}
 
@@ -78,13 +75,11 @@ export class AccountStatsManager {
 		};
 
 		this.state.trades.push(trade);
-		this.state.currentBalance -= entry.size * entry.price;
 		this.syncTradeLog();
 		void persistTradeEntry(this.mode, trade, status)
 			.then(() => this.save())
 			.catch((err) => {
 				this.state.trades.pop();
-				this.state.currentBalance += entry.size * entry.price;
 				this.log.error(`Failed to persist trade ${id}, rolled back:`, err);
 			});
 		return id;
@@ -145,7 +140,6 @@ export class AccountStatsManager {
 				trade.won = false;
 				trade.pnl = -trade.price * trade.size;
 				trade.settlePrice = 0.5;
-				this.state.currentBalance += trade.size * trade.price + trade.pnl;
 				if (trade.pnl > 0) this.state.wins++;
 				else this.state.losses++;
 				this.state.totalPnl += trade.pnl;
@@ -171,11 +165,10 @@ export class AccountStatsManager {
 		trade.won = won;
 		trade.pnl = pnl;
 		trade.settlePrice = settlePrice;
-		this.state.currentBalance += trade.size * trade.price + pnl;
 		this.state.totalPnl += pnl;
 		if (won) this.state.wins++;
 		else this.state.losses++;
-		const drawdown = this.state.initialBalance - this.state.currentBalance;
+		const drawdown = -this.state.totalPnl;
 		if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
 		this.updateDailyPnl(trade, pnl);
 		void persistTradeEntry(this.mode, trade).catch((err) => {
@@ -199,21 +192,8 @@ export class AccountStatsManager {
 		}
 	}
 
-	getBalance(): { initial: number; current: number; maxDrawdown: number; reserved: number } {
-		return {
-			initial: this.state.initialBalance,
-			current: this.state.currentBalance,
-			maxDrawdown: this.state.maxDrawdown,
-			reserved: this.reservedBalance,
-		};
-	}
-
-	reserveBalance(amount: number): void {
-		this.reservedBalance += amount;
-	}
-
-	unreserveBalance(amount: number): void {
-		this.reservedBalance = Math.max(0, this.reservedBalance - amount);
+	getMaxDrawdown(): number {
+		return this.state.maxDrawdown;
 	}
 
 	getStats(): AccountStatsResult {
@@ -279,19 +259,11 @@ export class AccountStatsManager {
 		return result;
 	}
 
-	canAffordTradeWithStopCheck(size: number): { canTrade: boolean; reason?: string } {
-		const risk = this.getRiskConfig();
-		const effectiveBalance = this.state.currentBalance - this.reservedBalance;
-		const maxCost = size * 0.6;
-		if (effectiveBalance < maxCost) {
-			return {
-				canTrade: false,
-				reason: `insufficient_balance_${effectiveBalance.toFixed(2)}_<_${maxCost.toFixed(2)}`,
-			};
-		}
+	canTradeWithStopCheck(): { canTrade: boolean; reason?: string } {
 		if (this.isStopped()) {
 			return { canTrade: false, reason: "stop_loss_triggered" };
 		}
+		const risk = this.getRiskConfig();
 		if (risk.dailyMaxLossUsdc > 0) {
 			const today = this.getTodayStats();
 			if (today.pnl <= -risk.dailyMaxLossUsdc) {
@@ -324,9 +296,8 @@ export class AccountStatsManager {
 	}
 
 	resetData(): void {
-		this.state = createEmptyAccountState(this.initialBalanceDefault);
+		this.state = createEmptyAccountState();
 		this.dailyCountedTradeIdSet.clear();
-		this.reservedBalance = 0;
 		void this.save();
 		this.syncTradeLog();
 		this.log.info("Data reset");

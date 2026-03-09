@@ -26,8 +26,6 @@ export function createWsCacheHandler(qc: QueryClient) {
 						liveStats: patch.liveStats ?? prev.liveStats,
 						stopLoss: patch.stopLoss !== undefined ? patch.stopLoss : prev.stopLoss,
 						liveStopLoss: patch.liveStopLoss !== undefined ? patch.liveStopLoss : prev.liveStopLoss,
-						paperBalance: patch.paperBalance ?? prev.paperBalance,
-						liveBalance: patch.liveBalance ?? prev.liveBalance,
 						todayStats: patch.todayStats ?? prev.todayStats,
 						liveTodayStats: patch.liveTodayStats ?? prev.liveTodayStats,
 					});

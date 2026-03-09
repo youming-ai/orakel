@@ -3,10 +3,8 @@ import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { OverviewTab } from "@/components/analytics/OverviewTab";
 import {
 	useDashboardStateWithWs,
-	useLiveReset,
 	useLiveStats,
 	usePaperClearStop,
-	usePaperReset,
 	usePaperStats,
 } from "@/lib/queries";
 import { buildPnlTimeline, buildStatsFromTrades } from "@/lib/stats";
@@ -21,11 +19,7 @@ export function OverviewPanel() {
 	const currentTrades = statsData?.trades ?? [];
 	const mergedStats = useMemo(() => buildStatsFromTrades(currentTrades), [currentTrades]);
 	const pnlTimeline = useMemo(() => buildPnlTimeline(currentTrades), [currentTrades]);
-	const timelinePositive = (pnlTimeline[pnlTimeline.length - 1]?.cumulative ?? 0) >= 0;
 	const clearStopMutation = usePaperClearStop();
-	const paperResetMutation = usePaperReset();
-	const liveResetMutation = useLiveReset();
-	const _resetMutation = viewMode === "paper" ? paperResetMutation : liveResetMutation;
 	const stopLoss = viewMode === "paper" ? state?.stopLoss : state?.liveStopLoss;
 	const todayStats = viewMode === "paper" ? state?.todayStats : state?.liveTodayStats;
 
@@ -38,12 +32,10 @@ export function OverviewPanel() {
 			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-20 sm:pb-6">
 				<OverviewTab
 					stopLoss={stopLoss}
-					viewMode={viewMode}
 					todayStats={todayStats}
 					clearStopMutation={clearStopMutation}
 					mergedStats={mergedStats}
 					pnlTimeline={pnlTimeline}
-					timelinePositive={timelinePositive}
 					markets={state.markets ?? []}
 				/>
 			</main>

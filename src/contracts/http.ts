@@ -12,13 +12,6 @@ export interface TodayStatsDto {
 	limit: number;
 }
 
-export interface BalanceDto {
-	initial: number;
-	current: number;
-	maxDrawdown: number;
-	reserved?: number;
-}
-
 export interface DailySummaryDto {
 	date: string;
 	pnl: number;
@@ -51,7 +44,6 @@ export interface PaperStatsResponseDto {
 	stats: PaperStatsDto;
 	trades: PaperTradeEntryDto[];
 	byMarket: Record<string, MarketBreakdownDto>;
-	balance: BalanceDto;
 	stopLoss: StopLossStatusDto | null;
 	todayStats: TodayStatsDto;
 }
@@ -83,8 +75,6 @@ export interface DashboardStateDto {
 	liveRunning: boolean;
 	paperStats: PaperStatsDto | null;
 	liveStats: PaperStatsDto | null;
-	paperBalance: BalanceDto;
-	liveBalance: BalanceDto;
 	liveWallet: LiveWalletDto;
 	paperPendingStart: boolean;
 	paperPendingStop: boolean;

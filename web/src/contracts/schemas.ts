@@ -11,13 +11,6 @@ export const TodayStatsSchema = z.object({
 	limit: z.number(),
 });
 
-export const BalanceSchema = z.object({
-	initial: z.number(),
-	current: z.number(),
-	maxDrawdown: z.number(),
-	reserved: z.number().optional(),
-});
-
 export const DailySummarySchema = z.object({
 	date: z.string(),
 	pnl: z.number(),
@@ -150,8 +143,6 @@ export const DashboardStateSchema = z.object({
 	liveRunning: z.boolean(),
 	paperStats: PaperStatsSchema.nullable(),
 	liveStats: PaperStatsSchema.nullable(),
-	paperBalance: BalanceSchema,
-	liveBalance: BalanceSchema,
 	liveWallet: LiveWalletSchema,
 	paperPendingStart: z.boolean(),
 	paperPendingStop: z.boolean(),
@@ -169,7 +160,6 @@ export const PaperStatsResponseSchema = z.object({
 	stats: PaperStatsSchema,
 	trades: z.array(PaperTradeEntrySchema),
 	byMarket: z.record(z.string(), MarketBreakdownSchema),
-	balance: BalanceSchema,
 	stopLoss: StopLossStatusSchema.nullable(),
 	todayStats: TodayStatsSchema,
 });
@@ -209,8 +199,6 @@ export const StateSnapshotPayloadSchema = z.object({
 	paperStats: PaperStatsSchema.nullable(),
 	liveStats: PaperStatsSchema.nullable(),
 	liveTodayStats: TodayStatsSchema.nullable(),
-	paperBalance: BalanceSchema.optional(),
-	liveBalance: BalanceSchema.optional(),
 	todayStats: TodayStatsSchema.optional(),
 	stopLoss: StopLossStatusSchema.nullable().optional(),
 	liveStopLoss: StopLossStatusSchema.nullable().optional(),

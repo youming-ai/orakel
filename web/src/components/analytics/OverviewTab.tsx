@@ -3,11 +3,9 @@ import { HeroPnlCard, MarketCard, StatsGrid, StopLossCard, TodayStatsCard } from
 import { PnlTimelineChart } from "@/components/charts";
 import { OverviewSkeleton } from "@/components/OverviewSkeleton";
 import type { MarketSnapshot, PaperStats, StopLossStatus, TodayStats } from "@/contracts/http";
-import type { ViewMode } from "@/lib/types";
 
 interface OverviewTabProps {
 	stopLoss?: StopLossStatus | null;
-	viewMode: ViewMode;
 	todayStats?: TodayStats;
 	clearStopMutation: {
 		mutate: () => void;
@@ -22,7 +20,6 @@ interface OverviewTabProps {
 		pnl: number;
 		cumulative: number;
 	}>;
-	timelinePositive: boolean;
 	markets: MarketSnapshot[];
 }
 
@@ -30,12 +27,10 @@ const MARKET_ORDER = ["BTC-15m", "ETH-15m"];
 
 export function OverviewTab({
 	stopLoss,
-	viewMode: _viewMode,
 	todayStats,
 	clearStopMutation,
 	mergedStats,
 	pnlTimeline,
-	timelinePositive: _timelinePositive,
 	markets,
 }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {

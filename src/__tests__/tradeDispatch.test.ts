@@ -164,7 +164,7 @@ function makeResult(params: {
 
 function makeLiveAccount() {
 	return {
-		canAffordTradeWithStopCheck: vi.fn().mockReturnValue({ canTrade: true }),
+		canTradeWithStopCheck: vi.fn().mockReturnValue({ canTrade: true }),
 	};
 }
 

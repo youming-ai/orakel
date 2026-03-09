@@ -30,8 +30,6 @@ export interface PersistedAccountState {
 	wins: number;
 	losses: number;
 	totalPnl: number;
-	initialBalance: number;
-	currentBalance: number;
 	maxDrawdown: number;
 	dailyPnl: DailyPnl[];
 	dailyCountedTradeIds: string[];

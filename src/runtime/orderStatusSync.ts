@@ -106,7 +106,6 @@ export function createOrderStatusHandler({
 		}
 
 		if (status === "filled" || status === "cancelled" || status === "expired") {
-			liveAccount.unreserveBalance(order.price * order.size);
 			unregisterOpenGtdOrder(order.orderId);
 		}
 	};

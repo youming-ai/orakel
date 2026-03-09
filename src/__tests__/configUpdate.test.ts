@@ -14,7 +14,6 @@ describe("applyConfigUpdate", () => {
 					minLiquidity: 5000,
 					maxTradesPerWindow: 3,
 				},
-				initialBalance: 1000,
 			},
 			live: {
 				risk: {
@@ -25,7 +24,6 @@ describe("applyConfigUpdate", () => {
 					minLiquidity: 5000,
 					maxTradesPerWindow: 3,
 				},
-				initialBalance: 2500,
 			},
 			strategy: {
 				default: {
@@ -64,7 +62,6 @@ describe("applyConfigUpdate", () => {
 					minLiquidity: 5000,
 					maxTradesPerWindow: 3,
 				},
-				initialBalance: 1000,
 			},
 			live: {
 				risk: {
@@ -75,7 +72,6 @@ describe("applyConfigUpdate", () => {
 					minLiquidity: 5000,
 					maxTradesPerWindow: 3,
 				},
-				initialBalance: 2500,
 			},
 			strategy: {
 				default: {

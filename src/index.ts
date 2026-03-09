@@ -147,7 +147,6 @@ async function main(): Promise<void> {
 			priceToBeat,
 			currentPriceAtEntry,
 		}) => {
-			liveAccount.reserveBalance(size * price);
 			orderManager.addOrderWithTracking(
 				{
 					orderId,

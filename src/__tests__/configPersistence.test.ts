@@ -27,7 +27,6 @@ describe("config persistence round-trip", () => {
 					minLiquidity: 5000,
 					maxTradesPerWindow: 3,
 				},
-				initialBalance: 1000,
 			},
 			live: {
 				risk: {
@@ -38,7 +37,6 @@ describe("config persistence round-trip", () => {
 					minLiquidity: 5000,
 					maxTradesPerWindow: 3,
 				},
-				initialBalance: 1000,
 			},
 			strategy: {
 				default: {
@@ -86,7 +84,6 @@ describe("config persistence round-trip", () => {
 					minLiquidity: 5000,
 					maxTradesPerWindow: 3,
 				},
-				initialBalance: 1000,
 			},
 			live: {
 				risk: {
@@ -97,7 +94,6 @@ describe("config persistence round-trip", () => {
 					minLiquidity: 5000,
 					maxTradesPerWindow: 3,
 				},
-				initialBalance: 1000,
 			},
 			strategy: {
 				default: {

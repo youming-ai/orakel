@@ -16,14 +16,12 @@ function getStatsPath(mode: AccountMode): string {
 	return mode === "paper" ? "./logs/paper-stats.json" : "./logs/live-stats.json";
 }
 
-export function createEmptyAccountState(initialBalance: number): PersistedAccountState {
+export function createEmptyAccountState(): PersistedAccountState {
 	return {
 		trades: [],
 		wins: 0,
 		losses: 0,
 		totalPnl: 0,
-		initialBalance,
-		currentBalance: initialBalance,
 		maxDrawdown: 0,
 		dailyPnl: [],
 		dailyCountedTradeIds: [],
@@ -32,12 +30,12 @@ export function createEmptyAccountState(initialBalance: number): PersistedAccoun
 	};
 }
 
-export async function loadAccountState(mode: AccountMode, initialBalance: number): Promise<PersistedAccountState> {
+export async function loadAccountState(mode: AccountMode): Promise<PersistedAccountState> {
 	const stateRow = mode === "paper" ? await stateQueries.getPaperState() : await stateQueries.getLiveState();
 	const tradeRows = await unifiedTradeQueries.getAllByMode(mode);
 
 	if (!stateRow) {
-		return createEmptyAccountState(initialBalance);
+		return createEmptyAccountState();
 	}
 
 	return {
@@ -59,8 +57,6 @@ export async function loadAccountState(mode: AccountMode, initialBalance: number
 		wins: stateRow.wins,
 		losses: stateRow.losses,
 		totalPnl: stateRow.totalPnl,
-		initialBalance: stateRow.initialBalance,
-		currentBalance: stateRow.currentBalance,
 		maxDrawdown: stateRow.maxDrawdown,
 		dailyPnl: safeParseJson(stateRow.dailyPnl, []),
 		dailyCountedTradeIds: safeParseJson(stateRow.dailyCountedTradeIds, []),
@@ -72,8 +68,6 @@ export async function loadAccountState(mode: AccountMode, initialBalance: number
 export async function saveAccountState(mode: AccountMode, state: PersistedAccountState): Promise<void> {
 	const payload = {
 		id: 1,
-		initialBalance: state.initialBalance,
-		currentBalance: state.currentBalance,
 		maxDrawdown: state.maxDrawdown,
 		wins: state.wins,
 		losses: state.losses,

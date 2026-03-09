@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { ConfigPayload } from "@/contracts/http";
 import {
 	DashboardStateSchema,
 	OkResponseSchema,
@@ -37,38 +36,11 @@ async function post<T>(path: string): Promise<T> {
 	return res.json();
 }
 
-async function _postJson<T>(path: string, data: unknown): Promise<T> {
-	const res = await fetch(`${API_BASE}${path}`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json", ...authHeaders() },
-		body: JSON.stringify(data),
-	});
-	if (!res.ok) {
-		const text = await res.text().catch(() => "");
-		throw new Error(`API ${res.status}: ${text || res.statusText}`);
-	}
-	return res.json();
-}
-
-async function put<T>(path: string, data: unknown): Promise<T> {
-	const res = await fetch(`${API_BASE}${path}`, {
-		method: "PUT",
-		headers: { "Content-Type": "application/json", ...authHeaders() },
-		body: JSON.stringify(data),
-	});
-	if (!res.ok) {
-		const text = await res.text().catch(() => "");
-		throw new Error(`API ${res.status}: ${text || res.statusText}`);
-	}
-	return res.json();
-}
-
 export const api = {
 	getState: () => get<unknown>("/state").then((d) => DashboardStateSchema.parse(d)),
 	getTrades: (mode: string) => get<unknown>(`/logs?mode=${mode}`).then((d) => z.array(TradeRecordSchema).parse(d)),
 	getPaperStats: () => get<unknown>("/paper-stats").then((d) => PaperStatsResponseSchema.parse(d)),
 	getLiveStats: () => get<unknown>("/live-stats").then((d) => PaperStatsResponseSchema.parse(d)),
-	saveConfig: (data: ConfigPayload) => put<unknown>("/config", data).then((d) => OkResponseSchema.parse(d)),
 	paperStart: () => post<unknown>("/paper/start").then((d) => OkResponseSchema.parse(d)),
 	paperStop: () => post<unknown>("/paper/stop").then((d) => OkResponseSchema.parse(d)),
 	paperCancel: () => post<unknown>("/paper/cancel").then((d) => OkResponseSchema.parse(d)),

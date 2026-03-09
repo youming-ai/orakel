@@ -15,8 +15,6 @@ vi.mock("../core/config.ts", () => ({
 		paperRisk: { dailyMaxLossUsdc: 100 },
 		liveRisk: { dailyMaxLossUsdc: 100 },
 	},
-	PAPER_INITIAL_BALANCE: 100,
-	LIVE_INITIAL_BALANCE: 100,
 }));
 
 vi.mock("node:fs", () => ({
@@ -30,8 +28,8 @@ vi.mock("node:fs", () => ({
 
 import { AccountStatsManager } from "../trading/accountStats.ts";
 
-function makeManager(initialBalance = 100): AccountStatsManager {
-	return new AccountStatsManager("paper", initialBalance);
+function makeManager(): AccountStatsManager {
+	return new AccountStatsManager("paper");
 }
 
 function addTestTrade(
@@ -60,11 +58,9 @@ function addTestTrade(
 
 describe("addTrade + resolveTrades", () => {
 	it("should add a trade and resolve it correctly", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { price: 0.4, size: 10 });
 
-		// Balance deducted: 100 - (10 * 0.4) = 96
-		expect(mgr.getBalance().current).toBeCloseTo(96, 2);
 		expect(mgr.getStats().pending).toBe(1);
 
 		// Resolve: UP side wins when finalPrice > priceToBeat
@@ -78,11 +74,10 @@ describe("addTrade + resolveTrades", () => {
 		expect(stats.pending).toBe(0);
 		// Won pnl = size * (1 - price) = 10 * 0.6 = 6
 		expect(stats.totalPnl).toBeCloseTo(6.0, 2);
-		expect(mgr.getBalance().current).toBeCloseTo(106, 2);
 	});
 
 	it("should resolve a losing trade correctly", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { side: "UP", price: 0.4, size: 10 });
 
 		// Resolve: UP side loses when finalPrice <= priceToBeat
@@ -95,11 +90,10 @@ describe("addTrade + resolveTrades", () => {
 		expect(stats.losses).toBe(1);
 		// Lost pnl = -(size * price) = -(10 * 0.4) = -4
 		expect(stats.totalPnl).toBeCloseTo(-4.0, 2);
-		expect(mgr.getBalance().current).toBeCloseTo(96, 2);
 	});
 
 	it("should not resolve trades from a different window", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr); // windowStartMs = 1000
 
 		const prices = new Map([["ETH-15m", 2200]]);
@@ -110,20 +104,18 @@ describe("addTrade + resolveTrades", () => {
 	});
 
 	it("should track max drawdown on loss", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { side: "UP", price: 0.5, size: 20 });
 
 		const prices = new Map([["ETH-15m", 1900]]);
 		await mgr.resolveTrades(1000, prices);
 
-		const balance = mgr.getBalance();
-		// Lost: -(20 * 0.5) = -10, balance = 90
-		expect(balance.current).toBeCloseTo(90, 2);
-		expect(balance.maxDrawdown).toBeCloseTo(10, 2);
+		// Lost: -(20 * 0.5) = -10, drawdown = 10
+		expect(mgr.getMaxDrawdown()).toBeCloseTo(10, 2);
 	});
 
 	it("should update daily pnl tracking", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { price: 0.4, size: 10 });
 
 		const prices = new Map([["ETH-15m", 2200]]);
@@ -135,7 +127,7 @@ describe("addTrade + resolveTrades", () => {
 	});
 
 	it("should return won trades via getWonTrades()", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { price: 0.4, size: 10 });
 
 		expect(mgr.getWonTrades()).toHaveLength(0);
@@ -152,7 +144,7 @@ describe("addTrade + resolveTrades", () => {
 
 describe("resolveSingle side-awareness (BUG 1)", () => {
 	it("DOWN trade should WIN when settlePrice <= priceToBeat", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 2100 });
 		const prices = new Map([["ETH-15m", 1900]]);
 		await mgr.resolveTrades(1000, prices);
@@ -160,11 +152,10 @@ describe("resolveSingle side-awareness (BUG 1)", () => {
 		expect(stats.wins).toBe(1);
 		expect(stats.losses).toBe(0);
 		expect(stats.totalPnl).toBeCloseTo(6.0, 2);
-		expect(mgr.getBalance().current).toBeCloseTo(106, 2);
 	});
 
 	it("DOWN trade should LOSE when settlePrice > priceToBeat", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 2100 });
 		const prices = new Map([["ETH-15m", 2200]]);
 		await mgr.resolveTrades(1000, prices);
@@ -172,11 +163,10 @@ describe("resolveSingle side-awareness (BUG 1)", () => {
 		expect(stats.wins).toBe(0);
 		expect(stats.losses).toBe(1);
 		expect(stats.totalPnl).toBeCloseTo(-4.0, 2);
-		expect(mgr.getBalance().current).toBeCloseTo(96, 2);
 	});
 
 	it("DOWN trade should WIN when settlePrice equals priceToBeat", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { side: "DOWN", price: 0.4, size: 10, priceToBeat: 2100 });
 		const prices = new Map([["ETH-15m", 2100]]);
 		await mgr.resolveTrades(1000, prices);
@@ -185,7 +175,7 @@ describe("resolveSingle side-awareness (BUG 1)", () => {
 	});
 
 	it("UP trade still resolves correctly (regression)", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { side: "UP", price: 0.4, size: 10, priceToBeat: 2100 });
 		const prices = new Map([["ETH-15m", 2200]]);
 		await mgr.resolveTrades(1000, prices);
@@ -196,7 +186,7 @@ describe("resolveSingle side-awareness (BUG 1)", () => {
 
 describe("resolveTrades marketId filtering (BUG 4)", () => {
 	it("should only resolve trades matching the given marketId", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: 1000, side: "UP", price: 0.4, size: 10 });
 		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: 1000, side: "UP", price: 0.4, size: 10 });
 
@@ -211,7 +201,7 @@ describe("resolveTrades marketId filtering (BUG 4)", () => {
 	});
 
 	it("should resolve all matching trades when marketId is omitted", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: 1000 });
 		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: 1000 });
 
@@ -227,7 +217,7 @@ describe("resolveTrades marketId filtering (BUG 4)", () => {
 
 describe("resolveExpiredTrades cross-timeframe (BUG 2)", () => {
 	it("should not resolve ETH-15m trade when called with 5min window and BTC-15m marketId", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		const eightMinAgo = Date.now() - 8 * 60_000;
 		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: eightMinAgo, side: "UP" });
 
@@ -238,7 +228,7 @@ describe("resolveExpiredTrades cross-timeframe (BUG 2)", () => {
 	});
 
 	it("should resolve expired trades matching the given marketId", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		const tenMinAgo = Date.now() - 10 * 60_000;
 		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: tenMinAgo, side: "UP" });
 
@@ -249,7 +239,7 @@ describe("resolveExpiredTrades cross-timeframe (BUG 2)", () => {
 	});
 
 	it("should resolve all expired when marketId is omitted", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		const tenMinAgo = Date.now() - 10 * 60_000;
 		addTestTrade(mgr, { marketId: "BTC-15m", windowStartMs: tenMinAgo });
 		addTestTrade(mgr, { marketId: "ETH-15m", windowStartMs: tenMinAgo });
@@ -265,7 +255,7 @@ describe("resolveExpiredTrades cross-timeframe (BUG 2)", () => {
 
 describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 	it("should use actual settle price when latestPrices available (UP wins)", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, {
 			windowStartMs: 1,
 			marketId: "ETH-15m",
@@ -285,7 +275,7 @@ describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 	});
 
 	it("should mark as loss when no latestPrices available (fallback)", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, { windowStartMs: 1, side: "UP", price: 0.4, size: 10 });
 
 		await mgr.forceResolveStuckTrades(10);
@@ -296,7 +286,7 @@ describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 	});
 
 	it("should use resolveSingle for DOWN trade with actual price", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, {
 			windowStartMs: 1,
 			marketId: "ETH-15m",
@@ -314,7 +304,7 @@ describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 	});
 
 	it("should not double-count when resolveSingle is used", async () => {
-		const mgr = makeManager(100);
+		const mgr = makeManager();
 		addTestTrade(mgr, {
 			windowStartMs: 1,
 			marketId: "ETH-15m",
@@ -331,6 +321,5 @@ describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 		expect(stats.wins).toBe(0);
 		expect(stats.losses).toBe(1);
 		expect(stats.totalPnl).toBeCloseTo(-10.0, 2);
-		expect(mgr.getBalance().current).toBeCloseTo(90, 2);
 	});
 });

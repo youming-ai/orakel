@@ -26,14 +26,12 @@ vi.mock("../trading/accountStats.ts", () => ({
 	paperAccount: {
 		getStats: () => ({ totalTrades: 2, wins: 1, losses: 1, pending: 0, winRate: 0.5, totalPnl: 3 }),
 		getTodayStats: () => ({ pnl: 3, trades: 2, limit: 100 }),
-		getBalance: () => ({ initial: 1000, current: 1003, maxDrawdown: 5 }),
 		isStopped: () => false,
 		getStopReason: () => null,
 	},
 	liveAccount: {
 		getStats: () => ({ totalTrades: 1, wins: 1, losses: 0, pending: 0, winRate: 1, totalPnl: 5 }),
 		getTodayStats: () => ({ pnl: 5, trades: 1, limit: 100 }),
-		getBalance: () => ({ initial: 1000, current: 1005, maxDrawdown: 2 }),
 		isStopped: () => false,
 		getStopReason: () => null,
 	},
@@ -63,8 +61,6 @@ describe("state payload builders", () => {
 		expect(http.livePendingSince).toBe(ws.livePendingSince);
 		expect(http.paperStats).toEqual(ws.paperStats);
 		expect(http.liveStats).toEqual(ws.liveStats);
-		expect(http.paperBalance).toEqual(ws.paperBalance);
-		expect(http.liveBalance).toEqual(ws.liveBalance);
 		expect(http.todayStats).toEqual(ws.todayStats);
 		expect(http.liveTodayStats).toEqual(ws.liveTodayStats);
 		expect(http.stopLoss).toEqual(ws.stopLoss);

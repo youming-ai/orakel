@@ -75,7 +75,6 @@ export const apiRoutes = new Hono()
 			stats: paperAccount.getStats(),
 			trades: paperAccount.getRecentTrades(),
 			byMarket: paperAccount.getMarketBreakdown(),
-			balance: paperAccount.getBalance(),
 			stopLoss: paperAccount.getStopReason(),
 			todayStats: paperAccount.getTodayStats(),
 		});
@@ -85,7 +84,6 @@ export const apiRoutes = new Hono()
 			stats: liveAccount.getStats(),
 			trades: liveAccount.getRecentTrades(),
 			byMarket: liveAccount.getMarketBreakdown(),
-			balance: liveAccount.getBalance(),
 			stopLoss: liveAccount.getStopReason(),
 			todayStats: liveAccount.getTodayStats(),
 		});

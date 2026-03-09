@@ -9,10 +9,9 @@ import { TradeTableMobile } from "./trades/TradeTableMobile";
 interface TradeTableProps {
 	trades: TradeRecord[];
 	paperMode: boolean;
-	viewMode?: "paper" | "live";
 }
 
-export function TradeTable({ trades, paperMode, viewMode: _viewMode }: TradeTableProps) {
+export function TradeTable({ trades, paperMode }: TradeTableProps) {
 	const [page, setPage] = useState(1);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset page when trade count changes

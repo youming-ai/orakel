@@ -40,8 +40,6 @@ export const botState = pgTable(
 	"bot_state",
 	{
 		mode: text("mode").notNull(),
-		initialBalance: real("initial_balance").notNull().default(1000),
-		currentBalance: real("current_balance").notNull().default(1000),
 		maxDrawdown: real("max_drawdown").notNull().default(0),
 		wins: integer("wins").notNull().default(0),
 		losses: integer("losses").notNull().default(0),

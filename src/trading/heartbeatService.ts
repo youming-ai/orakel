@@ -140,9 +140,7 @@ export function canTrade(mode: "paper" | "live"): boolean {
 	}
 
 	const account = getAccount(mode);
-	const riskConfig = mode === "paper" ? CONFIG.paperRisk : CONFIG.liveRisk;
-	const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
-	const affordCheck = account.canAffordTradeWithStopCheck(tradeSize);
+	const affordCheck = account.canTradeWithStopCheck();
 	if (!affordCheck.canTrade) {
 		log.error(`${mode} trade blocked: ${affordCheck.reason}`);
 		return false;

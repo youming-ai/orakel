@@ -36,10 +36,6 @@ export function liveStatsQueryOptions() {
 	});
 }
 
-export function useDashboardState() {
-	return useQuery(stateQueryOptions());
-}
-
 export function usePaperStats(enabled: boolean) {
 	return useQuery({
 		...paperStatsQueryOptions(),

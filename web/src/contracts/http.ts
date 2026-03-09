@@ -1,8 +1,7 @@
 // Public contract types — re-exported from backend (type-only, erased at build time)
 
-export type { ConfigUpdateDto as ConfigPayload, RiskConfigDto as RiskConfig } from "@server/contracts/config.ts";
+export type { RiskConfigDto as RiskConfig } from "@server/contracts/config.ts";
 export type {
-	BalanceDto as PaperBalance,
 	DashboardStateDto as DashboardState,
 	MarketBreakdownDto as MarketBreakdown,
 	MarketSnapshotDto as MarketSnapshot,

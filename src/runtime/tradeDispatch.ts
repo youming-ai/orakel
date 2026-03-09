@@ -101,8 +101,7 @@ export async function dispatchTradeCandidates({
 
 		if (isPaperRunning()) {
 			const paperAccount = getAccount("paper");
-			const paperTradeSize = Number(CONFIG.paperRisk.maxTradeSizeUsdc || 0);
-			const paperAffordCheck = paperAccount.canAffordTradeWithStopCheck(paperTradeSize);
+			const paperAffordCheck = paperAccount.canTradeWithStopCheck();
 			const minPaperLiquidity = Number(CONFIG.paperRisk.minLiquidity || 0);
 			const hasPaperLiquidity = sideLiquidity !== null && sideLiquidity >= minPaperLiquidity;
 
@@ -146,7 +145,7 @@ export async function dispatchTradeCandidates({
 
 		const liveWindowLimit = Math.min(maxGlobalTrades, CONFIG.liveRisk.maxTradesPerWindow);
 		const liveTradeSize = Number(CONFIG.liveRisk.maxTradeSizeUsdc || 0);
-		const liveAffordCheck = liveAccount.canAffordTradeWithStopCheck(liveTradeSize);
+		const liveAffordCheck = liveAccount.canTradeWithStopCheck();
 		const canPlace =
 			!liveSettlementKeys.has(settlementKey) &&
 			!orderTracker.hasOrder(market.id, windowKey) &&

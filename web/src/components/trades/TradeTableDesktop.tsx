@@ -1,5 +1,4 @@
 import { ExternalLink } from "lucide-react";
-import { BtcIcon, EthIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,20 +6,8 @@ import type { TradeRecord } from "@/contracts/http";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { modeBadge, sideBadge } from "@/lib/variants";
+import { MarketWithIcon } from "./MarketWithIcon";
 import { fmtTimestamp, getDisplayMode, getMarketCycleSlug, getPolymarketUrl, sideLabel } from "./utils";
-
-function MarketWithIcon({ market, slug }: { market: string; slug: string | null }) {
-	const isBtc = market.startsWith("BTC");
-	const isEth = market.startsWith("ETH");
-	const displayText = slug || market;
-	return (
-		<span className="flex items-center gap-1.5">
-			{isBtc && <BtcIcon size={14} />}
-			{isEth && <EthIcon size={14} />}
-			<span>{displayText}</span>
-		</span>
-	);
-}
 
 interface TradeTableDesktopProps {
 	pageTrades: TradeRecord[];
