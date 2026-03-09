@@ -62,13 +62,13 @@ describe("computeKellySize", () => {
 		expect(result as number).toBeLessThan(10);
 	});
 
-	it("returns 0 when Kelly tokens are below minSize", () => {
-		// Very small balance → tiny Kelly → below minSize
+	it("returns minSize when Kelly tokens are below minSize but EV is positive", () => {
+		// Very small balance → tiny Kelly → below minSize → floor to minSize
 		// modelProb=0.52, price=0.46, balance=5, fraction=0.25
 		// kellyFull ≈ 0.1111, adjusted ≈ 0.0278
 		// dollarRisk = 5 * 0.0278 = 0.139
-		// tokens = 0.139 / 0.46 ≈ 0.30 < minSize(1) → return 0
-		expect(computeKellySize(0.52, 0.46, 5, makeRisk())).toBe(0);
+		// tokens = 0.139 / 0.46 ≈ 0.30 < minSize(1) → return minSize(1)
+		expect(computeKellySize(0.52, 0.46, 5, makeRisk())).toBe(1);
 	});
 
 	it("scales position size with balance", () => {

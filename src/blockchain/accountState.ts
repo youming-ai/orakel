@@ -193,20 +193,8 @@ export function getUsdcBalance(): number {
 	return usdcBalance;
 }
 
-export function getUsdcRaw(): string {
-	return usdcRaw;
-}
-
-export function getPosition(tokenId: string): CtfPosition | null {
-	return positions.get(tokenId) ?? null;
-}
-
 export function getAllPositions(): CtfPosition[] {
 	return Array.from(positions.values());
-}
-
-export function getLastBlockNumber(): number {
-	return lastBlockNumber;
 }
 
 export interface AccountSummary {

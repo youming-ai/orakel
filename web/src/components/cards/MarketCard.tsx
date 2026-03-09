@@ -23,6 +23,92 @@ function MarketLabel({ id, spotPrice }: { id: string; spotPrice: number | null }
 	);
 }
 
+function MacdHistogram({ macd }: { macd: MarketSnapshot["macd"] }) {
+	if (!macd) return null;
+	const hist = macd.hist;
+	const maxBar = 0.005;
+	const pct = Math.min(Math.abs(hist) / maxBar, 1) * 100;
+	const isPositive = hist >= 0;
+	const delta = macd.histDelta;
+	const momentum = delta !== null ? (delta > 0 ? "rising" : "falling") : null;
+
+	return (
+		<div className="flex items-center gap-2">
+			<span className="text-[11px] uppercase text-muted-foreground w-10 shrink-0">MACD</span>
+			<div className="flex-1 h-1.5 bg-muted/30 rounded-full overflow-hidden relative">
+				<div
+					className={cn(
+						"h-full rounded-full transition-all duration-500",
+						isPositive ? "bg-emerald-500/70" : "bg-red-500/70",
+					)}
+					style={{ width: `${pct}%` }}
+				/>
+			</div>
+			<span
+				className={cn(
+					"text-[11px] font-mono font-medium w-8 text-right shrink-0",
+					isPositive ? "text-emerald-400" : "text-red-400",
+				)}
+			>
+				{hist > 0 ? "+" : ""}
+				{(hist * 1000).toFixed(1)}
+			</span>
+			{momentum && (
+				<span className={cn("text-[10px]", momentum === "rising" ? "text-emerald-400/60" : "text-red-400/60")}>
+					{momentum === "rising" ? "▲" : "▼"}
+				</span>
+			)}
+		</div>
+	);
+}
+
+function ConfidenceMeter({ confidence }: { confidence: MarketSnapshot["confidence"] }) {
+	if (!confidence) return null;
+	const pct = Math.round(confidence.score * 100);
+	const color =
+		confidence.level === "HIGH"
+			? "bg-emerald-500/70 text-emerald-400"
+			: confidence.level === "MEDIUM"
+				? "bg-amber-500/70 text-amber-400"
+				: "bg-red-500/70 text-red-400";
+	const textColor =
+		confidence.level === "HIGH"
+			? "text-emerald-400"
+			: confidence.level === "MEDIUM"
+				? "text-amber-400"
+				: "text-red-400";
+
+	return (
+		<div className="flex items-center gap-2">
+			<span className="text-[11px] uppercase text-muted-foreground w-10 shrink-0">Conf</span>
+			<div className="flex-1 h-1.5 bg-muted/30 rounded-full overflow-hidden">
+				<div
+					className={cn("h-full rounded-full transition-all duration-500", color.split(" ")[0])}
+					style={{ width: `${pct}%` }}
+				/>
+			</div>
+			<span className={cn("text-[11px] font-mono font-medium shrink-0", textColor)}>{pct}%</span>
+		</div>
+	);
+}
+
+function VolatilityBadge({ vol }: { vol: number | null }) {
+	if (vol === null) return null;
+	const volPct = (vol * 100).toFixed(2);
+	const level = vol > 0.02 ? "HIGH" : vol > 0.01 ? "MED" : "LOW";
+	const color =
+		level === "HIGH"
+			? "text-red-400 bg-red-500/10 border-red-500/20"
+			: level === "MED"
+				? "text-amber-400 bg-amber-500/10 border-amber-500/20"
+				: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
+	return (
+		<Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 font-mono", color)}>
+			Vol {volPct}%
+		</Badge>
+	);
+}
+
 interface MarketCardProps {
 	market: MarketSnapshot;
 }
@@ -48,8 +134,8 @@ export function MarketCard({ market: m }: MarketCardProps) {
 				"rounded-xl",
 			)}
 		>
-			<CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-4">
-				{/* Header: Signal + ID + Phase */}
+			<CardContent className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+				{/* Header: Signal + ID + Phase + Vol */}
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<div
@@ -60,7 +146,8 @@ export function MarketCard({ market: m }: MarketCardProps) {
 						/>
 						<MarketLabel id={m.id} spotPrice={m.spotPrice} />
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-1.5">
+						<VolatilityBadge vol={m.volatility15m} />
 						{m.phase && (
 							<Badge variant="secondary" className="text-[11px] px-1.5 py-0">
 								{m.phase}
@@ -79,16 +166,30 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					</div>
 				</div>
 
-				{/* Odds */}
-				<div className="flex justify-center gap-4 text-[11px] font-mono">
+				{/* Odds + Price to beat */}
+				<div className="flex justify-center items-center gap-3 text-[11px] font-mono">
 					<span className="text-emerald-400">UP {fmtCents(m.marketUp)}</span>
 					<span className="text-muted-foreground/30">|</span>
 					<span className="text-red-400">DN {fmtCents(m.marketDown)}</span>
+					{m.priceToBeat !== null && (
+						<>
+							<span className="text-muted-foreground/30">|</span>
+							<span className="text-muted-foreground" title="Price to beat">
+								PTB {fmtPrice(m.id, m.priceToBeat)}
+							</span>
+						</>
+					)}
 				</div>
 
-				{/* Simplified Indicators */}
+				{/* Indicators */}
 				<div className="pt-2 border-t border-border/30">
 					<SimplifiedIndicators market={m} />
+				</div>
+
+				{/* MACD + Confidence */}
+				<div className="space-y-1.5">
+					<MacdHistogram macd={m.macd} />
+					<ConfidenceMeter confidence={m.confidence} />
 				</div>
 
 				{/* Action Button */}
@@ -107,7 +208,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 						</span>
 					</div>
 				) : (
-					<div className="text-center text-[11px] text-muted-foreground uppercase tracking-wide py-1 sm:py-2">
+					<div className="text-center text-[11px] text-muted-foreground uppercase tracking-wide py-1 sm:py-1.5">
 						{m.reason ?? "NO TRADE"}
 					</div>
 				)}

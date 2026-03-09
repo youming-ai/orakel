@@ -1,21 +1,55 @@
 import type { MarketBreakdown, PaperStats, PaperTradeEntry } from "@/contracts/http";
 import { fmtTime } from "./format";
 
-export function buildStatsFromTrades(trades: PaperTradeEntry[]): PaperStats {
+export interface ExtendedStats extends PaperStats {
+	avgPnl: number;
+	bestTrade: number;
+	worstTrade: number;
+	streak: number; // positive = win streak, negative = loss streak
+	profitFactor: number; // gross wins / gross losses
+}
+
+export function buildStatsFromTrades(trades: PaperTradeEntry[]): ExtendedStats {
 	let wins = 0;
 	let losses = 0;
 	let pending = 0;
 	let totalPnl = 0;
+	let bestTrade = 0;
+	let worstTrade = 0;
+	let grossWins = 0;
+	let grossLosses = 0;
 	for (const trade of trades) {
 		if (!trade.resolved) {
 			pending += 1;
 			continue;
 		}
-		if (trade.won) wins += 1;
-		else losses += 1;
-		totalPnl += trade.pnl ?? 0;
+		const pnl = trade.pnl ?? 0;
+		if (trade.won) {
+			wins += 1;
+			grossWins += pnl;
+		} else {
+			losses += 1;
+			grossLosses += Math.abs(pnl);
+		}
+		totalPnl += pnl;
+		if (pnl > bestTrade) bestTrade = pnl;
+		if (pnl < worstTrade) worstTrade = pnl;
 	}
 	const resolved = wins + losses;
+	const avgPnl = resolved > 0 ? totalPnl / resolved : 0;
+
+	// Compute current streak from most recent resolved trades
+	const sortedResolved = trades.filter((t) => t.resolved).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+	let streak = 0;
+	if (sortedResolved.length > 0) {
+		const firstWon = sortedResolved[0].won;
+		for (const t of sortedResolved) {
+			if (t.won === firstWon) streak++;
+			else break;
+		}
+		if (!firstWon) streak = -streak;
+	}
+
 	return {
 		totalTrades: trades.length,
 		wins,
@@ -23,6 +57,11 @@ export function buildStatsFromTrades(trades: PaperTradeEntry[]): PaperStats {
 		pending,
 		winRate: resolved > 0 ? wins / resolved : 0,
 		totalPnl: Number(totalPnl.toFixed(2)),
+		avgPnl: Number(avgPnl.toFixed(2)),
+		bestTrade: Number(bestTrade.toFixed(2)),
+		worstTrade: Number(worstTrade.toFixed(2)),
+		streak,
+		profitFactor: grossLosses > 0 ? Number((grossWins / grossLosses).toFixed(2)) : grossWins > 0 ? 999 : 0,
 	};
 }
 

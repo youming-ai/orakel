@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { HeroPnlCard, MarketCard, StatsGrid, StopLossCard, TodayStatsCard } from "@/components/cards";
 import { PnlTimelineChart } from "@/components/charts";
 import { OverviewSkeleton } from "@/components/OverviewSkeleton";
-import type { MarketSnapshot, PaperStats, StopLossStatus, TodayStats } from "@/contracts/http";
+import type { MarketSnapshot, StopLossStatus, TodayStats } from "@/contracts/http";
+import type { ExtendedStats } from "@/lib/stats";
 
 interface OverviewTabProps {
 	stopLoss?: StopLossStatus | null;
@@ -11,7 +12,7 @@ interface OverviewTabProps {
 		mutate: () => void;
 		isPending: boolean;
 	};
-	mergedStats: PaperStats;
+	mergedStats: ExtendedStats;
 	pnlTimeline: Array<{
 		ts: string;
 		time: string;
@@ -21,6 +22,7 @@ interface OverviewTabProps {
 		cumulative: number;
 	}>;
 	markets: MarketSnapshot[];
+	updatedAt?: string;
 }
 
 const MARKET_ORDER = ["BTC-15m", "ETH-15m"];
@@ -32,6 +34,7 @@ export function OverviewTab({
 	mergedStats,
 	pnlTimeline,
 	markets,
+	updatedAt,
 }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {
 		return [...markets].sort((a, b) => {
@@ -52,10 +55,15 @@ export function OverviewTab({
 		<div className="space-y-4">
 			<StopLossCard stopLoss={stopLoss} onReset={clearStopMutation.mutate} isPending={clearStopMutation.isPending} />
 
-			{todayStats && <TodayStatsCard todayStats={todayStats} />}
+			{todayStats && <TodayStatsCard todayStats={todayStats} stats={mergedStats} />}
 
-			<div className="flex flex-col xl:flex-row gap-4">
-				<HeroPnlCard totalPnl={mergedStats.totalPnl} />
+			<div className="flex flex-col xl:flex-row xl:items-stretch gap-4">
+				<HeroPnlCard
+					totalPnl={mergedStats.totalPnl}
+					bestTrade={mergedStats.bestTrade}
+					worstTrade={mergedStats.worstTrade}
+					profitFactor={mergedStats.profitFactor}
+				/>
 				<StatsGrid stats={mergedStats} />
 			</div>
 
@@ -66,6 +74,12 @@ export function OverviewTab({
 			</div>
 
 			<PnlTimelineChart timeline={pnlTimeline} />
+
+			{updatedAt && (
+				<div className="text-center text-[11px] text-muted-foreground/50 py-2">
+					Last update: {new Date(updatedAt).toLocaleTimeString("en-US", { hour12: false })}
+				</div>
+			)}
 		</div>
 	);
 }

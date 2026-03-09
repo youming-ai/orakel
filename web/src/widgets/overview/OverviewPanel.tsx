@@ -1,12 +1,7 @@
 import { useMemo } from "react";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { OverviewTab } from "@/components/analytics/OverviewTab";
-import {
-	useDashboardStateWithWs,
-	useLiveStats,
-	usePaperClearStop,
-	usePaperStats,
-} from "@/lib/queries";
+import { useDashboardStateWithWs, useLiveStats, usePaperClearStop, usePaperStats } from "@/lib/queries";
 import { buildPnlTimeline, buildStatsFromTrades } from "@/lib/stats";
 import { useUIStore } from "@/lib/store";
 
@@ -37,6 +32,7 @@ export function OverviewPanel() {
 					mergedStats={mergedStats}
 					pnlTimeline={pnlTimeline}
 					markets={state.markets ?? []}
+					updatedAt={state.updatedAt}
 				/>
 			</main>
 		</AppErrorBoundary>

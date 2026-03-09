@@ -1,7 +1,7 @@
 import type { MarketConfig, StrategyConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import type { Candle } from "../core/marketDataTypes.ts";
-import { getActiveMarkets, getMarketById } from "../core/markets.ts";
+import { getMarketById } from "../core/markets.ts";
 import { fetchHistoricalKlines } from "../data/binance.ts";
 import { computeMarketDecision } from "../pipeline/compute.ts";
 import {
@@ -290,7 +290,7 @@ export function formatBacktestResults(results: Map<string, MultiPeriodBacktestRe
 		}
 	}
 
-	lines.push("\n" + "=".repeat(80));
+	lines.push(`\n${"=".repeat(80)}`);
 	return lines.join("\n");
 }
 

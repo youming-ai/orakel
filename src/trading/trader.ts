@@ -1,4 +1,4 @@
-export { executeTrade, getConfig } from "./executionService.ts";
+export { executeTrade } from "./executionService.ts";
 export {
 	canTrade,
 	getOpenGtdOrderCount,

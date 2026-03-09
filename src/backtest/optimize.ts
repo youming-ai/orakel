@@ -1,4 +1,3 @@
-import type { StrategyConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import { getActiveMarkets } from "../core/markets.ts";
 import {
@@ -9,7 +8,6 @@ import {
 } from "./multiPeriodBacktest.ts";
 import {
 	calculateCombinedScore,
-	calculateStrategyScore,
 	createDefaultParameterSpace,
 	createUniversalStrategy,
 	generateRandomParameters,
@@ -159,7 +157,7 @@ async function main(): Promise<void> {
 		}
 	}
 
-	log.info("\n" + "=".repeat(80));
+	log.info(`\n${"=".repeat(80)}`);
 	log.info("OPTIMIZATION COMPLETE");
 	log.info("=".repeat(80));
 
@@ -194,7 +192,7 @@ async function main(): Promise<void> {
 		if (btcResult && ethResult) {
 			const universalStrategy = createUniversalStrategy(btcResult, ethResult);
 
-			log.info("\n" + "=".repeat(80));
+			log.info(`\n${"=".repeat(80)}`);
 			log.info("UNIVERSAL STRATEGY (Averaged from BTC-15m and ETH-15m)");
 			log.info("=".repeat(80));
 			log.info(JSON.stringify(universalStrategy, null, 2));
@@ -223,7 +221,10 @@ async function main(): Promise<void> {
 			optimized: Object.fromEntries(optimizationResults),
 			universal:
 				optimizationResults.has("BTC-15m") && optimizationResults.has("ETH-15m")
-					? createUniversalStrategy(optimizationResults.get("BTC-15m")!, optimizationResults.get("ETH-15m")!)
+					? createUniversalStrategy(
+							optimizationResults.get("BTC-15m") as NonNullable<ReturnType<typeof optimizationResults.get>>,
+							optimizationResults.get("ETH-15m") as NonNullable<ReturnType<typeof optimizationResults.get>>,
+						)
 					: null,
 		};
 		await Bun.write(options.outputPath, JSON.stringify(output, null, 2));

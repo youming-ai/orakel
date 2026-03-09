@@ -1,4 +1,3 @@
-import { CONFIG } from "../core/config.ts";
 import { createLogger } from "../core/logger.ts";
 import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
 import { getAccount } from "./accountStats.ts";

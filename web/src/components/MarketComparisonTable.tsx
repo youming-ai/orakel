@@ -16,6 +16,21 @@ function MarketCell({ market }: { market: string }) {
 	);
 }
 
+function WinRateBar({ winRate }: { winRate: number }) {
+	const pct = Math.round(winRate * 100);
+	return (
+		<div className="flex items-center gap-1.5">
+			<div className="w-12 h-1.5 bg-muted/30 rounded-full overflow-hidden hidden sm:block">
+				<div
+					className={cn("h-full rounded-full transition-all", pct >= 50 ? "bg-emerald-500/60" : "bg-red-500/60")}
+					style={{ width: `${pct}%` }}
+				/>
+			</div>
+			<span className={cn("font-mono", pct >= 50 ? "text-emerald-400" : "text-red-400")}>{pct.toFixed(1)}%</span>
+		</div>
+	);
+}
+
 interface MarketComparisonTableProps {
 	rows: MarketRow[];
 }
@@ -25,8 +40,20 @@ export function MarketComparisonTable({ rows }: MarketComparisonTableProps) {
 		return <EmptyPlaceholder />;
 	}
 
+	const totalRow = rows.reduce(
+		(acc, r) => ({
+			trades: acc.trades + r.trades,
+			wins: acc.wins + r.wins,
+			losses: acc.losses + r.losses,
+			pnl: acc.pnl + r.pnl,
+		}),
+		{ trades: 0, wins: 0, losses: 0, pnl: 0 },
+	);
+	const totalResolved = totalRow.wins + totalRow.losses;
+	const totalWinRate = totalResolved > 0 ? totalRow.wins / totalResolved : 0;
+
 	return (
-		<div className="rounded-md border">
+		<div className="rounded-lg border overflow-hidden">
 			<Table>
 				<TableHeader>
 					<TableRow>
@@ -51,15 +78,45 @@ export function MarketComparisonTable({ rows }: MarketComparisonTableProps) {
 							<TableCell className="font-mono text-xs text-right text-red-400 hidden sm:table-cell">
 								{row.losses}
 							</TableCell>
-							<TableCell className="font-mono text-xs text-right">{row.winRatePct.toFixed(1)}%</TableCell>
+							<TableCell className="font-mono text-xs text-right">
+								<WinRateBar winRate={row.winRate} />
+							</TableCell>
 							<TableCell
-								className={cn("font-mono text-xs text-right", row.pnl >= 0 ? "text-emerald-400" : "text-red-400")}
+								className={cn(
+									"font-mono text-xs text-right font-medium",
+									row.pnl >= 0 ? "text-emerald-400" : "text-red-400",
+								)}
 							>
 								{row.pnl >= 0 ? "+" : ""}
 								{row.pnl.toFixed(2)}
 							</TableCell>
 						</TableRow>
 					))}
+					{/* Totals row */}
+					{rows.length > 1 && (
+						<TableRow className="border-t-2 border-border/60 bg-muted/20 font-medium">
+							<TableCell className="font-mono text-xs font-semibold text-muted-foreground">Total</TableCell>
+							<TableCell className="font-mono text-xs text-right hidden sm:table-cell">{totalRow.trades}</TableCell>
+							<TableCell className="font-mono text-xs text-right text-emerald-400 hidden sm:table-cell">
+								{totalRow.wins}
+							</TableCell>
+							<TableCell className="font-mono text-xs text-right text-red-400 hidden sm:table-cell">
+								{totalRow.losses}
+							</TableCell>
+							<TableCell className="font-mono text-xs text-right">
+								<WinRateBar winRate={totalWinRate} />
+							</TableCell>
+							<TableCell
+								className={cn(
+									"font-mono text-xs text-right font-semibold",
+									totalRow.pnl >= 0 ? "text-emerald-400" : "text-red-400",
+								)}
+							>
+								{totalRow.pnl >= 0 ? "+" : ""}
+								{totalRow.pnl.toFixed(2)}
+							</TableCell>
+						</TableRow>
+					)}
 				</TableBody>
 			</Table>
 		</div>

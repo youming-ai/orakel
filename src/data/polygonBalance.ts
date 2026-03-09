@@ -26,7 +26,11 @@ interface JsonRpcResponse {
 function getRpcCandidates(): string[] {
 	const fromList = Array.isArray(CONFIG.chainlink.polygonRpcUrls) ? CONFIG.chainlink.polygonRpcUrls : [];
 	const single = CONFIG.chainlink.polygonRpcUrl ? [CONFIG.chainlink.polygonRpcUrl] : [];
-	const defaults = ["https://polygon-rpc.com", "https://rpc.ankr.com/polygon", "https://polygon.llamarpc.com"];
+	const defaults = [
+		"https://polygon-bor-rpc.publicnode.com",
+		"https://polygon-pokt.nodies.app",
+		"https://1rpc.io/matic",
+	];
 
 	const all = [...fromList, ...single, ...defaults].map((s) => String(s).trim()).filter(Boolean);
 	return Array.from(new Set(all));

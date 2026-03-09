@@ -142,7 +142,13 @@ export function Header({
 					</button>
 				</div>
 
-				<div className="flex items-center shrink-0">
+				<div className="flex items-center gap-2 shrink-0">
+					<span
+						className="hidden sm:inline-block text-[11px] text-muted-foreground/60 font-mono"
+						title={`Bot: ${cfg.label}`}
+					>
+						{cfg.label}
+					</span>
 					<button
 						type="button"
 						onClick={handleToggle}

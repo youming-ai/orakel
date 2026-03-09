@@ -86,7 +86,7 @@ async function main(): Promise<void> {
 		endTimeMs: options.endTimeMs,
 	});
 
-	console.log(formatBacktestResults(results));
+	log.info(formatBacktestResults(results));
 }
 
 async function loadStrategyFromConfig(key: string) {

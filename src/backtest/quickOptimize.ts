@@ -104,7 +104,7 @@ async function optimizeMarket(marketId: string, iterations: number, endTimeMs: n
 							profitFactor: 0,
 						},
 					};
-				} catch (err) {
+				} catch (_err) {
 					return null;
 				}
 			}),
@@ -176,8 +176,8 @@ async function main(): Promise<void> {
 
 	let universal: StrategyConfig | null = null;
 	if (optimizationResults.has("BTC-15m") && optimizationResults.has("ETH-15m")) {
-		const btc = optimizationResults.get("BTC-15m")!;
-		const eth = optimizationResults.get("ETH-15m")!;
+		const btc = optimizationResults.get("BTC-15m") as NonNullable<ReturnType<typeof optimizationResults.get>>;
+		const eth = optimizationResults.get("ETH-15m") as NonNullable<ReturnType<typeof optimizationResults.get>>;
 		universal = createUniversalStrategy(btc, eth);
 
 		log.info("\n================================================================================");

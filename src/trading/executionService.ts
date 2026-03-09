@@ -1,6 +1,5 @@
 import { OrderType, Side } from "@polymarket/clob-client";
 import { enrichPosition, getUsdcBalance } from "../blockchain/accountState.ts";
-import { CONFIG } from "../core/config.ts";
 import type { MarketConfig, RiskConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import { getCandleWindowTiming } from "../core/utils.ts";
@@ -32,7 +31,7 @@ export function computeKellySize(
 	const dollarRisk = balance * kellyAdjusted;
 	const tokens = dollarRisk / entryPrice;
 	const minSize = riskConfig.kellyMinSize ?? 1;
-	if (tokens < minSize) return 0;
+	if (tokens < minSize) return minSize;
 	return Math.min(riskConfig.maxTradeSizeUsdc, tokens);
 }
 
@@ -92,7 +91,8 @@ async function executeTradeInternal(
 		const modelProb = isUp ? signal.modelUp : signal.modelDown;
 		const kellySize = computeKellySize(modelProb, price, paperBalance, riskConfig);
 		if (kellySize === 0) {
-			log.info(`Kelly says skip: modelProb=${modelProb.toFixed(3)} price=${price} (negative EV)`);
+			const reason = modelProb <= price ? "negative EV" : `balance=$${paperBalance.toFixed(2)} too low`;
+			log.info(`Kelly says skip: modelProb=${modelProb.toFixed(3)} price=${price} (${reason})`);
 			return { success: false, reason: "kelly_negative_ev" };
 		}
 		const paperTradeSize = kellySize ?? Number(riskConfig.maxTradeSizeUsdc || 0);
@@ -177,7 +177,8 @@ async function executeTradeInternal(
 	const liveModelProb = isUp ? signal.modelUp : signal.modelDown;
 	const liveKellySize = computeKellySize(liveModelProb, price, liveBalance, riskConfig);
 	if (liveKellySize === 0) {
-		log.info(`Kelly says skip live: modelProb=${liveModelProb.toFixed(3)} price=${price} (negative EV)`);
+		const reason = liveModelProb <= price ? "negative EV" : `balance=$${liveBalance.toFixed(2)} too low`;
+		log.info(`Kelly says skip live: modelProb=${liveModelProb.toFixed(3)} price=${price} (${reason})`);
 		return { success: false, reason: "kelly_negative_ev" };
 	}
 	const tradeSize = liveKellySize ?? Number(riskConfig.maxTradeSizeUsdc || 0);
@@ -339,16 +340,4 @@ async function executeTradeInternal(
 		log.error("Order error:", msg);
 		return { success: false, error: msg };
 	}
-}
-
-export function getConfig(): {
-	paperRisk: RiskConfig;
-	liveRisk: RiskConfig;
-	strategy: typeof CONFIG.strategy;
-} {
-	return {
-		paperRisk: CONFIG.paperRisk,
-		liveRisk: CONFIG.liveRisk,
-		strategy: CONFIG.strategy,
-	};
 }
