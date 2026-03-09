@@ -61,7 +61,8 @@ export function applyTimeAwareness(
 	remainingMinutes: number,
 	windowMinutes: number,
 ): { timeDecay: number; adjustedUp: number; adjustedDown: number } {
-	const timeDecay = clamp(remainingMinutes / windowMinutes, 0, 1);
+	const ratio = clamp(remainingMinutes / windowMinutes, 0, 1);
+	const timeDecay = Math.sqrt(ratio);
 	const adjustedUp = clamp(0.5 + (rawUp - 0.5) * timeDecay, 0, 1);
 	return { timeDecay, adjustedUp, adjustedDown: 1 - adjustedUp };
 }
@@ -140,7 +141,7 @@ export function estimatePriceToBeatProbability(params: {
 export function blendProbabilities(
 	taUp: number,
 	ptbUp: number | null,
-	taWeight: number = 0.35,
+	taWeight: number = 0.5,
 ): {
 	finalUp: number;
 	finalDown: number;

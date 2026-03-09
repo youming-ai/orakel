@@ -204,6 +204,20 @@ describe("applyTimeAwareness", () => {
 		const result = applyTimeAwareness(0.7, -3, 15);
 		expect(result.adjustedUp).toBe(0.5);
 	});
+
+	it("uses sqrt decay — half time preserves more signal than linear", () => {
+		const result = applyTimeAwareness(0.7, 7.5, 15);
+		// sqrt(0.5) ≈ 0.707, so adjustedUp = 0.5 + 0.2 * 0.707 ≈ 0.641
+		expect(result.timeDecay).toBeCloseTo(Math.sqrt(0.5), 8);
+		expect(result.adjustedUp).toBeCloseTo(0.5 + 0.2 * Math.sqrt(0.5), 8);
+	});
+
+	it("sqrt decay preserves signal better in LATE phase", () => {
+		const result = applyTimeAwareness(0.7, 3, 15);
+		// sqrt(0.2) ≈ 0.447, adjustedUp = 0.5 + 0.2 * 0.447 ≈ 0.589
+		expect(result.timeDecay).toBeCloseTo(Math.sqrt(3 / 15), 8);
+		expect(result.adjustedUp).toBeGreaterThan(0.58);
+	});
 });
 
 describe("computeRealizedVolatility", () => {
@@ -283,10 +297,23 @@ describe("blendProbabilities", () => {
 		});
 	});
 
-	it("blends ptb and ta probabilities", () => {
+	it("blends ptb and ta probabilities with explicit weight", () => {
 		const result = blendProbabilities(0.4, 0.7, 0.25);
 		expect(result.blendSource).toBe("ptb_ta");
 		expect(result.finalUp).toBeCloseTo(0.625, 8);
 		expect(result.finalDown).toBeCloseTo(0.375, 8);
+	});
+
+	it("uses default 50/50 weight when no weight is specified", () => {
+		const result = blendProbabilities(0.6, 0.4);
+		// default taWeight = 0.5: finalUp = 0.4 * 0.5 + 0.6 * 0.5 = 0.5
+		expect(result.blendSource).toBe("ptb_ta");
+		expect(result.finalUp).toBeCloseTo(0.5, 8);
+	});
+
+	it("equal weight means TA and PtB contribute equally", () => {
+		const result = blendProbabilities(0.7, 0.5);
+		// default taWeight = 0.5: finalUp = 0.5 * 0.5 + 0.7 * 0.5 = 0.6
+		expect(result.finalUp).toBeCloseTo(0.6, 8);
 	});
 });
