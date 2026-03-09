@@ -25,12 +25,6 @@ export interface RiskConfig {
 	maxOpenPositions: number;
 	minLiquidity: number;
 	maxTradesPerWindow: number;
-	/** Enable Kelly criterion position sizing (default: false) */
-	useKellySizing?: boolean;
-	/** Fractional Kelly multiplier — 0.25 = quarter Kelly (default: 0.25) */
-	kellyFraction?: number;
-	/** Minimum token count per trade when Kelly is enabled (default: 1) */
-	kellyMinSize?: number;
 }
 
 export interface StrategyConfig {

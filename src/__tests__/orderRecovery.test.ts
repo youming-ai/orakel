@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { getCandleWindowTiming } from "../core/utils.ts";
 
 const pendingOrderQueries = {
 	getAll: vi.fn(),
@@ -30,6 +29,7 @@ vi.mock("../core/logger.ts", () => ({
 
 describe("restoreRuntimeState", () => {
 	it("should recover pending trades, filled pending orders, and open GTD orders", async () => {
+		const { getCandleWindowTiming } = await import("../core/utils.ts");
 		const nowWindow = getCandleWindowTiming(15).startMs;
 		pendingOrderQueries.getAll.mockResolvedValueOnce([
 			{
@@ -62,12 +62,7 @@ describe("restoreRuntimeState", () => {
 		const orderTracker = {
 			hasOrder: vi.fn().mockReturnValue(false),
 			record: vi.fn(),
-		};
-		const liveTracker = {
-			has: vi.fn().mockReturnValue(false),
-			record: vi.fn(),
 			canTradeGlobally: vi.fn().mockReturnValue(true),
-			prune: vi.fn(),
 		};
 		const liveAccount = {
 			getPendingTrades: vi.fn().mockReturnValue([
@@ -96,7 +91,6 @@ describe("restoreRuntimeState", () => {
 		const { restoreRuntimeState } = await import("../runtime/orderRecovery.ts");
 		await restoreRuntimeState({
 			orderTracker,
-			liveTracker,
 			liveAccount: liveAccount as never,
 			orderManager: orderManager as never,
 		});
@@ -125,6 +119,5 @@ describe("restoreRuntimeState", () => {
 		);
 		expect(registerOpenGtdOrder).toHaveBeenCalledWith("placed-order-1");
 		expect(pendingOrderQueries.delete).toHaveBeenCalledWith("filled-order-1");
-		expect(liveTracker.record).toHaveBeenCalledWith("BTC-15m", nowWindow);
 	});
 });

@@ -1,6 +1,5 @@
 export { executeTrade } from "./executionService.ts";
 export {
-	canTrade,
 	getOpenGtdOrderCount,
 	isHeartbeatReconnecting,
 	registerOpenGtdOrder,

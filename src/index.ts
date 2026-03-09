@@ -23,7 +23,6 @@ const processMarket = processMarketPipeline;
 const log = createLogger("main");
 
 const paperTracker = createTradeTracker();
-const liveTracker = createTradeTracker();
 
 let redeemTimerHandle: ReturnType<typeof setInterval> | null = null;
 
@@ -86,6 +85,9 @@ async function main(): Promise<void> {
 			if (this.cooldownMs <= 0) return false;
 			return Date.now() - this.lastTradeMs < this.cooldownMs;
 		},
+		canTradeGlobally(maxGlobal: number): boolean {
+			return this.orders.size < maxGlobal;
+		},
 	};
 
 	orderManager.onOrderStatusChange(
@@ -99,7 +101,6 @@ async function main(): Promise<void> {
 
 	await restoreRuntimeState({
 		orderTracker,
-		liveTracker,
 		liveAccount,
 		orderManager,
 	});
@@ -130,8 +131,7 @@ async function main(): Promise<void> {
 		liveSettler,
 		prevWindowStartMs,
 		paperTracker,
-		liveTracker,
-		orderTracker,
+		liveTracker: orderTracker,
 		paperAccount,
 		liveAccount,
 		processMarket,

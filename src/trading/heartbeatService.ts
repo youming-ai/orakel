@@ -1,8 +1,6 @@
 import { createLogger } from "../core/logger.ts";
 import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
-import { getAccount } from "./accountStats.ts";
 import { MAX_HEARTBEAT_FAILURES, MAX_RECONNECT_ATTEMPTS, traderState, withTradeLock } from "./traderState.ts";
-import { getClient, getWallet } from "./walletService.ts";
 
 const log = createLogger("heartbeat-service");
 
@@ -120,31 +118,6 @@ export function getOpenGtdOrderCount(): number {
 
 export function isHeartbeatReconnecting(): boolean {
 	return traderState.heartbeatReconnecting;
-}
-
-export function canTrade(mode: "paper" | "live"): boolean {
-	if (mode === "live") {
-		if (!getClient()) {
-			log.error("Client not initialized");
-			return false;
-		}
-		if (!getWallet()) {
-			log.error("No wallet available");
-			return false;
-		}
-		if (traderState.heartbeatReconnecting) {
-			log.warn("Heartbeat reconnecting — blocking live trade");
-			return false;
-		}
-	}
-
-	const account = getAccount(mode);
-	const affordCheck = account.canTradeWithStopCheck();
-	if (!affordCheck.canTrade) {
-		log.error(`${mode} trade blocked: ${affordCheck.reason}`);
-		return false;
-	}
-	return true;
 }
 
 export { emitTradeExecuted, withTradeLock };

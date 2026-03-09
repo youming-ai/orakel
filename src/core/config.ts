@@ -28,9 +28,6 @@ const RISK_DEFAULTS = {
 	maxOpenPositions: 2,
 	minLiquidity: 15_000,
 	maxTradesPerWindow: 1,
-	useKellySizing: false,
-	kellyFraction: 0.25,
-	kellyMinSize: 1,
 };
 
 const STRATEGY_DEFAULTS: {
@@ -61,9 +58,6 @@ const RiskConfigSchema = z
 		maxOpenPositions: z.coerce.number().optional(),
 		minLiquidity: z.coerce.number().optional(),
 		maxTradesPerWindow: z.coerce.number().optional(),
-		useKellySizing: z.coerce.boolean().optional(),
-		kellyFraction: z.coerce.number().min(0).max(1).optional(),
-		kellyMinSize: z.coerce.number().min(0).optional(),
 	})
 	.partial()
 	.transform((value) => ({ ...RISK_DEFAULTS, ...value }));
@@ -351,9 +345,6 @@ function buildRiskConfig(primary: z.infer<typeof RiskConfigSchema>): RiskConfig 
 		maxOpenPositions: primary.maxOpenPositions,
 		minLiquidity: primary.minLiquidity,
 		maxTradesPerWindow: primary.maxTradesPerWindow,
-		useKellySizing: primary.useKellySizing,
-		kellyFraction: primary.kellyFraction,
-		kellyMinSize: primary.kellyMinSize,
 	};
 }
 

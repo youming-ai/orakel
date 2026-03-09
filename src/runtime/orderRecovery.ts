@@ -1,7 +1,4 @@
 import { createLogger } from "../core/logger.ts";
-import { getMarketById } from "../core/markets.ts";
-import type { TradeTracker } from "../core/tradeTracker.ts";
-import { getCandleWindowTiming } from "../core/utils.ts";
 import { pendingOrderQueries, tradeQueries } from "../db/queries.ts";
 import type { AccountStatsManager } from "../trading/accountStats.ts";
 import type { OrderManager } from "../trading/orderManager.ts";
@@ -12,18 +9,17 @@ const log = createLogger("order-recovery");
 export interface RecoverableOrderTracker {
 	hasOrder(marketId: string, windowSlug: string): boolean;
 	record(marketId: string, windowSlug: string, recordedAtMs?: number): void;
+	canTradeGlobally(maxGlobal: number): boolean;
 }
 
 interface RestoreRuntimeStateParams {
 	orderTracker: RecoverableOrderTracker;
-	liveTracker: TradeTracker;
 	liveAccount: AccountStatsManager;
 	orderManager: OrderManager;
 }
 
 export async function restoreRuntimeState({
 	orderTracker,
-	liveTracker,
 	liveAccount,
 	orderManager,
 }: RestoreRuntimeStateParams): Promise<void> {
@@ -33,17 +29,11 @@ export async function restoreRuntimeState({
 		const slugProxy = String(trade.windowStartMs);
 		const tradeTsMs = Date.parse(trade.timestamp);
 		orderTracker.record(trade.marketId, slugProxy, Number.isFinite(tradeTsMs) ? tradeTsMs : trade.windowStartMs);
-
-		const tradeMarket = getMarketById(trade.marketId);
-		const tradeWindowTiming = getCandleWindowTiming(tradeMarket?.candleWindowMinutes ?? 15);
-		if (trade.windowStartMs === tradeWindowTiming.startMs) {
-			liveTracker.record(trade.marketId, trade.windowStartMs);
-		}
 		restoredCount++;
 	}
 	if (restoredCount > 0) {
 		log.info(
-			`Restored ${restoredCount} pending live trades into trackers (window active: ${liveTracker.canTradeGlobally(1) ? 0 : ">=1"})`,
+			`Restored ${restoredCount} pending live trades into tracker (active: ${orderTracker.canTradeGlobally(1) ? 0 : ">=1"})`,
 		);
 	}
 
@@ -57,8 +47,6 @@ export async function restoreRuntimeState({
 		const windowStartMs = Number(row.windowStartMs ?? Number.NaN);
 		if (!orderId || !marketId || !Number.isFinite(windowStartMs)) continue;
 
-		const rowMarket = getMarketById(marketId);
-		const rowTiming = getCandleWindowTiming(rowMarket?.candleWindowMinutes ?? 15);
 		const price = Number(row.price ?? Number.NaN);
 		const size = Number(row.size ?? Number.NaN);
 		if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) {
@@ -104,9 +92,6 @@ export async function restoreRuntimeState({
 				if (!orderTracker.hasOrder(marketId, windowKey)) {
 					orderTracker.record(marketId, windowKey, Number(row.placedAt ?? windowStartMs));
 				}
-				if (windowStartMs === rowTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
-					liveTracker.record(marketId, windowStartMs);
-				}
 				void pendingOrderQueries.delete(orderId).catch(() => {});
 				recoveredFilledPendingCount++;
 			}
@@ -116,9 +101,6 @@ export async function restoreRuntimeState({
 		const windowKey = String(windowStartMs);
 		if (!orderTracker.hasOrder(marketId, windowKey)) {
 			orderTracker.record(marketId, windowKey, Number(row.placedAt ?? windowStartMs));
-		}
-		if (windowStartMs === rowTiming.startMs && !liveTracker.has(marketId, windowStartMs)) {
-			liveTracker.record(marketId, windowStartMs);
 		}
 
 		orderManager.addOrderWithTracking(

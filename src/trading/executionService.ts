@@ -1,45 +1,47 @@
 import { OrderType, Side } from "@polymarket/clob-client";
-import { enrichPosition, getUsdcBalance } from "../blockchain/accountState.ts";
+import { enrichPosition } from "../blockchain/accountState.ts";
 import type { MarketConfig, RiskConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import { getCandleWindowTiming } from "../core/utils.ts";
 import { onchainQueries, pendingOrderQueries } from "../db/queries.ts";
 import { getAccount } from "./accountStats.ts";
-import {
-	canTrade,
-	emitTradeExecuted,
-	registerOpenGtdOrder,
-	startHeartbeat,
-	withTradeLock,
-} from "./heartbeatService.ts";
+import { emitTradeExecuted, registerOpenGtdOrder, startHeartbeat, withTradeLock } from "./heartbeatService.ts";
+import { traderState } from "./traderState.ts";
 import type { TradeResult, TradeSignal } from "./tradeTypes.ts";
-import { getClient } from "./walletService.ts";
+import { getClient, getWallet } from "./walletService.ts";
 
 const log = createLogger("execution-service");
-
-export function computeKellySize(
-	modelProb: number,
-	entryPrice: number,
-	balance: number,
-	riskConfig: RiskConfig,
-): number | null {
-	if (!riskConfig.useKellySizing) return null;
-	if (entryPrice >= 1 || entryPrice <= 0 || !Number.isFinite(modelProb)) return null;
-	const kellyFull = (modelProb - entryPrice) / (1 - entryPrice);
-	if (kellyFull <= 0) return 0;
-	const kellyAdjusted = kellyFull * (riskConfig.kellyFraction ?? 0.25);
-	const dollarRisk = balance * kellyAdjusted;
-	const tokens = dollarRisk / entryPrice;
-	const minSize = riskConfig.kellyMinSize ?? 1;
-	if (tokens < minSize) return minSize;
-	return Math.min(riskConfig.maxTradeSizeUsdc, tokens);
-}
 
 function asRecord(value: unknown): Record<string, unknown> {
 	if (value && typeof value === "object") {
 		return value as Record<string, unknown>;
 	}
 	return {};
+}
+
+function computeLimitPrice(
+	signal: TradeSignal,
+	riskConfig: RiskConfig,
+): { price: number; isUp: boolean; marketPrice: number } | { error: string } {
+	const isUp = signal.side === "UP";
+	const marketPrice = isUp ? parseFloat(String(signal.marketUp)) : parseFloat(String(signal.marketDown));
+	if (!Number.isFinite(marketPrice)) {
+		return { error: "price_not_finite" };
+	}
+	const limitDiscount = Number(riskConfig.limitDiscount ?? 0.1);
+	const priceRaw = Math.max(0.01, marketPrice - limitDiscount);
+	const price = Math.round(priceRaw * 100) / 100;
+
+	if (price < 0.02 || price > 0.98) {
+		return { error: "price_out_of_range" };
+	}
+
+	const oppositePrice = isUp ? parseFloat(String(signal.marketDown)) : parseFloat(String(signal.marketUp));
+	if (price > 0.95 && oppositePrice < 0.05) {
+		return { error: "market_too_confident" };
+	}
+
+	return { price, isUp, marketPrice };
 }
 
 export async function executeTrade(
@@ -56,113 +58,62 @@ async function executeTradeInternal(
 	mode: "paper" | "live" = "paper",
 ): Promise<TradeResult> {
 	const { riskConfig } = options;
+	const priceResult = computeLimitPrice(signal, riskConfig);
+	if ("error" in priceResult) {
+		log.info(`${mode} trade skipped for ${signal.marketId}: ${priceResult.error}`);
+		return { success: false, reason: priceResult.error };
+	}
+	const { price, isUp, marketPrice } = priceResult;
+	const { side } = signal;
+	const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+	const timing = getCandleWindowTiming(options.marketConfig?.candleWindowMinutes ?? 15);
 
 	if (mode === "paper") {
-		if (!canTrade("paper")) {
-			return { success: false, reason: "trading_disabled" };
-		}
-
-		const { side, marketUp, marketDown, marketSlug } = signal;
-		const isUp = side === "UP";
-		const marketPrice = isUp ? parseFloat(String(marketUp)) : parseFloat(String(marketDown));
-		if (!Number.isFinite(marketPrice)) {
-			log.warn(`Non-finite market price for ${signal.marketId}, aborting paper trade`);
-			return { success: false, reason: "price_not_finite" };
-		}
-		const limitDiscount = Number(riskConfig.limitDiscount ?? 0.1);
-		const priceRaw = Math.max(0.01, marketPrice - limitDiscount);
-		const price = Math.round(priceRaw * 100) / 100;
-
-		if (price < 0.02 || price > 0.98) {
-			log.info(`Price ${price} out of tradeable range`);
-			return { success: false, reason: "price_out_of_range" };
-		}
-
-		const oppositePrice = isUp ? parseFloat(String(marketDown)) : parseFloat(String(marketUp));
-		if (price > 0.95 && oppositePrice < 0.05) {
-			log.info("Market too confident, skipping");
-			return { success: false, reason: "market_too_confident" };
-		}
-
-		const timing = getCandleWindowTiming(options.marketConfig?.candleWindowMinutes ?? 15);
 		const account = getAccount("paper");
-		const paperBalance = 1000 + account.getStats().totalPnl;
-
-		const modelProb = isUp ? signal.modelUp : signal.modelDown;
-		const kellySize = computeKellySize(modelProb, price, paperBalance, riskConfig);
-		if (kellySize === 0) {
-			const reason = modelProb <= price ? "negative EV" : `balance=$${paperBalance.toFixed(2)} too low`;
-			log.info(`Kelly says skip: modelProb=${modelProb.toFixed(3)} price=${price} (${reason})`);
-			return { success: false, reason: "kelly_negative_ev" };
-		}
-		const paperTradeSize = kellySize ?? Number(riskConfig.maxTradeSizeUsdc || 0);
 		const paperTradeTimestamp = new Date().toISOString();
 		const tradeId = account.addTrade(
 			{
 				marketId: signal.marketId,
 				windowStartMs: timing.startMs,
-				side: signal.side,
+				side,
 				price,
-				size: paperTradeSize,
+				size: tradeSize,
 				priceToBeat: signal.priceToBeat ?? 0,
 				currentPriceAtEntry: signal.currentPrice,
 				timestamp: paperTradeTimestamp,
-				marketSlug,
+				marketSlug: signal.marketSlug,
 			},
 			undefined,
 			"filled",
 		);
 
-		log.info(
-			`Simulated fill: ${side} at ${price}¢ size=${paperTradeSize.toFixed(2)} | ${marketSlug} (${tradeId})${kellySize !== null ? " [kelly]" : ""}`,
-		);
+		log.info(`Simulated fill: ${side} at ${price}¢ size=${tradeSize.toFixed(2)} | ${signal.marketSlug} (${tradeId})`);
 		emitTradeExecuted({
 			marketId: signal.marketId,
 			mode,
 			side,
 			price,
-			size: paperTradeSize,
+			size: tradeSize,
 			timestamp: paperTradeTimestamp,
 			orderId: tradeId,
 			status: "filled",
 		});
 
-		return {
-			success: true,
-			order: { orderID: tradeId, status: "filled" },
-		};
+		return { success: true, order: { orderID: tradeId, status: "filled" } };
 	}
 
-	if (!canTrade("live")) {
+	// Live-only checks
+	if (!getClient() || !getWallet()) {
 		return { success: false, reason: "trading_disabled" };
 	}
-
-	const { side, marketUp, marketDown, tokens } = signal;
-	const isUp = side === "UP";
-	const marketPrice = isUp ? parseFloat(String(marketUp)) : parseFloat(String(marketDown));
-	if (!Number.isFinite(marketPrice)) {
-		log.warn(`Non-finite market price for ${signal.marketId}, aborting live trade`);
-		return { success: false, reason: "price_not_finite" };
+	if (traderState.heartbeatReconnecting) {
+		return { success: false, reason: "heartbeat_reconnecting" };
 	}
-	const limitDiscount = Number(riskConfig.limitDiscount ?? 0.1);
-	const priceRaw = Math.max(0.01, marketPrice - limitDiscount);
-	const price = Math.round(priceRaw * 100) / 100;
-	const tokenId = tokens ? (isUp ? tokens.upTokenId : tokens.downTokenId) : null;
 
+	const tokenId = signal.tokens ? (isUp ? signal.tokens.upTokenId : signal.tokens.downTokenId) : null;
 	if (!tokenId) {
 		log.error("No token ID available for", side);
 		return { success: false, reason: "no_token_id" };
-	}
-
-	if (price < 0.02 || price > 0.98) {
-		log.info(`Price ${price} out of tradeable range`);
-		return { success: false, reason: "price_out_of_range" };
-	}
-
-	const oppositePrice = isUp ? parseFloat(String(marketDown)) : parseFloat(String(marketUp));
-	if (price > 0.95 && oppositePrice < 0.05) {
-		log.info("Market too confident, skipping");
-		return { success: false, reason: "market_too_confident" };
 	}
 
 	log.info(`Executing ${side} trade: market ${marketPrice}¢ -> limit ${price}¢ (token: ${tokenId})`);
@@ -173,32 +124,17 @@ async function executeTradeInternal(
 	}
 
 	const liveAccount = getAccount("live");
-	const liveBalance = getUsdcBalance();
-	const liveModelProb = isUp ? signal.modelUp : signal.modelDown;
-	const liveKellySize = computeKellySize(liveModelProb, price, liveBalance, riskConfig);
-	if (liveKellySize === 0) {
-		const reason = liveModelProb <= price ? "negative EV" : `balance=$${liveBalance.toFixed(2)} too low`;
-		log.info(`Kelly says skip live: modelProb=${liveModelProb.toFixed(3)} price=${price} (${reason})`);
-		return { success: false, reason: "kelly_negative_ev" };
-	}
-	const tradeSize = liveKellySize ?? Number(riskConfig.maxTradeSizeUsdc || 0);
 
 	try {
 		const negRisk = false;
 		const isLatePhase = signal.phase === "LATE";
 		const isHighConfidence = signal.strength === "STRONG" || signal.strength === "GOOD";
-		const timing = getCandleWindowTiming(options.marketConfig?.candleWindowMinutes ?? 15);
 		let result: unknown;
 
 		if (isLatePhase && isHighConfidence) {
 			log.info(`Posting FOK market order: ${side} amount=${tradeSize} worst-price=${price} (token: ${tokenId})`);
 			result = await client.createAndPostMarketOrder(
-				{
-					tokenID: tokenId,
-					side: Side.BUY,
-					amount: tradeSize,
-					price,
-				},
+				{ tokenID: tokenId, side: Side.BUY, amount: tradeSize, price },
 				{ negRisk },
 				OrderType.FOK,
 			);
@@ -220,13 +156,7 @@ async function executeTradeInternal(
 				`Posting GTD+postOnly order: ${side} size=${tradeSize} price=${price} exp=${expiration}s (token: ${tokenId})`,
 			);
 			result = await client.createAndPostOrder(
-				{
-					tokenID: tokenId,
-					price,
-					size: tradeSize,
-					side: Side.BUY,
-					expiration,
-				},
+				{ tokenID: tokenId, price, size: tradeSize, side: Side.BUY, expiration },
 				{ negRisk },
 				OrderType.GTD,
 				false,

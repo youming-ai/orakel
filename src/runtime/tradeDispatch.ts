@@ -35,13 +35,13 @@ export interface ActiveOrderTracker {
 	totalActive(): number;
 	record(marketId: string, windowSlug: string, recordedAtMs?: number): void;
 	onCooldown(): boolean;
+	canTradeGlobally(maxGlobal: number): boolean;
 }
 
 interface TradeDispatchParams {
 	results: ProcessMarketResult[];
 	paperTracker: WindowTradeTracker;
-	liveTracker: WindowTradeTracker;
-	orderTracker: ActiveOrderTracker;
+	liveTracker: ActiveOrderTracker;
 	onLiveOrderPlaced: (result: {
 		orderId: string;
 		marketId: string;
@@ -59,7 +59,6 @@ export async function dispatchTradeCandidates({
 	results,
 	paperTracker,
 	liveTracker,
-	orderTracker,
 	onLiveOrderPlaced,
 }: TradeDispatchParams): Promise<void> {
 	const maxGlobalTrades = CONFIG.strategy.maxGlobalTradesPerWindow;
@@ -87,7 +86,6 @@ export async function dispatchTradeCandidates({
 			return Number(a.rawSum ?? 1) - Number(b.rawSum ?? 1);
 		});
 
-	let successfulTradesThisTick = 0;
 	for (const candidate of candidates) {
 		const signal = candidate.signalPayload;
 		if (!signal) continue;
@@ -148,11 +146,9 @@ export async function dispatchTradeCandidates({
 		const liveAffordCheck = liveAccount.canTradeWithStopCheck();
 		const canPlace =
 			!liveSettlementKeys.has(settlementKey) &&
-			!orderTracker.hasOrder(market.id, windowKey) &&
-			!orderTracker.onCooldown() &&
-			orderTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
-			successfulTradesThisTick < liveWindowLimit &&
-			!liveTracker.has(market.id, timing.startMs) &&
+			!liveTracker.hasOrder(market.id, windowKey) &&
+			!liveTracker.onCooldown() &&
+			liveTracker.totalActive() < CONFIG.liveRisk.maxOpenPositions &&
 			liveTracker.canTradeGlobally(liveWindowLimit) &&
 			liveAffordCheck.canTrade;
 
@@ -166,10 +162,8 @@ export async function dispatchTradeCandidates({
 			continue;
 		}
 
-		orderTracker.record(market.id, windowKey);
-		liveTracker.record(market.id, timing.startMs);
+		liveTracker.record(market.id, windowKey);
 		liveSettlementKeys.add(settlementKey);
-		successfulTradesThisTick += 1;
 
 		if (result.orderId && (result.isGtdOrder ?? true)) {
 			const tokenId = signal.tokens

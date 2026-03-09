@@ -34,6 +34,7 @@ export interface RuntimeOrderTracker {
 	clear(): void;
 	prune(): void;
 	onCooldown(): boolean;
+	canTradeGlobally(maxGlobal: number): boolean;
 }
 
 interface MainLoopParams {
@@ -46,8 +47,7 @@ interface MainLoopParams {
 	liveSettler: LiveSettlerController;
 	prevWindowStartMs: Map<string, number>;
 	paperTracker: TradeTracker;
-	liveTracker: TradeTracker;
-	orderTracker: RuntimeOrderTracker;
+	liveTracker: RuntimeOrderTracker;
 	paperAccount: AccountStatsManager;
 	liveAccount: AccountStatsManager;
 	processMarket: (params: {
@@ -97,18 +97,12 @@ async function runMaintenance(paperAccount: AccountStatsManager, liveAccount: Ac
 	}
 }
 
-function pruneTrackers(
-	markets: MarketConfig[],
-	paperTracker: TradeTracker,
-	liveTracker: TradeTracker,
-	orderTracker: RuntimeOrderTracker,
-): void {
+function pruneTrackers(markets: MarketConfig[], paperTracker: TradeTracker, liveTracker: RuntimeOrderTracker): void {
 	const oldestActiveWindow = Math.min(
 		...markets.map((market) => getCandleWindowTiming(market.candleWindowMinutes).startMs),
 	);
 	paperTracker.prune(oldestActiveWindow);
-	liveTracker.prune(oldestActiveWindow);
-	orderTracker.prune();
+	liveTracker.prune();
 }
 
 async function processMarkets(
@@ -182,7 +176,6 @@ export async function runMainLoop({
 	prevWindowStartMs,
 	paperTracker,
 	liveTracker,
-	orderTracker,
 	paperAccount,
 	liveAccount,
 	processMarket,
@@ -270,7 +263,7 @@ export async function runMainLoop({
 		}
 
 		liveSettler.ensure();
-		pruneTrackers(markets, paperTracker, liveTracker, orderTracker);
+		pruneTrackers(markets, paperTracker, liveTracker);
 
 		const results = await processMarkets(markets, states, streams, processMarket);
 		consecutiveAllFails = handleSafeMode(results, consecutiveAllFails);
@@ -286,7 +279,6 @@ export async function runMainLoop({
 			results,
 			paperTracker,
 			liveTracker,
-			orderTracker,
 			onLiveOrderPlaced,
 		});
 

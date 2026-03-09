@@ -170,18 +170,11 @@ function makeLiveAccount() {
 
 function makeLiveTracker() {
 	return {
-		has: vi.fn().mockReturnValue(false),
-		record: vi.fn(),
-		canTradeGlobally: vi.fn().mockReturnValue(true),
-	};
-}
-
-function makeOrderTracker() {
-	return {
 		hasOrder: vi.fn().mockReturnValue(false),
 		totalActive: vi.fn().mockReturnValue(0),
 		record: vi.fn(),
 		onCooldown: vi.fn().mockReturnValue(false),
+		canTradeGlobally: vi.fn().mockReturnValue(true),
 	};
 }
 
@@ -208,7 +201,6 @@ describe("dispatchTradeCandidates", () => {
 	it("places only one live trade for candidates that share the same settlement time", async () => {
 		const { dispatchTradeCandidates } = await import("../runtime/tradeDispatch.ts");
 		const liveTracker = makeLiveTracker();
-		const orderTracker = makeOrderTracker();
 		const onLiveOrderPlaced = vi.fn();
 
 		await dispatchTradeCandidates({
@@ -232,7 +224,6 @@ describe("dispatchTradeCandidates", () => {
 				canTradeGlobally: vi.fn(),
 			},
 			liveTracker,
-			orderTracker,
 			onLiveOrderPlaced,
 		});
 
@@ -247,7 +238,6 @@ describe("dispatchTradeCandidates", () => {
 			}),
 			"live",
 		);
-		expect(orderTracker.record).toHaveBeenCalledOnce();
 		expect(liveTracker.record).toHaveBeenCalledOnce();
 		expect(onLiveOrderPlaced).toHaveBeenCalledOnce();
 	});
@@ -255,7 +245,6 @@ describe("dispatchTradeCandidates", () => {
 	it("falls through to the next correlated candidate when the best one fails", async () => {
 		const { dispatchTradeCandidates } = await import("../runtime/tradeDispatch.ts");
 		const liveTracker = makeLiveTracker();
-		const orderTracker = makeOrderTracker();
 
 		executeTrade
 			.mockResolvedValueOnce({
@@ -290,7 +279,6 @@ describe("dispatchTradeCandidates", () => {
 				canTradeGlobally: vi.fn(),
 			},
 			liveTracker,
-			orderTracker,
 			onLiveOrderPlaced: vi.fn(),
 		});
 
@@ -305,14 +293,12 @@ describe("dispatchTradeCandidates", () => {
 			}),
 			"live",
 		);
-		expect(orderTracker.record).toHaveBeenCalledOnce();
 		expect(liveTracker.record).toHaveBeenCalledOnce();
 	});
 
 	it("allows separate trades when the settlements are different", async () => {
 		const { dispatchTradeCandidates } = await import("../runtime/tradeDispatch.ts");
 		const liveTracker = makeLiveTracker();
-		const orderTracker = makeOrderTracker();
 
 		vi.setSystemTime(new Date("2026-03-07T15:54:00.000Z"));
 
@@ -337,19 +323,16 @@ describe("dispatchTradeCandidates", () => {
 				canTradeGlobally: vi.fn(),
 			},
 			liveTracker,
-			orderTracker,
 			onLiveOrderPlaced: vi.fn(),
 		});
 
 		expect(executeTrade).toHaveBeenCalledTimes(2);
-		expect(orderTracker.record).toHaveBeenCalledTimes(2);
 		expect(liveTracker.record).toHaveBeenCalledTimes(2);
 	});
 
 	it("does not add a hidden dispatch buffer once strategy already emitted ENTER", async () => {
 		const { dispatchTradeCandidates } = await import("../runtime/tradeDispatch.ts");
 		const liveTracker = makeLiveTracker();
-		const orderTracker = makeOrderTracker();
 
 		await dispatchTradeCandidates({
 			results: [
@@ -367,7 +350,6 @@ describe("dispatchTradeCandidates", () => {
 				canTradeGlobally: vi.fn(),
 			},
 			liveTracker,
-			orderTracker,
 			onLiveOrderPlaced: vi.fn(),
 		});
 
