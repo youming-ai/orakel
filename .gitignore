@@ -27,3 +27,5 @@ dist/
 
 # backtest results
 backtest-results-*.json
+optimization-results-*.json
+optimized_results.json
