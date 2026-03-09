@@ -28,23 +28,23 @@
   },
   "strategy": {
     "default": {
-      "edgeThresholdEarly": 0.035,
-      "edgeThresholdMid": 0.075,
-      "edgeThresholdLate": 0.11,
-      "minProbEarly": 0.55,
-      "minProbMid": 0.58,
-      "minProbLate": 0.64,
-      "maxGlobalTradesPerWindow": 2,
-      "skipMarkets": [],
-      "minTimeLeftMin": 2.5,
-      "maxTimeLeftMin": 11.7,
-      "minVolatility15m": 0.0023,
-      "maxVolatility15m": 0.029,
-      "candleAggregationMinutes": 1,
-      "minPriceToBeatMovePct": 0.0014,
-      "edgeDownBias": 0.027,
-      "minExpectedEdge": 0.056,
-      "maxEntryPrice": 0.565
+    "edgeThresholdEarly": 0.0353,
+    "edgeThresholdMid": 0.0751,
+    "edgeThresholdLate": 0.1115,
+    "minProbEarly": 0.5506,
+    "minProbMid": 0.5803,
+    "minProbLate": 0.6369,
+    "maxGlobalTradesPerWindow": 2,
+    "skipMarkets": [],
+    "minTimeLeftMin": 2.5107,
+    "maxTimeLeftMin": 11.7206,
+    "minVolatility15m": 0.0023,
+    "maxVolatility15m": 0.0293,
+    "candleAggregationMinutes": 1,
+    "minPriceToBeatMovePct": 0.0014,
+    "minExpectedEdge": 0.0562,
+    "maxEntryPrice": 0.5652,
+    "edgeDownBias": 0.0267
     }
   }
 }
