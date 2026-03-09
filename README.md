@@ -78,16 +78,11 @@ Pre-push: `bun run lint && bun run typecheck && bun run test`
 
 ## Documentation
 
-完整的技术文档请查看 [docs/](./docs/) 目录：
-
 | 文档 | 描述 |
 |------|------|
-| [Core Logic](./docs/core-logic.md) | 交易逻辑、架构设计、数据流、决策引擎 |
-| [Backend Reference](./docs/backend.md) | 后端模块结构、API 端点、数据库设计 |
-| [Frontend](./docs/frontend.md) | React 组件架构、状态管理、WebSocket |
-| [Deployment](./docs/deployment.md) | Docker 部署、CI/CD、环境配置 |
-| [Testing](./docs/testing.md) | 测试覆盖、测试组织方式 |
-| [API Conventions](./docs/api-conventions.md) | API 设计规范 |
+| [docs/README.md](./docs/README.md) | 技术架构、开发指南、核心流程 |
+| [CLAUDE.md](./CLAUDE.md) | Claude Code 开发指南、架构细节 |
+| [AGENTS.md](./AGENTS.md) | AI 代理上下文、代码规范 |
 
 ## Project Structure
 

@@ -1,94 +1,190 @@
 # Orakel Documentation
 
-欢迎来到 Orakel 文档中心。这里包含项目的完整技术文档，从架构设计到部署运维。
+> **Polymarket Crypto Up/Down 自动交易机器人** - Bun + TypeScript + Hono + PostgreSQL (后端), React 19 + Vite (前端)
 
-## 📚 文档索引
+## 快速开始
 
-### 核心文档
+```bash
+git clone https://github.com/youming-ai/orakel.git
+cd orakel
+cp .env.example .env
+docker compose up --build
+```
 
-| 文档 | 描述 | 适合读者 |
-|------|------|----------|
-| [Core Logic](./core-logic.md) | 交易逻辑、架构设计、数据流、决策引擎 | 想理解交易策略的开发者 |
-| [Backend Reference](./backend.md) | 后端模块结构、API 端点、数据库设计、运行时架构 | 后端开发者 |
-| [Frontend](./frontend.md) | React 组件架构、状态管理、WebSocket、样式指南 | 前端开发者 |
-| [Deployment](./deployment.md) | Docker 部署、CI/CD、环境配置、VPS 自动部署 | 运维/DevOps |
-| [Testing](./testing.md) | 测试覆盖、测试组织方式、运行测试指南 | 所有开发者 |
+- Dashboard: http://localhost:9998
+- Bot API: http://localhost:9999
 
-### API 规范
+## 项目结构
 
-| 文档 | 描述 |
+```
+src/
+├── app/                    # API 服务器、WebSocket、启动/关闭
+├── runtime/                # 交易运行时 (主循环、结算周期)
+├── repositories/           # 数据访问层 (Drizzle ORM)
+├── trading/                # 交易执行、账户统计、订单管理
+├── pipeline/               # 市场数据处理 (获取 → 计算)
+├── engines/                # 决策引擎 (边缘计算、概率、市场状态)
+├── indicators/             # 技术指标 (RSI, MACD, VWAP, Heiken Ashi)
+├── data/                   # 外部数据适配器 (Binance, Polymarket, Chainlink)
+├── db/                     # 数据库配置和 Schema
+└── __tests__/              # 测试文件
+
+web/                        # 前端 (React 19 + Vite + shadcn/ui)
+docs/                       # 本文档
+drizzle/                    # 数据库迁移
+```
+
+## 核心架构
+
+### 数据流
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  Binance WS │    │ Chainlink   │    │ Polymarket  │    │  PostgreSQL │
+│  价格/蜡烛图 │    │ 预言机价格   │    │  赔率/CLOB  │    │  持久化存储  │
+└──────┬──────┘    └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
+       │                  │                  │                  │
+       └──────────────────┴──────────────────┴──────────────────┘
+                          │
+                          ▼
+               ┌─────────────────────┐
+               │   processMarket()   │  ← 1秒周期
+               │  - 获取市场数据      │
+               │  - 计算指标 (VWAP,RSI,MACD)
+               │  - 概率评分 + 边缘计算
+               │  - 交易决策          │
+               └──────────┬──────────┘
+                          │
+           ┌──────────────┴──────────────┐
+           │                             │
+           ▼                             ▼
+    ┌─────────────┐              ┌─────────────┐
+    │ Paper 交易   │              │ Live 交易    │
+    │ (模拟执行)   │              │ (CLOB订单)   │
+    └─────────────┘              └─────────────┘
+```
+
+### 交易决策流程
+
+1. **技术指标** (`indicators/`)
+   - VWAP - 量价锚点
+   - RSI(14) - 动量强度
+   - MACD - 趋势确认
+   - Heiken Ashi - 噪声过滤
+
+2. **概率模型** (`engines/probability.ts`)
+   - 技术评分 + 时间衰减
+   - `priceToBeat` 距离/波动率模型
+   - 混合概率: 65% PTB + 35% TA
+
+3. **边缘计算** (`engines/edge.ts`)
+   - `edge = modelProb - marketProb`
+   - 订单簿滑点调整
+   - 三阶段阈值: Early(0.06) / Mid(0.08) / Late(0.10)
+
+4. **风险管理**
+   - 日亏损限制 (`dailyMaxLossUsdc`)
+   - 最大回撤 (50%)
+   - 市场状态过滤 (TREND/RANGE/CHOP)
+
+## 配置
+
+### 环境变量 (.env)
+
+| 变量 | 说明 |
 |------|------|
-| [API Conventions](./api-conventions.md) | REST API 设计规范、错误处理、响应格式 |
+| `PAPER_MODE` | 启动时启用模拟交易 |
+| `API_TOKEN` | API 认证令牌 |
+| `PRIVATE_KEY` | 钱包私钥 (实盘交易) |
+| `DATABASE_URL` | PostgreSQL 连接字符串 |
+| `ACTIVE_MARKETS` | 启用市场 (如 `BTC-15m,ETH-15m`) |
 
-### 项目规划
+### 策略配置 (config.json)
 
-- [plans/](./plans/) - 历史版本规划和迭代记录
+热重载支持，无需重启：
 
-## 🚀 快速导航
-
-### 我是新用户，想快速上手
-
-1. 先看项目根目录的 [README.md](../README.md) - 快速启动指南
-2. 阅读 [Deployment](./deployment.md) - 部署你的第一个实例
-
-### 我想理解交易逻辑
-
-1. [Core Logic](./core-logic.md) - 完整的策略架构
-2. [Backend Reference](./backend.md) - 模块边界和运行时
-
-### 我想开发/修改功能
-
-1. [API Conventions](./api-conventions.md) - 确保接口一致性
-2. [Testing](./testing.md) - 了解测试要求
-3. [Backend](./backend.md) 或 [Frontend](./frontend.md) - 根据你的领域
-
-### 我要排查问题
-
-1. [Core Logic](./core-logic.md) - 理解数据流
-2. [Backend](./backend.md) - 查看日志位置和调试方法
-3. [Testing](./testing.md) - 运行相关测试
-
-## 🏗️ 架构概览
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        前端 (Frontend)                       │
-│  React 19 + Vite + TanStack Query + Zustand + shadcn/ui     │
-│  [frontend.md](./frontend.md)                               │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼ WebSocket / REST
-┌─────────────────────────────────────────────────────────────┐
-│                        后端 (Backend)                        │
-│  Hono API Server                                            │
-│  ├─ 交易运行时 (Trading Runtime)                              │
-│  ├─ 市场数据处理 (Market Pipeline)                            │
-│  ├─ 订单管理 (Order Management)                               │
-│  └─ 区块链交互 (Blockchain)                                   │
-│  [backend.md](./backend.md)                                 │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      数据层 (Data Layer)                     │
-│  PostgreSQL (Drizzle ORM)                                   │
-│  Binance WebSocket + Chainlink + Polymarket CLOB            │
-│  [core-logic.md](./core-logic.md)                           │
-└─────────────────────────────────────────────────────────────┘
+```json
+{
+  "strategy": {
+    "edgeThresholdEarly": 0.06,
+    "edgeThresholdMid": 0.08,
+    "edgeThresholdLate": 0.10,
+    "minConfidence": 0.5
+  },
+  "risk": {
+    "dailyMaxLossUsdc": 100,
+    "maxOpenPositions": 5
+  }
+}
 ```
 
-## 📝 文档贡献指南
+## 开发命令
 
-- 所有技术决策都应该在 [Core Logic](./core-logic.md) 中记录设计理由
-- API 变更必须同步更新 [Backend](./backend.md) 和 [API Conventions](./api-conventions.md)
-- 新功能需要添加对应的测试文档到 [Testing](./testing.md)
+```bash
+# 后端
+bun install
+bun run dev              # Bot + Dashboard 并发启动
+bun run start            # 仅启动 Bot (port 9999)
+bun run typecheck        # TypeScript 检查
+bun run lint             # Biome 检查
+bun run test             # Vitest 测试
 
-## 🔗 外部链接
+# 前端
+cd web && bun install
+bun run dev              # Vite dev server (port 5173)
 
-- [Polymarket 文档](https://docs.polymarket.com/)
-- [Binance API 文档](https://binance-docs.github.io/apidocs/)
-- [Chainlink 数据源](https://data.chain.link/)
+# 数据库
+bunx drizzle-kit generate  # 生成迁移
+bunx drizzle-kit migrate   # 应用迁移
+```
 
----
+## 关键文件
 
-最后更新：2025年3月
+| 文件 | 作用 |
+|------|------|
+| `src/index.ts` | 入口点，主循环，启动流程 |
+| `src/pipeline/processMarket.ts` | 市场处理管道 |
+| `src/engines/edge.ts` | 边缘计算 + 交易决策 |
+| `src/trading/trader.ts` | 交易执行 (Paper/Live) |
+| `src/app/api/routes.ts` | API 路由定义 |
+| `src/db/schema.ts` | 数据库表结构 |
+
+## 测试
+
+测试集中放在 `src/__tests__/`：
+
+```bash
+bun run test                    # 全部测试
+bunx vitest run src/__tests__/edge.test.ts   # 单个文件
+bunx vitest run -t "computeEdge"             # 匹配名称
+```
+
+当前测试覆盖: **17 个文件, 313 个测试**
+
+## 部署
+
+### Docker (推荐)
+
+```bash
+docker compose up --build
+```
+
+### CI/CD
+
+GitHub Actions 工作流：
+1. Lint (`bunx biome lint`)
+2. Typecheck (`bunx tsc --noEmit`)
+3. Test (`bun run test`)
+4. Docker 构建
+
+预提交检查：`bun run lint && bun run typecheck && bun run test`
+
+## 文档导航
+
+- 根目录 `README.md` - 项目概览和快速开始
+- `AGENTS.md` - AI 代理上下文和代码规范
+- 本文档 - 技术架构和开发指南
+
+## 许可证
+
+MIT
