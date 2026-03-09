@@ -1,5 +1,5 @@
 import { OrderType, Side } from "@polymarket/clob-client";
-import { enrichPosition } from "../blockchain/accountState.ts";
+import { enrichPosition, getUsdcBalance } from "../blockchain/accountState.ts";
 import { CONFIG } from "../core/config.ts";
 import type { MarketConfig, RiskConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
@@ -18,7 +18,7 @@ import { getClient } from "./walletService.ts";
 
 const log = createLogger("execution-service");
 
-function computeKellySize(
+export function computeKellySize(
 	modelProb: number,
 	entryPrice: number,
 	balance: number,
@@ -32,7 +32,8 @@ function computeKellySize(
 	const dollarRisk = balance * kellyAdjusted;
 	const tokens = dollarRisk / entryPrice;
 	const minSize = riskConfig.kellyMinSize ?? 1;
-	return Math.min(riskConfig.maxTradeSizeUsdc, Math.max(minSize, tokens));
+	if (tokens < minSize) return 0;
+	return Math.min(riskConfig.maxTradeSizeUsdc, tokens);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -86,7 +87,7 @@ async function executeTradeInternal(
 
 		const timing = getCandleWindowTiming(options.marketConfig?.candleWindowMinutes ?? 15);
 		const account = getAccount("paper");
-		const paperBalance = account.getBalance().current;
+		const paperBalance = 1000 + account.getStats().totalPnl;
 
 		const modelProb = isUp ? signal.modelUp : signal.modelDown;
 		const kellySize = computeKellySize(modelProb, price, paperBalance, riskConfig);
@@ -95,12 +96,6 @@ async function executeTradeInternal(
 			return { success: false, reason: "kelly_negative_ev" };
 		}
 		const paperTradeSize = kellySize ?? Number(riskConfig.maxTradeSizeUsdc || 0);
-
-		const actualCost = paperTradeSize * price;
-		if (paperBalance < actualCost) {
-			log.warn(`Insufficient balance for actual cost: ${actualCost.toFixed(2)} > ${paperBalance.toFixed(2)}`);
-			return { success: false, reason: "insufficient_balance_actual_cost" };
-		}
 		const paperTradeTimestamp = new Date().toISOString();
 		const tradeId = account.addTrade(
 			{
@@ -178,8 +173,7 @@ async function executeTradeInternal(
 	}
 
 	const liveAccount = getAccount("live");
-	const liveBalance = liveAccount.getBalance().current;
-
+	const liveBalance = getUsdcBalance();
 	const liveModelProb = isUp ? signal.modelUp : signal.modelDown;
 	const liveKellySize = computeKellySize(liveModelProb, price, liveBalance, riskConfig);
 	if (liveKellySize === 0) {
@@ -187,12 +181,6 @@ async function executeTradeInternal(
 		return { success: false, reason: "kelly_negative_ev" };
 	}
 	const tradeSize = liveKellySize ?? Number(riskConfig.maxTradeSizeUsdc || 0);
-
-	const actualCost = tradeSize * price;
-	if (liveBalance < actualCost) {
-		log.warn(`Insufficient balance for actual cost: ${actualCost.toFixed(2)} > ${liveBalance.toFixed(2)}`);
-		return { success: false, reason: "insufficient_balance_actual_cost" };
-	}
 
 	try {
 		const negRisk = false;
