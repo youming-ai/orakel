@@ -10,8 +10,7 @@
       "useKellySizing": true,
       "kellyFraction": 0.25,
       "kellyMinSize": 1
-    },
-    "initialBalance": 1000
+    }
   },
   "live": {
     "risk": {
@@ -28,23 +27,15 @@
   },
   "strategy": {
     "default": {
-    "edgeThresholdEarly": 0.0353,
-    "edgeThresholdMid": 0.0751,
-    "edgeThresholdLate": 0.1115,
-    "minProbEarly": 0.5506,
-    "minProbMid": 0.5803,
-    "minProbLate": 0.6369,
-    "maxGlobalTradesPerWindow": 2,
-    "skipMarkets": [],
-    "minTimeLeftMin": 2.5107,
-    "maxTimeLeftMin": 11.7206,
-    "minVolatility15m": 0.0023,
-    "maxVolatility15m": 0.0293,
-    "candleAggregationMinutes": 1,
-    "minPriceToBeatMovePct": 0.0014,
-    "minExpectedEdge": 0.0562,
-    "maxEntryPrice": 0.5652,
-    "edgeDownBias": 0.0267
+      "edgeThresholdEarly": 0.05,
+      "edgeThresholdMid": 0.10,
+      "edgeThresholdLate": 0.20,
+      "minProbEarly": 0.55,
+      "minProbMid": 0.60,
+      "minProbLate": 0.65,
+      "maxGlobalTradesPerWindow": 2,
+      "skipMarkets": [],
+      "candleAggregationMinutes": 1
     }
   }
 }
