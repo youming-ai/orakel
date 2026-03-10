@@ -6,8 +6,7 @@
       "dailyMaxLossUsdc": 100,
       "maxOpenPositions": 2,
       "minLiquidity": 5000,
-      "maxTradesPerWindow": 2,
-      "takeProfitPercent": 0.15
+      "maxTradesPerWindow": 2
     }
   },
   "live": {
@@ -17,8 +16,7 @@
       "dailyMaxLossUsdc": 100,
       "maxOpenPositions": 2,
       "minLiquidity": 5000,
-      "maxTradesPerWindow": 2,
-      "takeProfitPercent": 0.15
+      "maxTradesPerWindow": 2
     }
   },
   "strategy": {

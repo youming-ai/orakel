@@ -78,10 +78,12 @@ async function main(): Promise<void> {
 	log.info(`End time: ${new Date(options.endTimeMs).toISOString()}`);
 	log.info("");
 
+	const explicitStrategy =
+		options.strategyKey !== "default" ? await loadStrategyFromConfig(options.strategyKey) : undefined;
 	const results = await runMultiPeriodBacktest({
 		marketIds: options.markets,
 		periods: options.periods,
-		strategy: await loadStrategyFromConfig(options.strategyKey),
+		strategy: explicitStrategy,
 		fillOptions: options.fillOptions,
 		endTimeMs: options.endTimeMs,
 	});

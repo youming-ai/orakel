@@ -25,8 +25,6 @@ export interface RiskConfig {
 	maxOpenPositions: number;
 	minLiquidity: number;
 	maxTradesPerWindow: number;
-	/** Take-profit threshold as fraction (0.15 = 15% gain). Omit or 0 to disable. */
-	takeProfitPercent?: number;
 }
 
 export interface StrategyConfig {

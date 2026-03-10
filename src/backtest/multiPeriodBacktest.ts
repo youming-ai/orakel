@@ -1,3 +1,4 @@
+import { getStrategyForMarket } from "../core/config.ts";
 import type { MarketConfig, StrategyConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import type { Candle } from "../core/marketDataTypes.ts";
@@ -14,7 +15,14 @@ import {
 	resolveWinningSide,
 	summarizeReplayTrades,
 } from "./replayCore.ts";
-import type { ReplayFillOptions } from "./replayPricing.ts";
+import {
+	applyFixedFillPricing,
+	applyReplayFillPricing,
+	buildReplayMarketPricingContext,
+	type ReplayFillOptions,
+	type ReplayMarketPricingContext,
+	resolveHistoricalPolyPrices,
+} from "./replayPricing.ts";
 
 const log = createLogger("multi-period-backtest");
 const MIN_HISTORY_CANDLES = 240;
@@ -22,7 +30,7 @@ const MIN_HISTORY_CANDLES = 240;
 export interface BacktestOptions {
 	marketIds: string[];
 	periods: Array<{ name: string; days: number }>;
-	strategy: StrategyConfig;
+	strategy?: StrategyConfig;
 	fillOptions: ReplayFillOptions;
 	endTimeMs?: number;
 }
@@ -79,11 +87,56 @@ export async function runMultiPeriodBacktest(
 					continue;
 				}
 
-				const trades = replayMarketWithStrategy({
+				const marketStrategy = options.strategy ?? getStrategyForMarket(market.id);
+				const needsHistoricalPricing =
+					options.fillOptions.quoteMode === "historical" || options.fillOptions.fillMode === "historical";
+				let windowStartFilter: Set<number> | undefined;
+
+				if (needsHistoricalPricing && options.fillOptions.quoteScope === "traded") {
+					const baselineTrades = replayMarketWithStrategy({
+						market,
+						candles,
+						strategy: marketStrategy,
+						fillOptions: {
+							...options.fillOptions,
+							quoteMode: "fixed",
+						},
+						context: {
+							marketIndex: new Map(),
+							tokenHistoryByTokenId: new Map(),
+						},
+					});
+					windowStartFilter = new Set(baselineTrades.map((trade) => trade.windowStartMs));
+				}
+
+				const pricingContext = await buildReplayMarketPricingContext({
+					market,
+					startTimeMs,
+					endTimeMs,
+					options: options.fillOptions,
+					windowStartFilter,
+				});
+
+				const rawTrades = replayMarketWithStrategy({
 					market,
 					candles,
-					strategy: options.strategy,
+					strategy: marketStrategy,
+					fillOptions: options.fillOptions,
+					context: pricingContext,
+					windowStartFilter,
 				});
+
+				let trades: ReplayTrade[];
+				if (options.fillOptions.fillMode === "historical") {
+					trades = await applyReplayFillPricing({
+						market,
+						trades: rawTrades,
+						context: pricingContext,
+						options: options.fillOptions,
+					});
+				} else {
+					trades = applyFixedFillPricing(rawTrades, options.fillOptions);
+				}
 
 				const summary = summarizeReplayTrades(trades);
 
@@ -126,12 +179,16 @@ function replayMarketWithStrategy(params: {
 	market: MarketConfig;
 	candles: Candle[];
 	strategy: StrategyConfig;
+	fillOptions: ReplayFillOptions;
+	context: ReplayMarketPricingContext;
+	windowStartFilter?: Set<number>;
 }): ReplayTrade[] {
-	const { market, candles, strategy } = params;
+	const { market, candles, strategy, fillOptions, context, windowStartFilter } = params;
 	const trades: ReplayTrade[] = [];
 	const windows = groupCandlesByWindow(candles, market.candleWindowMinutes);
 
 	for (const [windowStartMs, windowCandles] of windows) {
+		if (windowStartFilter && !windowStartFilter.has(windowStartMs)) continue;
 		const priceToBeat = getWindowPriceToBeat(windowCandles);
 		const settlePrice = getWindowSettlePrice(windowCandles);
 		if (priceToBeat === null || settlePrice === null) continue;
@@ -150,6 +207,15 @@ function replayMarketWithStrategy(params: {
 
 			const windowEndMs = windowStartMs + market.candleWindowMinutes * 60_000;
 			const timeLeftMin = Math.max(0, (windowEndMs - candle.closeTime) / 60_000);
+			const historicalPoly =
+				fillOptions.quoteMode === "historical"
+					? resolveHistoricalPolyPrices({
+							market,
+							windowStartMs,
+							entryTimeMs: candle.closeTime,
+							context,
+						})
+					: null;
 
 			const rawMarketData = buildReplayRawMarketData({
 				market,
@@ -157,8 +223,12 @@ function replayMarketWithStrategy(params: {
 				currentPrice,
 				timeLeftMin,
 				windowStartMs,
-				polyPrices: { up: 0.5, down: 0.5 },
-				marketSlug: `backtest-${market.id}-${windowStartMs}`,
+				polyPrices:
+					historicalPoly && historicalPoly.up !== null && historicalPoly.down !== null
+						? { up: historicalPoly.up, down: historicalPoly.down }
+						: undefined,
+				marketSlug: historicalPoly?.marketSlug ?? `backtest-${market.id}-${windowStartMs}`,
+				tokens: historicalPoly?.tokens,
 			});
 
 			const mockConfig = {

@@ -262,58 +262,6 @@ export class AccountStatsManager {
 		return result;
 	}
 
-	/**
-	 * Resolve a specific trade by ID as a loss (used by stop-loss).
-	 * Returns true if the trade was found and resolved, false otherwise.
-	 */
-	resolveTradeAsLoss(tradeId: string, reason: string): boolean {
-		const trade = this.state.trades.find((t) => t.id === tradeId && !t.resolved);
-		if (!trade) return false;
-
-		const pnl = -trade.size * trade.price;
-		trade.resolved = true;
-		trade.won = false;
-		trade.pnl = pnl;
-		trade.settlePrice = null;
-		this.state.totalPnl += pnl;
-		this.state.losses++;
-		const drawdown = -this.state.totalPnl;
-		if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
-		this.persistDailyPnl(pnl, false);
-		void persistTradeEntry(this.mode, trade).catch((err) => {
-			this.log.error(`Failed to persist stop-loss trade ${trade.id}:`, err);
-		});
-		this.log.warn(`Trade ${tradeId} resolved as loss by stop-loss: ${reason} (pnl=${pnl.toFixed(2)})`);
-		void this.save();
-		return true;
-	}
-
-	/**
-	 * Resolve a specific trade by ID as an early win (used by take-profit).
-	 * PnL = size * (sellPrice - entryPrice) instead of the full binary payout.
-	 */
-	resolveTradeAsEarlyWin(tradeId: string, sellPrice: number, reason: string): boolean {
-		const trade = this.state.trades.find((t) => t.id === tradeId && !t.resolved);
-		if (!trade) return false;
-
-		const pnl = trade.size * (sellPrice - trade.price);
-		trade.resolved = true;
-		trade.won = true;
-		trade.pnl = pnl;
-		trade.settlePrice = null;
-		this.state.totalPnl += pnl;
-		this.state.wins++;
-		const drawdown = -this.state.totalPnl;
-		if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
-		this.persistDailyPnl(pnl, true);
-		void persistTradeEntry(this.mode, trade).catch((err) => {
-			this.log.error(`Failed to persist take-profit trade ${trade.id}:`, err);
-		});
-		this.log.info(`Trade ${tradeId} take-profit at ${sellPrice.toFixed(4)}: ${reason} (pnl=${pnl.toFixed(2)})`);
-		void this.save();
-		return true;
-	}
-
 	canTradeWithStopCheck(): { canTrade: boolean; reason?: string } {
 		if (this.isStopped()) {
 			return { canTrade: false, reason: "stop_loss_triggered" };

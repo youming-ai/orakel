@@ -152,7 +152,7 @@ export class OrderManager {
 			const previousStatus = order.status;
 			order.status = "cancelled";
 			order.lastChecked = Date.now();
-			log.info(`Order ${orderId.slice(0, 12)} cancelled by stop-loss`);
+			log.info(`Order ${orderId.slice(0, 12)} cancelled`);
 			if (this.onStatusChange) {
 				this.onStatusChange(order, "cancelled", previousStatus);
 			}

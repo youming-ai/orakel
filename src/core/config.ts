@@ -58,7 +58,6 @@ const RiskConfigSchema = z
 		maxOpenPositions: z.coerce.number().optional(),
 		minLiquidity: z.coerce.number().optional(),
 		maxTradesPerWindow: z.coerce.number().optional(),
-		takeProfitPercent: z.coerce.number().min(0).max(1).optional(),
 	})
 	.partial()
 	.transform((value) => ({ ...RISK_DEFAULTS, ...value }));

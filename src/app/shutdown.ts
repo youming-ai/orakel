@@ -2,7 +2,6 @@ import { createLogger } from "../core/logger.ts";
 import { setLiveRunning, setPaperRunning } from "../core/state.ts";
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
 import { closeDb } from "../db/client.ts";
-import { cleanupStopLossMonitors } from "../runtime/mainLoop.ts";
 import type { OnchainRuntime } from "../runtime/onchainRuntime.ts";
 import type { LiveSettler } from "../trading/liveSettler.ts";
 import type { OrderManager } from "../trading/orderManager.ts";
@@ -50,7 +49,6 @@ export function registerShutdownHandlers({
 			handle.close();
 		}
 		onchainRuntime.closePipelines();
-		cleanupStopLossMonitors();
 
 		const redeemTimerHandle = getRedeemTimerHandle();
 		if (redeemTimerHandle) {
