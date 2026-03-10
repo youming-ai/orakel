@@ -31,8 +31,6 @@ export interface PersistedAccountState {
 	losses: number;
 	totalPnl: number;
 	maxDrawdown: number;
-	dailyPnl: DailyPnl[];
-	dailyCountedTradeIds: string[];
 	stoppedAt: string | null;
 	stopReason: string | null;
 }

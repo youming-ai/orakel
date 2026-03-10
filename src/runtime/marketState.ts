@@ -22,6 +22,8 @@ export function createMarketStateMap(markets: ReadonlyArray<{ id: string }>): Ma
 			{
 				prevSpotPrice: null,
 				prevCurrentPrice: null,
+				prevMarketUp: null,
+				prevMarketDown: null,
 				priceToBeatState: { slug: null, value: null, setAtMs: null },
 			},
 		]),

@@ -19,6 +19,8 @@ interface ProcessMarketParams {
 export interface MarketState {
 	prevSpotPrice: number | null;
 	prevCurrentPrice: number | null;
+	prevMarketUp: number | null;
+	prevMarketDown: number | null;
 	priceToBeatState: {
 		slug: string | null;
 		value: number | null;
@@ -107,6 +109,8 @@ export async function processMarket({
 
 	state.prevSpotPrice = data.spotPrice ?? state.prevSpotPrice;
 	state.prevCurrentPrice = currentPrice ?? state.prevCurrentPrice;
+	state.prevMarketUp = result.marketUp ?? state.prevMarketUp;
+	state.prevMarketDown = result.marketDown ?? state.prevMarketDown;
 
 	const signalPayload = persistSignal({
 		market,

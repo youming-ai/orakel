@@ -6,6 +6,7 @@ import {
 	aggregateCandles,
 	applyTimeAwareness,
 	blendProbabilities,
+	computeAdaptiveTaWeight,
 	computeRealizedVolatility,
 	estimatePriceToBeatProbability,
 	scoreDirection,
@@ -176,7 +177,13 @@ export function computeMarketDecision(
 		Number.isFinite(currentPrice ?? lastPrice)
 			? ((currentPrice ?? lastPrice) - priceToBeat) / priceToBeat
 			: null;
-	const blended = blendProbabilities(timeAware.adjustedUp, volImpliedUp);
+	const adaptiveTaWeight = computeAdaptiveTaWeight(
+		effectiveTimeLeftMin,
+		market.candleWindowMinutes,
+		strategy.taWeightEarly ?? 0.7,
+		strategy.taWeightLate ?? 0.3,
+	);
+	const blended = blendProbabilities(timeAware.adjustedUp, volImpliedUp, adaptiveTaWeight);
 	const finalUp = blended.finalUp;
 	const finalDown = blended.finalDown;
 
@@ -190,16 +197,20 @@ export function computeMarketDecision(
 		edgeDownBias: strategy.edgeDownBias ?? 0,
 	});
 
-	// Apply divergence-based edge boost when cross-exchange price divergence exceeds threshold
+	// Apply directional divergence-based edge boost when cross-exchange price divergence exceeds threshold.
+	// If Binance price > Bybit price, the primary exchange sees higher value → boost UP edge only.
+	// If Binance price < Bybit price → boost DOWN edge only.
 	let boostedEdge = edge;
-	if (priceDivergence !== null && priceDivergence > divergenceThreshold) {
+	if (priceDivergence !== null && priceDivergence > divergenceThreshold && aggregatedPrice?.divergence) {
 		const boostFactor = strategy.divergenceBoostFactor ?? 0.5;
 		const boostMax = strategy.divergenceBoostMax ?? 0.02;
 		const boost = Math.min(priceDivergence * boostFactor, boostMax);
+		const { price1, price2 } = aggregatedPrice.divergence;
+		const binanceHigher = price1 > price2;
 		boostedEdge = {
 			...edge,
-			edgeUp: edge.edgeUp !== null ? edge.edgeUp + boost : null,
-			edgeDown: edge.edgeDown !== null ? edge.edgeDown + boost : null,
+			edgeUp: edge.edgeUp !== null ? edge.edgeUp + (binanceHigher ? boost : 0) : null,
+			edgeDown: edge.edgeDown !== null ? edge.edgeDown + (binanceHigher ? 0 : boost) : null,
 		};
 	}
 

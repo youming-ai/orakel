@@ -136,6 +136,35 @@ export class OrderManager {
 		}
 	}
 
+	/**
+	 * Cancel an active order via CLOB client. Returns true if cancellation was sent.
+	 */
+	async cancelOrder(orderId: string): Promise<boolean> {
+		const order = this.orders.get(orderId);
+		if (!order || order.status !== "placed") return false;
+		if (!this.client) {
+			log.warn(`Cannot cancel order ${orderId.slice(0, 12)}: no CLOB client`);
+			return false;
+		}
+
+		try {
+			await this.client.cancelOrder({ orderID: orderId });
+			const previousStatus = order.status;
+			order.status = "cancelled";
+			order.lastChecked = Date.now();
+			log.info(`Order ${orderId.slice(0, 12)} cancelled by stop-loss`);
+			if (this.onStatusChange) {
+				this.onStatusChange(order, "cancelled", previousStatus);
+			}
+			void syncTrackedOrderToDb(order);
+			return true;
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			log.error(`Failed to cancel order ${orderId.slice(0, 12)}:`, msg);
+			return false;
+		}
+	}
+
 	prune(): void {
 		const cutoff = Date.now() - 20 * 60_000;
 		for (const [id, order] of this.orders) {

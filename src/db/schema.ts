@@ -46,8 +46,6 @@ export const botState = pgTable(
 		totalPnl: real("total_pnl").notNull().default(0),
 		stoppedAt: text("stopped_at"),
 		stopReason: text("stop_reason"),
-		dailyPnl: text("daily_pnl").notNull().default("[]"),
-		dailyCountedTradeIds: text("daily_counted_trade_ids").notNull().default("[]"),
 	},
 	(table) => ({
 		pk: primaryKey({ columns: [table.mode] }),
@@ -101,4 +99,53 @@ export const knownCtfTokens = pgTable("known_ctf_tokens", {
 	side: text("side").notNull(),
 	conditionId: text("condition_id"),
 	firstSeenAt: integer("first_seen_at").default(sql`floor(extract(epoch from now()))`),
+});
+
+export const dailyStats = pgTable(
+	"daily_stats",
+	{
+		id: serial("id").primaryKey(),
+		mode: text("mode").notNull(),
+		date: text("date").notNull(),
+		pnl: real("pnl").notNull().default(0),
+		trades: integer("trades").notNull().default(0),
+		wins: integer("wins").notNull().default(0),
+		losses: integer("losses").notNull().default(0),
+		maxDrawdown: real("max_drawdown").default(0),
+		createdAt: integer("created_at").default(sql`floor(extract(epoch from now()))`),
+	},
+	(table) => ({
+		uniqueModeDate: unique().on(table.mode, table.date),
+	}),
+);
+
+export const balanceSnapshots = pgTable("balance_snapshots", {
+	id: serial("id").primaryKey(),
+	timestamp: integer("timestamp").notNull(),
+	usdcBalance: real("usdc_balance").notNull(),
+	usdcRaw: text("usdc_raw"),
+	blockNumber: integer("block_number"),
+	positions: text("positions"),
+	createdAt: integer("created_at").default(sql`floor(extract(epoch from now()))`),
+});
+
+export const signalLog = pgTable("signal_log", {
+	id: serial("id").primaryKey(),
+	timestamp: text("timestamp").notNull(),
+	marketId: text("market_id").notNull(),
+	marketSlug: text("market_slug"),
+	phase: text("phase"),
+	action: text("action").notNull(),
+	side: text("side"),
+	edge: real("edge"),
+	modelUp: real("model_up"),
+	modelDown: real("model_down"),
+	marketUp: real("market_up"),
+	marketDown: real("market_down"),
+	spotPrice: real("spot_price"),
+	priceToBeat: real("price_to_beat"),
+	volatility15m: real("volatility_15m"),
+	blendSource: text("blend_source"),
+	confidence: text("confidence"),
+	createdAt: integer("created_at").default(sql`floor(extract(epoch from now()))`),
 });

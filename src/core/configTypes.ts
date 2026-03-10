@@ -25,6 +25,8 @@ export interface RiskConfig {
 	maxOpenPositions: number;
 	minLiquidity: number;
 	maxTradesPerWindow: number;
+	/** Take-profit threshold as fraction (0.15 = 15% gain). Omit or 0 to disable. */
+	takeProfitPercent?: number;
 }
 
 export interface StrategyConfig {
@@ -57,6 +59,14 @@ export interface StrategyConfig {
 	minExpectedEdge?: number;
 	/** Maximum normalized market price for entry — rejects trades where the chosen side's implied prob is too high (default: undefined = disabled) */
 	maxEntryPrice?: number;
+	/** TA weight at window start when blending TA and PtB probabilities (default 0.7) */
+	taWeightEarly?: number;
+	/** TA weight at window end when blending TA and PtB probabilities (default 0.3) */
+	taWeightLate?: number;
+	/** Edge threshold multiplier in CHOP regime (default 1.5 = 50% higher bar) */
+	chopEdgeMultiplier?: number;
+	/** Skip trades entirely in CHOP regime (default false) */
+	skipChop?: boolean;
 }
 
 export interface AppConfig {

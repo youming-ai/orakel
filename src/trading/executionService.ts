@@ -28,7 +28,13 @@ function computeLimitPrice(
 	if (!Number.isFinite(marketPrice)) {
 		return { error: "price_not_finite" };
 	}
-	const limitDiscount = Number(riskConfig.limitDiscount ?? 0.1);
+
+	// Phase-adaptive limit discount: LATE uses smaller discount for better fill rate,
+	// EARLY uses full discount since there's more time to get filled.
+	const maxDiscount = Number(riskConfig.limitDiscount ?? 0.1);
+	const phaseMultiplier = signal.phase === "LATE" ? 0.5 : signal.phase === "MID" ? 0.75 : 1.0;
+	const limitDiscount = Math.max(0.01, maxDiscount * phaseMultiplier);
+
 	const priceRaw = Math.max(0.01, marketPrice - limitDiscount);
 	const price = Math.round(priceRaw * 100) / 100;
 

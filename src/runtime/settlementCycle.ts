@@ -1,6 +1,7 @@
 import type { MarketConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import { getCandleWindowTiming } from "../core/utils.ts";
+import { fetchChainlinkPrice } from "../data/chainlink.ts";
 import type { MarketState } from "../pipeline/processMarket.ts";
 import type { AccountStatsManager } from "../trading/accountStats.ts";
 import { collectLatestPrices } from "./marketState.ts";
@@ -16,6 +17,34 @@ interface SettlementCycleParams {
 	liveAccount: AccountStatsManager;
 }
 
+/**
+ * Fetch Chainlink on-chain price for settlement. Polymarket resolves using Chainlink,
+ * so using the same source avoids mismatches with our internal settlement.
+ * Falls back to the aggregated latestPrices if Chainlink fetch fails.
+ */
+export async function fetchSettlementPrice(
+	market: MarketConfig,
+	fallbackPrices: Map<string, number>,
+): Promise<number | null> {
+	if (market.resolutionSource === "chainlink") {
+		try {
+			const tick = await fetchChainlinkPrice({
+				aggregator: market.chainlink.aggregator,
+				decimals: market.chainlink.decimals,
+			});
+			if (tick.price !== null) {
+				log.info(`[${market.id}] Chainlink settlement price: $${tick.price.toFixed(market.pricePrecision)}`);
+				return tick.price;
+			}
+		} catch (err) {
+			log.warn(
+				`[${market.id}] Chainlink fetch failed, using fallback: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+	return fallbackPrices.get(market.id) ?? null;
+}
+
 export async function runSettlementCycle({
 	markets,
 	states,
@@ -23,8 +52,6 @@ export async function runSettlementCycle({
 	paperAccount,
 	liveAccount,
 }: SettlementCycleParams): Promise<Map<string, number>> {
-	// Settlement uses the previous tick's price by design. The window closes before
-	// the new tick processes, so the last known price at window-end is the correct settle price.
 	const latestPrices = collectLatestPrices(markets, states);
 
 	for (const market of markets) {
@@ -48,12 +75,19 @@ export async function runSettlementCycle({
 		}
 
 		if (prevStart !== undefined && prevStart !== timing.startMs && latestPrices.size > 0) {
-			const paperResolved = await paperAccount.resolveTrades(prevStart, latestPrices, market.id);
+			// At window boundary, fetch Chainlink price for accurate settlement
+			const settlementPrice = await fetchSettlementPrice(market, latestPrices);
+			const settlePrices = new Map(latestPrices);
+			if (settlementPrice !== null) {
+				settlePrices.set(market.id, settlementPrice);
+			}
+
+			const paperResolved = await paperAccount.resolveTrades(prevStart, settlePrices, market.id);
 			if (paperResolved > 0) {
 				log.info(`[${market.id}] Paper window settled: ${paperResolved}`);
 			}
 
-			const liveResolved = await liveAccount.resolveTrades(prevStart, latestPrices, market.id);
+			const liveResolved = await liveAccount.resolveTrades(prevStart, settlePrices, market.id);
 			if (liveResolved > 0) {
 				log.info(`[${market.id}] Live window settled: ${liveResolved}`);
 			}

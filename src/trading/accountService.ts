@@ -1,12 +1,12 @@
 import { CONFIG } from "../core/config.ts";
 import type { RiskConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
+import { dailyStatsQueries } from "../db/queries.ts";
 import {
 	createEmptyAccountState,
 	loadAccountState,
 	persistTradeEntry,
 	saveAccountState,
-	syncAccountTradeLog,
 } from "./accountPersistence.ts";
 import type {
 	AccountMode,
@@ -19,8 +19,8 @@ import type {
 export class AccountStatsManager {
 	private mode: AccountMode;
 	private state: PersistedAccountState;
-	private dailyCountedTradeIdSet = new Set<string>();
 	private log: ReturnType<typeof createLogger>;
+	private todayCache = { date: "", pnl: 0, trades: 0 };
 
 	constructor(mode: AccountMode) {
 		this.mode = mode;
@@ -35,10 +35,14 @@ export class AccountStatsManager {
 	async init(): Promise<void> {
 		try {
 			this.state = await loadAccountState(this.mode);
-			for (const id of this.state.dailyCountedTradeIds) {
-				this.dailyCountedTradeIdSet.add(id);
+			const todayRow = await dailyStatsQueries.getToday(this.mode);
+			if (todayRow) {
+				this.todayCache = {
+					date: todayRow.date,
+					pnl: todayRow.pnl,
+					trades: todayRow.trades,
+				};
 			}
-			this.syncTradeLog();
 			this.log.info(`Loaded ${this.state.trades.length} trades, pnl=${this.state.totalPnl.toFixed(2)}`);
 		} catch (err) {
 			this.log.error("Failed to load from database, using defaults:", err);
@@ -75,7 +79,6 @@ export class AccountStatsManager {
 		};
 
 		this.state.trades.push(trade);
-		this.syncTradeLog();
 		void persistTradeEntry(this.mode, trade, status)
 			.then(() => this.save())
 			.catch((err) => {
@@ -143,7 +146,7 @@ export class AccountStatsManager {
 				if (trade.pnl > 0) this.state.wins++;
 				else this.state.losses++;
 				this.state.totalPnl += trade.pnl;
-				this.updateDailyPnl(trade, trade.pnl);
+				this.persistDailyPnl(trade.pnl, trade.won);
 				void persistTradeEntry(this.mode, trade).catch((err) => {
 					this.log.error(`Failed to persist trade ${trade.id}:`, err);
 				});
@@ -152,7 +155,6 @@ export class AccountStatsManager {
 			this.log.warn(`Force-resolved stuck trade ${trade.id}`);
 		}
 		if (resolvedCount > 0) {
-			this.syncTradeLog();
 			await this.save();
 		}
 		return resolvedCount;
@@ -170,26 +172,25 @@ export class AccountStatsManager {
 		else this.state.losses++;
 		const drawdown = -this.state.totalPnl;
 		if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
-		this.updateDailyPnl(trade, pnl);
+		this.persistDailyPnl(pnl, won);
 		void persistTradeEntry(this.mode, trade).catch((err) => {
 			this.log.error(`Failed to persist trade ${trade.id}:`, err);
 		});
-		this.syncTradeLog();
 	}
 
-	private updateDailyPnl(trade: TradeEntry, pnl: number): void {
+	private persistDailyPnl(pnl: number, won: boolean | null): void {
 		const date = new Date().toDateString();
-		const existing = this.state.dailyPnl.find((item) => item.date === date);
-		if (existing) {
-			existing.pnl += pnl;
-			existing.trades++;
-		} else {
-			this.state.dailyPnl.push({ date, pnl, trades: 1 });
+		if (this.todayCache.date !== date) {
+			this.todayCache = { date, pnl: 0, trades: 0 };
 		}
-		if (!this.dailyCountedTradeIdSet.has(trade.id)) {
-			this.dailyCountedTradeIdSet.add(trade.id);
-			this.state.dailyCountedTradeIds.push(trade.id);
-		}
+		this.todayCache.pnl += pnl;
+		this.todayCache.trades++;
+
+		const winsDelta = won === true ? 1 : 0;
+		const lossesDelta = won === false ? 1 : 0;
+		void dailyStatsQueries.upsertDaily(this.mode, date, pnl, 1, winsDelta, lossesDelta).catch((err) => {
+			this.log.error("Failed to persist daily stats:", err);
+		});
 	}
 
 	getMaxDrawdown(): number {
@@ -213,10 +214,12 @@ export class AccountStatsManager {
 
 	getTodayStats(): { pnl: number; trades: number; limit: number } {
 		const date = new Date().toDateString();
-		const today = this.state.dailyPnl.find((item) => item.date === date);
+		if (this.todayCache.date !== date) {
+			this.todayCache = { date, pnl: 0, trades: 0 };
+		}
 		return {
-			pnl: today?.pnl ?? 0,
-			trades: today?.trades ?? 0,
+			pnl: this.todayCache.pnl,
+			trades: this.todayCache.trades,
 			limit: this.getRiskConfig().dailyMaxLossUsdc,
 		};
 	}
@@ -259,6 +262,58 @@ export class AccountStatsManager {
 		return result;
 	}
 
+	/**
+	 * Resolve a specific trade by ID as a loss (used by stop-loss).
+	 * Returns true if the trade was found and resolved, false otherwise.
+	 */
+	resolveTradeAsLoss(tradeId: string, reason: string): boolean {
+		const trade = this.state.trades.find((t) => t.id === tradeId && !t.resolved);
+		if (!trade) return false;
+
+		const pnl = -trade.size * trade.price;
+		trade.resolved = true;
+		trade.won = false;
+		trade.pnl = pnl;
+		trade.settlePrice = null;
+		this.state.totalPnl += pnl;
+		this.state.losses++;
+		const drawdown = -this.state.totalPnl;
+		if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
+		this.persistDailyPnl(pnl, false);
+		void persistTradeEntry(this.mode, trade).catch((err) => {
+			this.log.error(`Failed to persist stop-loss trade ${trade.id}:`, err);
+		});
+		this.log.warn(`Trade ${tradeId} resolved as loss by stop-loss: ${reason} (pnl=${pnl.toFixed(2)})`);
+		void this.save();
+		return true;
+	}
+
+	/**
+	 * Resolve a specific trade by ID as an early win (used by take-profit).
+	 * PnL = size * (sellPrice - entryPrice) instead of the full binary payout.
+	 */
+	resolveTradeAsEarlyWin(tradeId: string, sellPrice: number, reason: string): boolean {
+		const trade = this.state.trades.find((t) => t.id === tradeId && !t.resolved);
+		if (!trade) return false;
+
+		const pnl = trade.size * (sellPrice - trade.price);
+		trade.resolved = true;
+		trade.won = true;
+		trade.pnl = pnl;
+		trade.settlePrice = null;
+		this.state.totalPnl += pnl;
+		this.state.wins++;
+		const drawdown = -this.state.totalPnl;
+		if (drawdown > this.state.maxDrawdown) this.state.maxDrawdown = drawdown;
+		this.persistDailyPnl(pnl, true);
+		void persistTradeEntry(this.mode, trade).catch((err) => {
+			this.log.error(`Failed to persist take-profit trade ${trade.id}:`, err);
+		});
+		this.log.info(`Trade ${tradeId} take-profit at ${sellPrice.toFixed(4)}: ${reason} (pnl=${pnl.toFixed(2)})`);
+		void this.save();
+		return true;
+	}
+
 	canTradeWithStopCheck(): { canTrade: boolean; reason?: string } {
 		if (this.isStopped()) {
 			return { canTrade: false, reason: "stop_loss_triggered" };
@@ -297,9 +352,8 @@ export class AccountStatsManager {
 
 	resetData(): void {
 		this.state = createEmptyAccountState();
-		this.dailyCountedTradeIdSet.clear();
+		this.todayCache = { date: "", pnl: 0, trades: 0 };
 		void this.save();
-		this.syncTradeLog();
 		this.log.info("Data reset");
 	}
 
@@ -307,13 +361,5 @@ export class AccountStatsManager {
 		if (this.state.trades.length <= maxCount) return;
 		this.state.trades = this.state.trades.slice(-maxCount);
 		void this.save();
-	}
-
-	private syncTradeLog(): void {
-		try {
-			syncAccountTradeLog(this.mode, this.state);
-		} catch (err) {
-			this.log.warn("syncTradeLog failed:", err);
-		}
 	}
 }

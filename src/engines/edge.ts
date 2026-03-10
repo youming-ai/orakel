@@ -142,12 +142,18 @@ export function decide(params: {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `vol_above_${strategy.maxVolatility15m}` };
 	}
 
+	if (strategy.skipChop === true && regime === "CHOP") {
+		return { action: "NO_TRADE", side: null, phase, regime, reason: "chop_regime" };
+	}
+
+	const chopMultiplier = regime === "CHOP" ? (strategy.chopEdgeMultiplier ?? 1.5) : 1;
+
 	const threshold =
-		phase === "EARLY"
+		(phase === "EARLY"
 			? Number(strategy?.edgeThresholdEarly ?? 0.05)
 			: phase === "MID"
 				? Number(strategy?.edgeThresholdMid ?? 0.1)
-				: Number(strategy?.edgeThresholdLate ?? 0.2);
+				: Number(strategy?.edgeThresholdLate ?? 0.2)) * chopMultiplier;
 
 	const minProb =
 		phase === "EARLY"
@@ -163,7 +169,7 @@ export function decide(params: {
 		priceToBeatMovePct === null ? null : bestSide === "UP" ? priceToBeatMovePct : -priceToBeatMovePct;
 
 	if (bestEdge < threshold) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: `edge_below_${threshold}` };
+		return { action: "NO_TRADE", side: null, phase, regime, reason: `edge_below_${+threshold.toPrecision(10)}` };
 	}
 
 	if (bestModel !== null && bestModel < minProb) {

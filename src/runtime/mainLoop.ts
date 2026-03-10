@@ -11,6 +11,7 @@ import type { MarketState, ProcessMarketResult } from "../pipeline/processMarket
 import type { AccountStatsManager } from "../trading/accountStats.ts";
 import type { OrderManager } from "../trading/orderManager.ts";
 import { DEFAULT_STOP_LOSS_CONFIG, type StopLossConfig, StopLossMonitor } from "../trading/stopLoss.ts";
+import { type TakeProfitConfig, TakeProfitMonitor } from "../trading/takeProfit.ts";
 import type { StreamHandles } from "../trading/tradeTypes.ts";
 import type { LiveSettlerController } from "./liveSettlerRuntime.ts";
 import type { OnchainRuntime } from "./onchainRuntime.ts";
@@ -71,16 +72,24 @@ interface MainLoopParams {
 	enableStopLoss?: boolean;
 	stopLossConfig?: StopLossConfig;
 	onStopLoss?: (mode: "paper" | "live", tradeId: string, reason: string) => void;
+	enableTakeProfit?: boolean;
+	takeProfitConfig?: TakeProfitConfig;
+	onTakeProfit?: (mode: "paper" | "live", tradeId: string, sellPrice: number, reason: string) => void;
 }
 
 // Module-level references for shutdown cleanup
 let activeStopLossMonitors: StopLossMonitor[] = [];
+let activeTakeProfitMonitors: TakeProfitMonitor[] = [];
 
 export function cleanupStopLossMonitors(): void {
 	for (const monitor of activeStopLossMonitors) {
 		monitor.stop();
 	}
 	activeStopLossMonitors = [];
+	for (const monitor of activeTakeProfitMonitors) {
+		monitor.stop();
+	}
+	activeTakeProfitMonitors = [];
 }
 
 async function runMaintenance(paperAccount: AccountStatsManager, liveAccount: AccountStatsManager): Promise<void> {
@@ -184,27 +193,43 @@ export async function runMainLoop({
 	enableStopLoss = true,
 	stopLossConfig,
 	onStopLoss,
+	enableTakeProfit = false,
+	takeProfitConfig,
+	onTakeProfit,
 }: MainLoopParams): Promise<never> {
 	let consecutiveAllFails = 0;
 	let lastPruneMs = 0;
 
+	const buildPriceMap = (): Map<string, number> => {
+		const prices = new Map<string, number>();
+		for (const market of markets) {
+			const state = states.get(market.id);
+			if (state?.prevCurrentPrice !== null && state?.prevCurrentPrice !== undefined) {
+				prices.set(market.id, state.prevCurrentPrice);
+			}
+		}
+		return prices;
+	};
+
+	const buildTokenPriceMap = (): Map<string, { up: number | null; down: number | null }> => {
+		const prices = new Map<string, { up: number | null; down: number | null }>();
+		for (const market of markets) {
+			const state = states.get(market.id);
+			if (state) {
+				prices.set(market.id, { up: state.prevMarketUp, down: state.prevMarketDown });
+			}
+		}
+		return prices;
+	};
+
 	if (enableStopLoss) {
 		const slConfig = stopLossConfig ?? DEFAULT_STOP_LOSS_CONFIG;
-		const buildPriceMap = (): Map<string, number> => {
-			const prices = new Map<string, number>();
-			for (const market of markets) {
-				const state = states.get(market.id);
-				if (state?.prevCurrentPrice !== null && state?.prevCurrentPrice !== undefined) {
-					prices.set(market.id, state.prevCurrentPrice);
-				}
-			}
-			return prices;
-		};
 
 		const paperMonitor = new StopLossMonitor({
 			config: slConfig,
 			onStopLoss: (tradeId, reason) => {
 				log.warn(`[PAPER] Stop loss triggered: ${tradeId} - ${reason}`);
+				paperAccount.resolveTradeAsLoss(tradeId, reason);
 				onStopLoss?.("paper", tradeId, reason);
 			},
 			getPendingTrades: () => paperAccount.getPendingTrades(),
@@ -215,6 +240,11 @@ export async function runMainLoop({
 			config: slConfig,
 			onStopLoss: (tradeId, reason) => {
 				log.warn(`[LIVE] Stop loss triggered: ${tradeId} - ${reason}`);
+				liveAccount.resolveTradeAsLoss(tradeId, reason);
+				// Cancel the corresponding live order if it's still placed (not yet filled)
+				void orderManager.cancelOrder(tradeId).catch((err) => {
+					log.error(`Failed to cancel order on stop-loss: ${err instanceof Error ? err.message : String(err)}`);
+				});
 				onStopLoss?.("live", tradeId, reason);
 			},
 			getPendingTrades: () => liveAccount.getPendingTrades(),
@@ -224,6 +254,37 @@ export async function runMainLoop({
 		paperMonitor.start();
 		liveMonitor.start();
 		activeStopLossMonitors = [paperMonitor, liveMonitor];
+	}
+
+	if (enableTakeProfit) {
+		const paperTpMonitor = new TakeProfitMonitor({
+			config: takeProfitConfig,
+			onTakeProfit: (tradeId, sellPrice, reason) => {
+				log.info(`[PAPER] Take-profit triggered: ${tradeId} - ${reason}`);
+				paperAccount.resolveTradeAsEarlyWin(tradeId, sellPrice, reason);
+				onTakeProfit?.("paper", tradeId, sellPrice, reason);
+			},
+			getPendingTrades: () => paperAccount.getPendingTrades(),
+			getTokenPrices: buildTokenPriceMap,
+		});
+
+		const liveTpMonitor = new TakeProfitMonitor({
+			config: takeProfitConfig,
+			onTakeProfit: (tradeId, sellPrice, reason) => {
+				log.info(`[LIVE] Take-profit triggered: ${tradeId} - ${reason}`);
+				liveAccount.resolveTradeAsEarlyWin(tradeId, sellPrice, reason);
+				void orderManager.cancelOrder(tradeId).catch((err) => {
+					log.error(`Failed to cancel order on take-profit: ${err instanceof Error ? err.message : String(err)}`);
+				});
+				onTakeProfit?.("live", tradeId, sellPrice, reason);
+			},
+			getPendingTrades: () => liveAccount.getPendingTrades(),
+			getTokenPrices: buildTokenPriceMap,
+		});
+
+		paperTpMonitor.start();
+		liveTpMonitor.start();
+		activeTakeProfitMonitors = [paperTpMonitor, liveTpMonitor];
 	}
 
 	await runMaintenance(paperAccount, liveAccount);

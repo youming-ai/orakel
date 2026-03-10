@@ -1,20 +1,6 @@
-import fs from "node:fs";
 import { stateQueries, unifiedTradeQueries } from "../db/queries.ts";
 import type { AccountMode, PersistedAccountState, TradeEntry } from "./accountTypes.ts";
 import type { Side } from "./tradeTypes.ts";
-
-function safeParseJson<T>(raw: string | null | undefined, fallback: T): T {
-	if (!raw) return fallback;
-	try {
-		return JSON.parse(raw) as T;
-	} catch {
-		return fallback;
-	}
-}
-
-function getStatsPath(mode: AccountMode): string {
-	return mode === "paper" ? "./logs/paper-stats.json" : "./logs/live-stats.json";
-}
 
 export function createEmptyAccountState(): PersistedAccountState {
 	return {
@@ -23,8 +9,6 @@ export function createEmptyAccountState(): PersistedAccountState {
 		losses: 0,
 		totalPnl: 0,
 		maxDrawdown: 0,
-		dailyPnl: [],
-		dailyCountedTradeIds: [],
 		stoppedAt: null,
 		stopReason: null,
 	};
@@ -58,8 +42,6 @@ export async function loadAccountState(mode: AccountMode): Promise<PersistedAcco
 		losses: stateRow.losses,
 		totalPnl: stateRow.totalPnl,
 		maxDrawdown: stateRow.maxDrawdown,
-		dailyPnl: safeParseJson(stateRow.dailyPnl, []),
-		dailyCountedTradeIds: safeParseJson(stateRow.dailyCountedTradeIds, []),
 		stoppedAt: stateRow.stoppedAt,
 		stopReason: stateRow.stopReason,
 	};
@@ -74,8 +56,6 @@ export async function saveAccountState(mode: AccountMode, state: PersistedAccoun
 		totalPnl: state.totalPnl,
 		stoppedAt: state.stoppedAt,
 		stopReason: state.stopReason,
-		dailyPnl: JSON.stringify(state.dailyPnl),
-		dailyCountedTradeIds: JSON.stringify(state.dailyCountedTradeIds),
 	};
 
 	if (mode === "paper") {
@@ -106,10 +86,4 @@ export async function persistTradeEntry(mode: AccountMode, entry: TradeEntry, st
 		pnl: entry.pnl,
 		settlePrice: entry.settlePrice,
 	});
-}
-
-export function syncAccountTradeLog(mode: AccountMode, state: PersistedAccountState): void {
-	const path = getStatsPath(mode);
-	fs.mkdirSync("./logs", { recursive: true });
-	fs.writeFileSync(path, JSON.stringify(state, null, 2));
 }

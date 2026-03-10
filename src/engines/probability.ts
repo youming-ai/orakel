@@ -20,21 +20,30 @@ export function scoreDirection(inputs: ScoreDirectionInput): ScoreResult {
 	let up = 1;
 	let down = 1;
 
-	if (price !== null && vwap !== null) {
-		if (price > vwap) up += 2;
-		if (price < vwap) down += 2;
+	// Price vs VWAP: continuous distance-based scoring (max ±2)
+	if (price !== null && vwap !== null && vwap > 0) {
+		const vwapPct = (price - vwap) / vwap;
+		const vwapSignal = clamp(vwapPct / 0.002, -1, 1); // saturates at ±0.2% distance
+		if (vwapSignal > 0) up += 2 * vwapSignal;
+		else down += 2 * -vwapSignal;
 	}
 
+	// VWAP slope: continuous (max ±2)
 	if (vwapSlope !== null) {
-		if (vwapSlope > 0) up += 2;
-		if (vwapSlope < 0) down += 2;
+		const slopeSignal = clamp(vwapSlope / 0.5, -1, 1); // saturates at slope ±0.5
+		if (slopeSignal > 0) up += 2 * slopeSignal;
+		else down += 2 * -slopeSignal;
 	}
 
+	// RSI: continuous mapping centered on 50 (max ±2)
 	if (rsi !== null && rsiSlope !== null) {
-		if (rsi > 55 && rsiSlope > 0) up += 2;
-		if (rsi < 45 && rsiSlope < 0) down += 2;
+		const rsiDeviation = clamp((rsi - 50) / 25, -1, 1); // RSI 75 → +1, RSI 25 → -1
+		const slopeAgreement = (rsiDeviation > 0 && rsiSlope > 0) || (rsiDeviation < 0 && rsiSlope < 0) ? 1 : 0.5;
+		if (rsiDeviation > 0) up += 2 * rsiDeviation * slopeAgreement;
+		else down += 2 * -rsiDeviation * slopeAgreement;
 	}
 
+	// MACD: histogram direction + expansion (max ±2 + ±1 line)
 	if (macd?.hist !== null && macd?.histDelta !== null) {
 		const expandingGreen = Number(macd?.hist) > 0 && Number(macd?.histDelta) > 0;
 		const expandingRed = Number(macd?.hist) < 0 && Number(macd?.histDelta) < 0;
@@ -45,9 +54,11 @@ export function scoreDirection(inputs: ScoreDirectionInput): ScoreResult {
 		if (Number(macd?.macd) < 0) down += 1;
 	}
 
+	// Heiken Ashi: scaled by consecutive count (max ±1)
 	if (heikenColor) {
-		if (heikenColor === "green" && heikenCount >= 2) up += 1;
-		if (heikenColor === "red" && heikenCount >= 2) down += 1;
+		const haStrength = clamp(heikenCount / 4, 0, 1); // 4+ bars → full strength
+		if (heikenColor === "green" && heikenCount >= 2) up += 1 * haStrength;
+		if (heikenColor === "red" && heikenCount >= 2) down += 1 * haStrength;
 	}
 
 	if (failedVwapReclaim === true) down += 3;
@@ -133,7 +144,7 @@ export function estimatePriceToBeatProbability(params: {
 
 	const distanceRatio = (currentPrice - priceToBeat) / currentPrice;
 	const timeScale = Math.sqrt(Math.max(remainingMinutes, 1) / 15);
-	const sigma = Math.max(volatility15m ?? 0, 0.0015) * Math.max(timeScale, 0.5);
+	const sigma = Math.max(volatility15m ?? 0, 0.003) * Math.max(timeScale, 0.5);
 	const z = clamp(distanceRatio / sigma, -8, 8);
 	return clamp(1 / (1 + Math.exp(-z * 1.6)), 0, 1);
 }
@@ -162,6 +173,23 @@ export function blendProbabilities(
 		finalDown: 1 - finalUp,
 		blendSource: "ptb_ta",
 	};
+}
+
+/**
+ * Compute time-adaptive TA weight: linearly interpolates between taWeightEarly (window start)
+ * and taWeightLate (window end) based on remaining time ratio.
+ *
+ * Early in the window TA signals have more predictive time horizon, so TA weight is higher.
+ * Late in the window the price-to-beat probability becomes more certain, so PtB weight increases.
+ */
+export function computeAdaptiveTaWeight(
+	remainingMinutes: number,
+	windowMinutes: number,
+	taWeightEarly: number = 0.7,
+	taWeightLate: number = 0.3,
+): number {
+	const ratio = clamp(remainingMinutes / windowMinutes, 0, 1);
+	return taWeightLate + (taWeightEarly - taWeightLate) * ratio;
 }
 
 export function computeRealizedVolatility(closes: (number | null)[], lookback = 60): number | null {

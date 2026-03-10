@@ -1,5 +1,6 @@
 import { bootstrapApp } from "./app/bootstrap.ts";
 import { registerShutdownHandlers } from "./app/shutdown.ts";
+import { CONFIG } from "./core/config.ts";
 import { createLogger } from "./core/logger.ts";
 import { getActiveMarkets } from "./core/markets.ts";
 import { createTradeTracker } from "./core/tradeTracker.ts";
@@ -162,6 +163,12 @@ async function main(): Promise<void> {
 				},
 				true,
 			);
+		},
+		enableTakeProfit: (CONFIG.paperRisk.takeProfitPercent ?? 0) > 0 || (CONFIG.liveRisk.takeProfitPercent ?? 0) > 0,
+		takeProfitConfig: {
+			takeProfitPercent:
+				Math.max(CONFIG.paperRisk.takeProfitPercent ?? 0, CONFIG.liveRisk.takeProfitPercent ?? 0) || 0.15,
+			checkIntervalMs: 5_000,
 		},
 	});
 }

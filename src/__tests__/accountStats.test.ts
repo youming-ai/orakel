@@ -8,21 +8,16 @@ vi.mock("../db/queries.ts", () => ({
 		upsertPaperState: vi.fn().mockResolvedValue(undefined),
 		upsertLiveState: vi.fn().mockResolvedValue(undefined),
 	},
+	dailyStatsQueries: {
+		upsertDaily: vi.fn().mockResolvedValue(undefined),
+		getToday: vi.fn().mockResolvedValue(null),
+	},
 }));
 
 vi.mock("../core/config.ts", () => ({
 	CONFIG: {
 		paperRisk: { dailyMaxLossUsdc: 100 },
 		liveRisk: { dailyMaxLossUsdc: 100 },
-	},
-}));
-
-vi.mock("node:fs", () => ({
-	default: {
-		existsSync: () => false,
-		mkdirSync: vi.fn(),
-		writeFileSync: vi.fn(),
-		readFileSync: () => "{}",
 	},
 }));
 

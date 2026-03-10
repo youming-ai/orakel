@@ -388,7 +388,8 @@ describe("decide", () => {
 		expect(result.reason).toBe("edge_below_0.15");
 	});
 
-	it("does not apply regime multipliers (simplified strategy)", () => {
+	it("raises edge threshold in CHOP regime (default 1.5x)", () => {
+		// EARLY threshold 0.05 * 1.5 = 0.075, so edge 0.06 is below
 		const result = decide({
 			remainingMinutes: 12,
 			edgeUp: 0.06,
@@ -399,8 +400,69 @@ describe("decide", () => {
 			strategy: makeStrategy(),
 		});
 
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("edge_below_0.075");
+	});
+
+	it("allows trade in CHOP when edge exceeds raised threshold", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.08,
+			edgeDown: 0.01,
+			modelUp: 0.7,
+			modelDown: 0.3,
+			regime: "CHOP",
+			strategy: makeStrategy(),
+		});
+
 		expect(result.action).toBe("ENTER");
 		expect(result.side).toBe("UP");
+	});
+
+	it("skips trade entirely in CHOP when skipChop is true", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.2,
+			edgeDown: 0.01,
+			modelUp: 0.8,
+			modelDown: 0.2,
+			regime: "CHOP",
+			strategy: makeStrategy({ skipChop: true }),
+		});
+
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("chop_regime");
+	});
+
+	it("does not apply chop multiplier in TREND_UP regime", () => {
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.06,
+			edgeDown: 0.01,
+			modelUp: 0.7,
+			modelDown: 0.3,
+			regime: "TREND_UP",
+			strategy: makeStrategy(),
+		});
+
+		expect(result.action).toBe("ENTER");
+		expect(result.side).toBe("UP");
+	});
+
+	it("uses custom chopEdgeMultiplier from strategy config", () => {
+		// EARLY threshold 0.05 * 2.0 = 0.10
+		const result = decide({
+			remainingMinutes: 12,
+			edgeUp: 0.09,
+			edgeDown: 0.01,
+			modelUp: 0.7,
+			modelDown: 0.3,
+			regime: "CHOP",
+			strategy: makeStrategy({ chopEdgeMultiplier: 2.0 }),
+		});
+
+		expect(result.action).toBe("NO_TRADE");
+		expect(result.reason).toBe("edge_below_0.1");
 	});
 });
 

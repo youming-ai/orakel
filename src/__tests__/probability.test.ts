@@ -4,6 +4,7 @@ import {
 	aggregateCandles,
 	applyTimeAwareness,
 	blendProbabilities,
+	computeAdaptiveTaWeight,
 	computeRealizedVolatility,
 	estimatePriceToBeatProbability,
 	scoreDirection,
@@ -37,9 +38,9 @@ describe("scoreDirection", () => {
 		expect(result).toEqual({ upScore: 1, downScore: 1, rawUp: 0.5 });
 	});
 
-	it("adds bullish score when price is above VWAP", () => {
+	it("adds continuous bullish score when price is above VWAP", () => {
 		const result = scoreDirection({
-			price: 101,
+			price: 100.3,
 			vwap: 100,
 			vwapSlope: null,
 			rsi: null,
@@ -50,14 +51,34 @@ describe("scoreDirection", () => {
 			failedVwapReclaim: false,
 		});
 
+		// 0.3% distance / 0.2% saturation → clamped to 1.0, so up += 2*1 = 2
 		expect(result.upScore).toBe(3);
 		expect(result.downScore).toBe(1);
 		expect(result.rawUp).toBeCloseTo(0.75, 8);
 	});
 
-	it("adds bearish score when price is below VWAP", () => {
+	it("adds partial score for small VWAP distance", () => {
 		const result = scoreDirection({
-			price: 99,
+			price: 100.1,
+			vwap: 100,
+			vwapSlope: null,
+			rsi: null,
+			rsiSlope: null,
+			macd: null,
+			heikenColor: null,
+			heikenCount: 0,
+			failedVwapReclaim: false,
+		});
+
+		// 0.1% distance / 0.2% saturation → 0.5, so up += 2*0.5 = 1
+		expect(result.upScore).toBeCloseTo(2, 1);
+		expect(result.rawUp).toBeGreaterThan(0.5);
+		expect(result.rawUp).toBeLessThan(0.75);
+	});
+
+	it("adds continuous bearish score when price is below VWAP", () => {
+		const result = scoreDirection({
+			price: 99.7,
 			vwap: 100,
 			vwapSlope: null,
 			rsi: null,
@@ -73,11 +94,11 @@ describe("scoreDirection", () => {
 		expect(result.rawUp).toBeCloseTo(0.25, 8);
 	});
 
-	it("adds slope and RSI momentum points for bullish conditions", () => {
+	it("adds continuous slope and RSI momentum for bullish conditions", () => {
 		const result = scoreDirection({
 			price: null,
 			vwap: null,
-			vwapSlope: 0.2,
+			vwapSlope: 0.5,
 			rsi: 62,
 			rsiSlope: 0.5,
 			macd: null,
@@ -86,15 +107,16 @@ describe("scoreDirection", () => {
 			failedVwapReclaim: false,
 		});
 
-		expect(result.upScore).toBe(5);
+		// slope saturated at 0.5 → +2, RSI (62-50)/25=0.48 * agreement(1.0) * 2 ≈ 0.96
+		expect(result.upScore).toBeGreaterThan(3.5);
 		expect(result.downScore).toBe(1);
 	});
 
-	it("adds slope and RSI momentum points for bearish conditions", () => {
+	it("adds continuous slope and RSI momentum for bearish conditions", () => {
 		const result = scoreDirection({
 			price: null,
 			vwap: null,
-			vwapSlope: -0.2,
+			vwapSlope: -0.5,
 			rsi: 38,
 			rsiSlope: -0.5,
 			macd: null,
@@ -104,7 +126,7 @@ describe("scoreDirection", () => {
 		});
 
 		expect(result.upScore).toBe(1);
-		expect(result.downScore).toBe(5);
+		expect(result.downScore).toBeGreaterThan(3.5);
 	});
 
 	it("adds MACD expanding green histogram and positive macd line points", () => {
@@ -124,7 +146,7 @@ describe("scoreDirection", () => {
 		expect(result.downScore).toBe(1);
 	});
 
-	it("adds heiken and failed VWAP reclaim penalties", () => {
+	it("adds heiken scaled by count and failed VWAP reclaim penalties", () => {
 		const result = scoreDirection({
 			price: null,
 			vwap: null,
@@ -137,41 +159,46 @@ describe("scoreDirection", () => {
 			failedVwapReclaim: true,
 		});
 
-		expect(result.upScore).toBe(2);
+		// HA: count=2, strength=2/4=0.5, up += 1*0.5 = 0.5
+		expect(result.upScore).toBeCloseTo(1.5, 8);
 		expect(result.downScore).toBe(4);
-		expect(result.rawUp).toBeCloseTo(1 / 3, 8);
+		expect(result.rawUp).toBeLessThan(0.5);
 	});
 
-	it("produces full bullish alignment outcome", () => {
+	it("produces strong bullish alignment with saturated signals", () => {
 		const result = scoreDirection({
-			price: 101,
+			price: 100.3,
 			vwap: 100,
-			vwapSlope: 0.4,
-			rsi: 60,
-			rsiSlope: 0.2,
+			vwapSlope: 0.5,
+			rsi: 75,
+			rsiSlope: 0.5,
 			macd: buildMacd({ hist: 0.3, histDelta: 0.1, macd: 0.2 }),
 			heikenColor: "green",
-			heikenCount: 3,
+			heikenCount: 4,
 			failedVwapReclaim: false,
 		});
 
-		expect(result).toEqual({ upScore: 11, downScore: 1, rawUp: 11 / 12 });
+		expect(result.rawUp).toBeGreaterThan(0.85);
+		expect(result.upScore).toBeGreaterThan(8);
+		expect(result.downScore).toBe(1);
 	});
 
-	it("produces full bearish alignment outcome", () => {
+	it("produces strong bearish alignment with saturated signals", () => {
 		const result = scoreDirection({
-			price: 99,
+			price: 99.7,
 			vwap: 100,
-			vwapSlope: -0.4,
-			rsi: 40,
-			rsiSlope: -0.2,
+			vwapSlope: -0.5,
+			rsi: 25,
+			rsiSlope: -0.5,
 			macd: buildMacd({ hist: -0.3, histDelta: -0.1, macd: -0.2 }),
 			heikenColor: "red",
-			heikenCount: 3,
+			heikenCount: 4,
 			failedVwapReclaim: true,
 		});
 
-		expect(result).toEqual({ upScore: 1, downScore: 14, rawUp: 1 / 15 });
+		expect(result.rawUp).toBeLessThan(0.15);
+		expect(result.upScore).toBe(1);
+		expect(result.downScore).toBeGreaterThan(10);
 	});
 });
 
@@ -315,5 +342,32 @@ describe("blendProbabilities", () => {
 		const result = blendProbabilities(0.7, 0.5);
 		// default taWeight = 0.5: finalUp = 0.5 * 0.5 + 0.7 * 0.5 = 0.6
 		expect(result.finalUp).toBeCloseTo(0.6, 8);
+	});
+});
+
+describe("computeAdaptiveTaWeight", () => {
+	it("returns taWeightEarly at full time remaining", () => {
+		expect(computeAdaptiveTaWeight(15, 15, 0.7, 0.3)).toBeCloseTo(0.7, 8);
+	});
+
+	it("returns taWeightLate at zero time remaining", () => {
+		expect(computeAdaptiveTaWeight(0, 15, 0.7, 0.3)).toBeCloseTo(0.3, 8);
+	});
+
+	it("returns midpoint at half time remaining", () => {
+		expect(computeAdaptiveTaWeight(7.5, 15, 0.7, 0.3)).toBeCloseTo(0.5, 8);
+	});
+
+	it("clamps negative remaining to taWeightLate", () => {
+		expect(computeAdaptiveTaWeight(-5, 15, 0.7, 0.3)).toBeCloseTo(0.3, 8);
+	});
+
+	it("clamps excess remaining to taWeightEarly", () => {
+		expect(computeAdaptiveTaWeight(20, 15, 0.7, 0.3)).toBeCloseTo(0.7, 8);
+	});
+
+	it("uses defaults (0.7/0.3) when no weights provided", () => {
+		expect(computeAdaptiveTaWeight(15, 15)).toBeCloseTo(0.7, 8);
+		expect(computeAdaptiveTaWeight(0, 15)).toBeCloseTo(0.3, 8);
 	});
 });

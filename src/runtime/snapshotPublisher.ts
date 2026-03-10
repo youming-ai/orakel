@@ -1,6 +1,7 @@
 import { buildStateSnapshotPayload } from "../app/api/statePayload.ts";
 import type { MarketSnapshot } from "../contracts/stateTypes.ts";
 import { emitStateSnapshot, updateMarkets } from "../core/state.ts";
+import { signalLogQueries } from "../db/queries.ts";
 import type { ProcessMarketResult } from "../pipeline/processMarket.ts";
 
 export function buildMarketSnapshots(results: ProcessMarketResult[]): MarketSnapshot[] {
@@ -48,10 +49,37 @@ export function buildMarketSnapshots(results: ProcessMarketResult[]): MarketSnap
 	);
 }
 
+function persistSignalLogs(results: ProcessMarketResult[]): void {
+	const rows = results
+		.filter((r) => r.ok && r.rec)
+		.map((r) => ({
+			timestamp: new Date().toISOString(),
+			marketId: r.market.id,
+			marketSlug: r.marketSlug ?? null,
+			phase: r.rec?.phase ?? null,
+			action: r.rec?.action ?? "NO_TRADE",
+			side: r.rec?.side ?? null,
+			edge: r.rec?.edge ?? null,
+			modelUp: r.pLong ? Number(r.pLong) : null,
+			modelDown: r.pShort ? Number(r.pShort) : null,
+			marketUp: r.marketUp ?? null,
+			marketDown: r.marketDown ?? null,
+			spotPrice: r.spotPrice ?? null,
+			priceToBeat: r.priceToBeat ?? null,
+			volatility15m: r.volatility15m ?? null,
+			blendSource: r.blendSource ?? null,
+			confidence: null,
+		}));
+	if (rows.length > 0) {
+		void signalLogQueries.insertBatch(rows).catch(() => {});
+	}
+}
+
 export function publishMarketSnapshots(results: ProcessMarketResult[]): void {
 	const snapshots = buildMarketSnapshots(results);
 	updateMarkets(snapshots);
 	publishCurrentStateSnapshot();
+	persistSignalLogs(results);
 }
 
 export function publishCurrentStateSnapshot(): void {
