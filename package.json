@@ -25,10 +25,10 @@
     "check:ci": "bun run lint:all && bun run typecheck:all && bun run test"
   },
   "dependencies": {
-    "@polymarket/clob-client": "^5.7.0",
+    "@polymarket/clob-client": "^5.8.0",
     "drizzle-orm": "^0.45.1",
     "ethers": "^5.8.0",
-    "hono": "^4.12.5",
+    "hono": "^4.12.6",
     "postgres": "^3.4.8",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
