@@ -161,7 +161,7 @@ describe("scoreDirection", () => {
 
 		// HA: count=2, strength=2/4=0.5, up += 1*0.5 = 0.5
 		expect(result.upScore).toBeCloseTo(1.5, 8);
-		expect(result.downScore).toBe(4);
+		expect(result.downScore).toBe(3);
 		expect(result.rawUp).toBeLessThan(0.5);
 	});
 

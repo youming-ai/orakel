@@ -108,11 +108,20 @@ export async function runReconciliation(): Promise<number> {
 					onchainTokenDelta: null,
 				});
 				updated++;
-				log.debug("Trade reconciled", {
-					orderId: result.orderId,
-					status: result.status,
-					confidence: result.confidence,
-				});
+				if (result.status === "disputed") {
+					log.error("DISPUTED trade detected — manual review required", {
+						orderId: result.orderId,
+						confidence: result.confidence,
+						txHash: result.txHash,
+						blockNumber: result.blockNumber,
+					});
+				} else {
+					log.debug("Trade reconciled", {
+						orderId: result.orderId,
+						status: result.status,
+						confidence: result.confidence,
+					});
+				}
 			} catch (err) {
 				log.warn("Failed to update recon status", {
 					orderId: result.orderId,

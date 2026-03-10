@@ -61,7 +61,7 @@ export function scoreDirection(inputs: ScoreDirectionInput): ScoreResult {
 		if (heikenColor === "red" && heikenCount >= 2) down += 1 * haStrength;
 	}
 
-	if (failedVwapReclaim === true) down += 3;
+	if (failedVwapReclaim === true) down += 2;
 
 	const rawUp = up / (up + down);
 	return { upScore: up, downScore: down, rawUp };

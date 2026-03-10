@@ -35,6 +35,7 @@ export const RiskConfigSchema = z.object({
 	maxOpenPositions: z.number(),
 	minLiquidity: z.number(),
 	maxTradesPerWindow: z.number(),
+	paperSlippage: z.number().optional(),
 });
 
 export const ConfigSnapshotSchema = z.object({

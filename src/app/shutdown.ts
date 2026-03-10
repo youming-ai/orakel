@@ -21,6 +21,25 @@ interface ShutdownParams {
 	clearRedeemTimerHandle: () => void;
 }
 
+const CANCEL_TIMEOUT_MS = 5_000;
+
+async function cancelActiveOrders(orderManager: ShutdownParams["orderManager"]): Promise<void> {
+	const activeOrders = orderManager.getActiveOrders();
+	if (activeOrders.length === 0) return;
+
+	log.info(`Cancelling ${activeOrders.length} active order(s) before shutdown...`);
+	const cancelPromises = activeOrders.map((o) =>
+		orderManager.cancelOrder(o.orderId).catch((err) => {
+			log.warn(`Failed to cancel order ${o.orderId.slice(0, 12)}:`, err instanceof Error ? err.message : String(err));
+			return false;
+		}),
+	);
+	await Promise.race([
+		Promise.allSettled(cancelPromises),
+		new Promise((resolve) => setTimeout(resolve, CANCEL_TIMEOUT_MS)),
+	]);
+}
+
 export function registerShutdownHandlers({
 	getLiveSettler,
 	clearLiveSettler,
@@ -31,8 +50,10 @@ export function registerShutdownHandlers({
 	getRedeemTimerHandle,
 	clearRedeemTimerHandle,
 }: ShutdownParams): void {
-	const shutdown = () => {
+	const shutdown = async () => {
 		log.info("Shutdown signal received, stopping bot...");
+		await cancelActiveOrders(orderManager);
+
 		const liveSettler = getLiveSettler();
 		if (liveSettler) {
 			liveSettler.stop();
@@ -57,11 +78,10 @@ export function registerShutdownHandlers({
 			log.info("Auto-redeem timer stopped");
 		}
 
-		void closeDb().then(() => {
-			setTimeout(() => process.exit(0), 2000);
-		});
+		await closeDb();
+		setTimeout(() => process.exit(0), 2000);
 	};
 
-	process.on("SIGTERM", shutdown);
-	process.on("SIGINT", shutdown);
+	process.on("SIGTERM", () => void shutdown());
+	process.on("SIGINT", () => void shutdown());
 }

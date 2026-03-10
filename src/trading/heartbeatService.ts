@@ -1,6 +1,12 @@
 import { createLogger } from "../core/logger.ts";
-import { emitTradeExecuted, isLiveRunning, setLiveRunning } from "../core/state.ts";
-import { MAX_HEARTBEAT_FAILURES, MAX_RECONNECT_ATTEMPTS, traderState, withTradeLock } from "./traderState.ts";
+import { emitTradeExecuted, isLiveRunning } from "../core/state.ts";
+import {
+	MAX_HEARTBEAT_FAILURES,
+	MAX_RECONNECT_ATTEMPTS,
+	SLOW_RECONNECT_INTERVAL_MS,
+	traderState,
+	withTradeLock,
+} from "./traderState.ts";
 
 const log = createLogger("heartbeat-service");
 
@@ -66,9 +72,26 @@ function startHeartbeatWithOptions(options?: { preserveReconnectAttempts?: boole
 						}
 					}, backoffMs);
 				} else {
-					traderState.heartbeatReconnecting = false;
-					setLiveRunning(false);
-					log.error("Max heartbeat reconnection attempts reached, stopping live trading");
+					// Fast reconnect exhausted — switch to slow recovery (60s interval)
+					// Keep heartbeatReconnecting=true to block new trades, but don't kill live mode
+					traderState.heartbeatReconnecting = true;
+					log.error(
+						`Fast reconnect exhausted (${MAX_RECONNECT_ATTEMPTS} attempts). Entering slow recovery mode (every ${SLOW_RECONNECT_INTERVAL_MS / 1000}s)`,
+					);
+					traderState.reconnectTimer = setTimeout(async () => {
+						if (traderState.client && isLiveRunning()) {
+							log.info("Slow recovery: attempting heartbeat restart...");
+							// Reset reconnect attempts to allow fast reconnect phase again
+							traderState.reconnectAttempts = 0;
+							const success = startHeartbeatWithOptions({ preserveReconnectAttempts: true });
+							if (success) {
+								log.info("Slow recovery: heartbeat reconnection successful");
+								traderState.reconnectAttempts = 0;
+							}
+						} else {
+							traderState.heartbeatReconnecting = false;
+						}
+					}, SLOW_RECONNECT_INTERVAL_MS);
 				}
 			} else {
 				log.warn(`Heartbeat failed (${traderState.heartbeatFailures}/${MAX_HEARTBEAT_FAILURES}):`, msg);

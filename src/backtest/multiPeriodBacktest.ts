@@ -266,6 +266,7 @@ function replayMarketWithStrategy(params: {
 					maxOpenPositions: 2,
 					minLiquidity: 5000,
 					maxTradesPerWindow: 2,
+					paperSlippage: 0.01,
 				},
 				paperRisk: {
 					maxTradeSizeUsdc: 10,
@@ -274,6 +275,7 @@ function replayMarketWithStrategy(params: {
 					maxOpenPositions: 2,
 					minLiquidity: 5000,
 					maxTradesPerWindow: 2,
+					paperSlippage: 0.01,
 				},
 				liveRisk: {
 					maxTradeSizeUsdc: 10,
@@ -282,6 +284,7 @@ function replayMarketWithStrategy(params: {
 					maxOpenPositions: 2,
 					minLiquidity: 5000,
 					maxTradesPerWindow: 2,
+					paperSlippage: 0.01,
 				},
 			};
 

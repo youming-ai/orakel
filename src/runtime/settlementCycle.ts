@@ -54,13 +54,21 @@ export async function runSettlementCycle({
 }: SettlementCycleParams): Promise<Map<string, number>> {
 	const latestPrices = collectLatestPrices(markets, states);
 
+	const chainlinkPrices = new Map(latestPrices);
+	for (const market of markets) {
+		const clPrice = await fetchSettlementPrice(market, latestPrices);
+		if (clPrice !== null) {
+			chainlinkPrices.set(market.id, clPrice);
+		}
+	}
+
 	for (const market of markets) {
 		const timing = getCandleWindowTiming(market.candleWindowMinutes);
 		const prevStart = prevWindowStartMs.get(market.id);
 
 		if (latestPrices.size > 0) {
 			const paperRecovered = await paperAccount.resolveExpiredTrades(
-				latestPrices,
+				chainlinkPrices,
 				market.candleWindowMinutes,
 				market.id,
 			);
@@ -68,26 +76,23 @@ export async function runSettlementCycle({
 				log.info(`[${market.id}] Recovered expired paper trades: ${paperRecovered}`);
 			}
 
-			const liveRecovered = await liveAccount.resolveExpiredTrades(latestPrices, market.candleWindowMinutes, market.id);
+			const liveRecovered = await liveAccount.resolveExpiredTrades(
+				chainlinkPrices,
+				market.candleWindowMinutes,
+				market.id,
+			);
 			if (liveRecovered > 0) {
 				log.info(`[${market.id}] Recovered expired live trades: ${liveRecovered}`);
 			}
 		}
 
 		if (prevStart !== undefined && prevStart !== timing.startMs && latestPrices.size > 0) {
-			// At window boundary, fetch Chainlink price for accurate settlement
-			const settlementPrice = await fetchSettlementPrice(market, latestPrices);
-			const settlePrices = new Map(latestPrices);
-			if (settlementPrice !== null) {
-				settlePrices.set(market.id, settlementPrice);
-			}
-
-			const paperResolved = await paperAccount.resolveTrades(prevStart, settlePrices, market.id);
+			const paperResolved = await paperAccount.resolveTrades(prevStart, chainlinkPrices, market.id);
 			if (paperResolved > 0) {
 				log.info(`[${market.id}] Paper window settled: ${paperResolved}`);
 			}
 
-			const liveResolved = await liveAccount.resolveTrades(prevStart, settlePrices, market.id);
+			const liveResolved = await liveAccount.resolveTrades(prevStart, chainlinkPrices, market.id);
 			if (liveResolved > 0) {
 				log.info(`[${market.id}] Live window settled: ${liveResolved}`);
 			}
@@ -96,12 +101,12 @@ export async function runSettlementCycle({
 		prevWindowStartMs.set(market.id, timing.startMs);
 	}
 
-	const paperForced = await paperAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS, latestPrices);
+	const paperForced = await paperAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS, chainlinkPrices);
 	if (paperForced > 0) {
 		log.warn(`Force-resolved ${paperForced} stuck paper trade(s)`);
 	}
 
-	const liveForced = await liveAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS, latestPrices);
+	const liveForced = await liveAccount.forceResolveStuckTrades(FORCE_RESOLVE_MAX_AGE_MS, chainlinkPrices);
 	if (liveForced > 0) {
 		log.warn(`Force-resolved ${liveForced} stuck live trade(s)`);
 	}

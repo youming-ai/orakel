@@ -28,6 +28,7 @@ const RISK_DEFAULTS = {
 	maxOpenPositions: 2,
 	minLiquidity: 15_000,
 	maxTradesPerWindow: 1,
+	paperSlippage: 0.01,
 };
 
 const STRATEGY_DEFAULTS: {
@@ -58,6 +59,7 @@ const RiskConfigSchema = z
 		maxOpenPositions: z.coerce.number().optional(),
 		minLiquidity: z.coerce.number().optional(),
 		maxTradesPerWindow: z.coerce.number().optional(),
+		paperSlippage: z.coerce.number().min(0).max(0.5).optional(),
 	})
 	.partial()
 	.transform((value) => ({ ...RISK_DEFAULTS, ...value }));
@@ -349,6 +351,7 @@ function buildRiskConfig(primary: z.infer<typeof RiskConfigSchema>): RiskConfig 
 		maxOpenPositions: primary.maxOpenPositions,
 		minLiquidity: primary.minLiquidity,
 		maxTradesPerWindow: primary.maxTradesPerWindow,
+		paperSlippage: primary.paperSlippage,
 	};
 }
 

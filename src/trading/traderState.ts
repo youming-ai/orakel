@@ -17,6 +17,7 @@ export const traderState = {
 
 export const MAX_HEARTBEAT_FAILURES = 3;
 export const MAX_RECONNECT_ATTEMPTS = 5;
+export const SLOW_RECONNECT_INTERVAL_MS = 60_000;
 
 export function withTradeLock<T>(mode: "paper" | "live", fn: () => Promise<T>): Promise<T> {
 	const prev = mode === "paper" ? traderState.paperTradeLock : traderState.liveTradeLock;

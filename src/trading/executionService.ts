@@ -77,12 +77,13 @@ async function executeTradeInternal(
 	if (mode === "paper") {
 		const account = getAccount("paper");
 		const paperTradeTimestamp = new Date().toISOString();
+		const slippedPrice = Math.min(price + riskConfig.paperSlippage, 0.98);
 		const tradeId = account.addTrade(
 			{
 				marketId: signal.marketId,
 				windowStartMs: timing.startMs,
 				side,
-				price,
+				price: slippedPrice,
 				size: tradeSize,
 				priceToBeat: signal.priceToBeat ?? 0,
 				currentPriceAtEntry: signal.currentPrice,
@@ -93,12 +94,14 @@ async function executeTradeInternal(
 			"filled",
 		);
 
-		log.info(`Simulated fill: ${side} at ${price}¢ size=${tradeSize.toFixed(2)} | ${signal.marketSlug} (${tradeId})`);
+		log.info(
+			`Simulated fill: ${side} at ${slippedPrice}¢ (slip +${riskConfig.paperSlippage}) size=${tradeSize.toFixed(2)} | ${signal.marketSlug} (${tradeId})`,
+		);
 		emitTradeExecuted({
 			marketId: signal.marketId,
 			mode,
 			side,
-			price,
+			price: slippedPrice,
 			size: tradeSize,
 			timestamp: paperTradeTimestamp,
 			orderId: tradeId,
@@ -187,25 +190,34 @@ async function executeTradeInternal(
 
 		const finalOrderId = resultOrderId ?? resultId ?? "";
 		if (isGtdOrder) {
+			const pendingOrderData = {
+				orderId: finalOrderId,
+				marketId: signal.marketId ?? "",
+				windowStartMs: timing.startMs,
+				side,
+				price,
+				size: tradeSize,
+				priceToBeat: signal.priceToBeat ?? null,
+				currentPriceAtEntry: signal.currentPrice ?? null,
+				tokenId,
+				placedAt: Date.now(),
+				status: "placed",
+			};
 			try {
-				void pendingOrderQueries.upsert({
-					orderId: finalOrderId,
-					marketId: signal.marketId ?? "",
-					windowStartMs: timing.startMs,
-					side,
-					price,
-					size: tradeSize,
-					priceToBeat: signal.priceToBeat ?? null,
-					currentPriceAtEntry: signal.currentPrice ?? null,
-					tokenId,
-					placedAt: Date.now(),
-					status: "placed",
-				});
+				await pendingOrderQueries.upsert(pendingOrderData);
 			} catch (persistErr) {
 				log.warn(
-					`Failed to persist live pending order ${finalOrderId.slice(0, 12)}...:`,
+					`Failed to persist pending order ${finalOrderId.slice(0, 12)}..., retrying:`,
 					persistErr instanceof Error ? persistErr.message : String(persistErr),
 				);
+				try {
+					await pendingOrderQueries.upsert(pendingOrderData);
+				} catch (retryErr) {
+					log.error(
+						`Pending order ${finalOrderId.slice(0, 12)}... persist failed after retry — order is on CLOB but not in DB`,
+						retryErr instanceof Error ? retryErr.message : String(retryErr),
+					);
+				}
 			}
 		}
 

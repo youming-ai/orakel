@@ -54,29 +54,17 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 	}, [onMessage]);
 
 	const getWsUrl = useCallback(() => {
-		let base: string;
-		if (url) {
-			base = url;
-		} else {
-			// Derive WebSocket URL from VITE_API_BASE when deployed separately
-			const apiBase = import.meta.env.VITE_API_BASE;
-			if (apiBase) {
-				const u = new URL(apiBase, window.location.origin);
-				const wsProto = u.protocol === "https:" ? "wss:" : "ws:";
-				base = `${wsProto}//${u.host}/ws`;
-			} else {
-				const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-				base = `${protocol}//${window.location.host}/ws`;
-			}
+		if (url) return url;
+
+		const apiBase = import.meta.env.VITE_API_BASE;
+		if (apiBase) {
+			const u = new URL(apiBase, window.location.origin);
+			const wsProto = u.protocol === "https:" ? "wss:" : "ws:";
+			return `${wsProto}//${u.host}/ws`;
 		}
 
-		// Append auth token as query param when configured
-		const token = getApiToken();
-		if (token) {
-			const sep = base.includes("?") ? "&" : "?";
-			return `${base}${sep}token=${encodeURIComponent(token)}`;
-		}
-		return base;
+		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+		return `${protocol}//${window.location.host}/ws`;
 	}, [url]);
 
 	const connect = useCallback(() => {
@@ -100,6 +88,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
 			ws.onopen = () => {
 				if (!mountedRef.current) return;
+				const token = getApiToken();
+				if (token) {
+					ws.send(JSON.stringify({ type: "auth", token }));
+				}
 				setIsConnected(true);
 				reconnectCountRef.current = 0;
 				onConnectRef.current?.();

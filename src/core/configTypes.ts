@@ -25,6 +25,7 @@ export interface RiskConfig {
 	maxOpenPositions: number;
 	minLiquidity: number;
 	maxTradesPerWindow: number;
+	paperSlippage: number;
 }
 
 export interface StrategyConfig {

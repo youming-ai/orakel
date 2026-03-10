@@ -8,6 +8,7 @@ import type { AccountStatsManager } from "../trading/accountStats.ts";
 import type { TrackedOrder } from "../trading/orderManager.ts";
 import { unregisterOpenGtdOrder } from "../trading/trader.ts";
 import { collectLatestPrices } from "./marketState.ts";
+import { fetchSettlementPrice } from "./settlementCycle.ts";
 
 const log = createLogger("order-status-sync");
 
@@ -87,13 +88,27 @@ export function createOrderStatusHandler({
 			if (recorded) {
 				const currentTiming = getCandleWindowTiming(orderMarket?.candleWindowMinutes ?? 15);
 				if (windowStartMs < currentTiming.startMs) {
-					const prices = collectLatestPrices(markets, states);
-					if (prices.size > 0) {
-						void liveAccount.resolveTrades(windowStartMs, prices).then((settled) => {
-							if (settled > 0) {
-								log.info(`Immediate settlement for late-filled trade: ${settled} trade(s)`);
-							}
-						});
+					const latestPrices = collectLatestPrices(markets, states);
+					if (latestPrices.size > 0 && orderMarket) {
+						void fetchSettlementPrice(orderMarket, latestPrices)
+							.then((settlementPrice) => {
+								const settlePrices = new Map(latestPrices);
+								if (settlementPrice !== null) {
+									settlePrices.set(order.marketId, settlementPrice);
+								}
+								return liveAccount.resolveTrades(windowStartMs, settlePrices, order.marketId);
+							})
+							.then((settled) => {
+								if (settled > 0) {
+									log.info(`Immediate settlement for late-filled trade: ${settled} trade(s) (Chainlink price)`);
+								}
+							})
+							.catch((err) => {
+								log.warn(
+									`Late-fill settlement error for ${order.orderId.slice(0, 12)}:`,
+									err instanceof Error ? err.message : String(err),
+								);
+							});
 					}
 				}
 				void pendingOrderQueries.delete(order.orderId).catch(() => {});
