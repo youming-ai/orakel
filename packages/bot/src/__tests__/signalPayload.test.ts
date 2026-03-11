@@ -84,6 +84,89 @@ describe("signalPayload helpers", () => {
 		expect(signalPayload.conditionId).toBe("cond-1");
 	});
 
+	it("should include spread from side order book", () => {
+		const payload = buildTradeSignalPayload(
+			makeParams({
+				rec: {
+					action: "ENTER",
+					side: "UP",
+					phase: "MID",
+					regime: "TREND_UP",
+					strength: "GOOD",
+					edge: 0.08,
+				},
+				poly: {
+					ok: true,
+					market: {
+						slug: "btc-updown-15m-x",
+						endDate: "2026-03-07T00:15:00.000Z",
+						outcomes: ["Yes", "No"],
+						outcomePrices: [0.48, 0.52],
+						clobTokenIds: ["up-1", "down-1"],
+						conditionId: "cond-1",
+					},
+					tokens: { upTokenId: "up-1", downTokenId: "down-1" },
+					orderbook: {
+						up: {
+							bestBid: 0.49,
+							bestAsk: 0.51,
+							spread: 0.02,
+							bidLiquidity: 10_000,
+							askLiquidity: 10_000,
+							bidNotional: 5_000,
+							askNotional: 5_100,
+						},
+						down: {
+							bestBid: 0.47,
+							bestAsk: 0.53,
+							spread: 0.06,
+							bidLiquidity: 9_000,
+							askLiquidity: 8_000,
+							bidNotional: 4_230,
+							askNotional: 4_240,
+						},
+					},
+				},
+			}),
+		);
+
+		expect(payload).not.toBeNull();
+		expect(payload?.spread).toBe(0.02);
+	});
+
+	it("should include priceToBeatSource in signal payload", () => {
+		const payload = buildTradeSignalPayload(
+			makeParams({
+				priceToBeatSource: "parsed",
+			}),
+		);
+
+		expect(payload).not.toBeNull();
+		expect(payload?.priceToBeatSource).toBe("parsed");
+	});
+
+	it("should default spread to null when orderbook unavailable", () => {
+		const payload = buildTradeSignalPayload(
+			makeParams({
+				poly: {
+					ok: true,
+					market: {
+						slug: "btc-updown-15m-x",
+						endDate: "2026-03-07T00:15:00.000Z",
+						outcomes: ["Yes", "No"],
+						outcomePrices: [0.48, 0.52],
+						clobTokenIds: ["up-1", "down-1"],
+						conditionId: "cond-1",
+					},
+					tokens: { upTokenId: "up-1", downTokenId: "down-1" },
+				},
+			}),
+		);
+
+		expect(payload).not.toBeNull();
+		expect(payload?.spread).toBeNull();
+	});
+
 	it("buildSignalRecommendation falls back to reason when not entering", () => {
 		expect(
 			buildSignalRecommendation({

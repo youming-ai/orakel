@@ -11,6 +11,7 @@ export interface SignalPayloadParams {
 	finalDown: number;
 	volatility15m: number | null;
 	priceToBeat: number | null;
+	priceToBeatSource?: "parsed" | "missing";
 	spotChainlinkDelta: number | null;
 	orderbookImbalance: number | null;
 	timeLeftMin: number | null;
@@ -49,6 +50,15 @@ export function buildTradeSignalPayload(params: SignalPayloadParams): TradeSigna
 
 	if (rec.action !== "ENTER") return null;
 
+	const sideBook =
+		rec.side === "UP"
+			? poly.ok
+				? (poly.orderbook?.up ?? null)
+				: null
+			: poly.ok
+				? (poly.orderbook?.down ?? null)
+				: null;
+
 	return {
 		timestamp: new Date().toISOString(),
 		marketId: market.id,
@@ -65,7 +75,9 @@ export function buildTradeSignalPayload(params: SignalPayloadParams): TradeSigna
 		timeLeftMin,
 		spotPrice,
 		priceToBeat,
+		priceToBeatSource: params.priceToBeatSource,
 		currentPrice,
+		spread: sideBook?.spread ?? null,
 		blendSource: "ta_only",
 		volImpliedUp: null,
 		volatility15m,
