@@ -1,5 +1,5 @@
 import type { MarketConfig } from "../core/configTypes.ts";
-import { startMultiBybitTradeStream } from "../data/bybitWs.ts";
+import type { PriceTick } from "../core/marketDataTypes.ts";
 import { startChainlinkPriceStream } from "../data/chainlinkWs.ts";
 import type { ClobWsHandle } from "../data/polymarketClobWs.ts";
 import { startClobMarketWs } from "../data/polymarketClobWs.ts";
@@ -11,12 +11,22 @@ interface MarketStreamBundle {
 	clobWs: ClobWsHandle;
 }
 
+function createSpotStreamStub(): WsStreamHandle {
+	return {
+		getLast: (_symbol?: string): PriceTick => ({
+			price: 0,
+			ts: Date.now(),
+			source: "stub",
+		}),
+		close: () => {},
+	};
+}
+
 export function createMarketStreams(markets: MarketConfig[]): MarketStreamBundle {
-	const spotSymbols = [...new Set(markets.map((market) => market.spotSymbol))];
 	const polymarketSymbols = [...new Set(markets.map((market) => market.chainlink.wsSymbol))];
 
 	const streams: StreamHandles = {
-		spot: startMultiBybitTradeStream(spotSymbols),
+		spot: createSpotStreamStub(),
 		polymarket: startMultiPolymarketPriceStream(polymarketSymbols),
 		chainlink: new Map<string, WsStreamHandle>(),
 	};

@@ -10,8 +10,8 @@ import type {
 	PolymarketSnapshot,
 	PriceTick,
 } from "../core/marketDataTypes.ts";
-import { fetchKlines, fetchLastPrice } from "../data/bybit.ts";
 import { fetchChainlinkPrice } from "../data/chainlink.ts";
+import { fetchKlines, fetchLastPrice } from "../data/coinbase.ts";
 import {
 	fetchClobPrice,
 	fetchLiveEventsBySeriesId,

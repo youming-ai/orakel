@@ -3,7 +3,7 @@ import type { MarketConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import type { Candle } from "../core/marketDataTypes.ts";
 import { getActiveMarkets, getMarketById } from "../core/markets.ts";
-import { fetchHistoricalKlines } from "../data/bybit.ts";
+import { fetchHistoricalKlines } from "../data/coinbase.ts";
 import { computeMarketDecision } from "../pipeline/compute.ts";
 import {
 	buildReplayRawMarketData,

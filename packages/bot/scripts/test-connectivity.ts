@@ -175,30 +175,30 @@ async function testRpcEndpoints(): Promise<void> {
 	}
 }
 
-async function testBybitApi(): Promise<void> {
-	console.log("=== Bybit API Test ===\n");
+async function testCoinbaseApi(): Promise<void> {
+	console.log("=== Coinbase API Test ===\n");
 
-	const url = new URL("/v5/market/tickers", CONFIG.spotBaseUrl);
-	url.searchParams.set("category", "spot");
-	url.searchParams.set("symbol", "BTCUSDT");
+	const COINBASE_BASE_URL = "https://api.exchange.coinbase.com";
 
-	console.log("Testing: Market Tickers");
+	const url = new URL("/products/BTC-USD/ticker", COINBASE_BASE_URL);
+
+	console.log("Testing: BTC-USD Ticker");
 	console.log(`  URL: ${url}`);
 
 	const result = await measureRequest(url);
 	printResult(result);
 
 	if (result.success && result.data) {
-		const BybitResponseSchema = z.object({
-			result: z.object({
-				list: z.array(z.object({ symbol: z.string(), lastPrice: z.string() })),
-			}),
+		const CoinbaseResponseSchema = z.object({
+			trade_id: z.number(),
+			price: z.string(),
+			size: z.string(),
+			time: z.string(),
 		});
-		const parsed = BybitResponseSchema.safeParse(result.data);
-		if (parsed.success && parsed.data.result.list.length > 0) {
-			const ticker = parsed.data.result.list[0];
-			console.log(`  Symbol: ${ticker.symbol}`);
-			console.log(`  Last Price: ${ticker.lastPrice}`);
+		const parsed = CoinbaseResponseSchema.safeParse(result.data);
+		if (parsed.success) {
+			console.log(`  Price: $${parsed.data.price}`);
+			console.log(`  Time: ${parsed.data.time}`);
 		}
 	}
 	console.log("");
@@ -219,6 +219,6 @@ printHeader();
 await testPolymarketApi();
 await testPolymarketGamma();
 await testRpcEndpoints();
-await testBybitApi();
+await testCoinbaseApi();
 
 printFooter();

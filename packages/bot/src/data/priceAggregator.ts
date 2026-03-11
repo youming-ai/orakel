@@ -1,5 +1,5 @@
 import { createLogger } from "../core/logger.ts";
-import { fetchLastPrice } from "./bybit.ts";
+import { fetchLastPrice } from "./coinbase.ts";
 
 const log = createLogger("price-aggregator");
 
@@ -35,7 +35,7 @@ export async function aggregatePrices(symbol: string): Promise<AggregatedPrice |
 	const now = Date.now();
 	const sources: PriceSource[] = [
 		{
-			name: "bybit",
+			name: "coinbase",
 			price,
 			timestamp: now,
 		},
