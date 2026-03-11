@@ -28,7 +28,7 @@ packages/
 │   │   ├── pipeline/       # 市场数据处理 (获取 → 计算)
 │   │   ├── engines/        # 决策引擎 (边缘计算、概率、市场状态)
 │   │   ├── indicators/     # 技术指标 (RSI, MACD, VWAP, Heiken Ashi)
-│   │   ├── data/           # 外部数据适配器 (Bybit, Polymarket, Chainlink)
+│   │   ├── data/           # 外部数据适配器 (Binance, Polymarket, Chainlink)
 │   │   ├── db/             # 数据库配置和 Schema
 │   │   └── __tests__/      # 测试文件
 │   └── scripts/            # 实用脚本
@@ -51,7 +51,7 @@ config.json                 # 策略配置 (热重载)
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Bybit WS   │    │ Chainlink   │    │ Polymarket  │    │  PostgreSQL │
+│ Binance WS  │    │ Chainlink   │    │ Polymarket  │    │  PostgreSQL │
 │  价格/蜡烛图 │    │ 预言机价格   │    │  赔率/CLOB  │    │  持久化存储  │
 └──────┬──────┘    └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
        │                  │                  │                  │
@@ -90,13 +90,16 @@ config.json                 # 策略配置 (热重载)
 
 3. **边缘计算** (`packages/bot/src/engines/edge.ts`)
    - `edge = modelProb - marketProb`
-   - 订单簿滑点调整
-   - 三阶段阈值: Early(0.06) / Mid(0.08) / Late(0.10)
+   - 微调偏差: 订单簿不平衡 + 现货-预言机价格偏差
+   - 三阶段阈值: Early(0.04) / Mid(0.07) / Late(0.10)
 
-4. **风险管理**
+4. **执行与风险**
+   - Maker/Taker 价格分离 (限价单 vs 最差成交容忍度)
+   - 预期 PnL 门槛: 拒绝费后期望值为负的交易
+   - 名义流动性门控 (bidNotional/askNotional，非原始份额数)
+   - 风险 = 已实现亏损 + 持仓最大潜在亏损
    - 日亏损限制 (`dailyMaxLossUsdc`)
-   - 最大回撤 (50%)
-   - 市场状态过滤 (TREND/RANGE/CHOP)
+   - Hold-to-settle 策略: 持仓至窗口结算
 
 ## 配置
 
@@ -175,7 +178,7 @@ bunx vitest run packages/bot/src/__tests__/edge.test.ts   # 单个文件
 bunx vitest run -t "computeEdge" --config packages/bot/vitest.config.ts  # 匹配名称
 ```
 
-当前测试覆盖: **17 个文件, 313 个测试**
+当前测试覆盖: **33 个文件, 394 个测试**
 
 ## 部署
 

@@ -165,7 +165,7 @@ External APIs → fetch.ts → compute.ts → processMarket.ts → TradeDecision
 **Strengths:**
 - Clean functional composition
 - `processMarket()` is pure and testable
-- Multiple price sources with fallback (Bybit, Chainlink, Polymarket)
+- Multiple price sources with fallback (Binance, Bybit, Chainlink, Polymarket)
 
 **Concerns:**
 - No backpressure handling — if `fetch()` is faster than `compute()`, data piles up
@@ -308,7 +308,7 @@ const { state } = useWebSocket(); // Singleton hook
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        MARKET DATA LAYER                            │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Bybit WS ───┐                                                      │
+│  Binance WS ──┐                                                      │
 │  Chainlink ──┼──► fetch.ts ───► compute.ts ───► processMarket.ts   │
 │  Polymarket ─┘     (prices)     (signals)        (decisions)       │
 └─────────────────────────────────────────────────────────────────────┘
@@ -395,8 +395,8 @@ class TradingError extends Error {
 
 ### Current Coverage
 
-- **32 test files** in `packages/bot/src/__tests__/`
-- **364 tests** total
+- **33 test files** in `packages/bot/src/__tests__/`
+- **394 tests** total
 - **Framework:** Vitest (10s timeout)
 
 ### Test Patterns

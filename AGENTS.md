@@ -60,7 +60,9 @@ packages/
 │   │   ├── blockchain/    # On-chain operations
 │   │   ├── engines/       # Edge, probability, regime detection
 │   │   ├── indicators/    # RSI, MACD, VWAP (pure functions)
-│   │   ├── data/          # External API adapters
+│   │   ├── data/          # External API adapters (Binance, Polymarket, Chainlink)
+│   │   ├── backtest/      # Backtesting engine, replay, strategy optimizer
+│   │   ├── contracts/     # Internal contract ABIs
 │   │   └── __tests__/     # Test files (centralized)
 │   ├── scripts/           # Utility scripts (approve-usdc, redeem, etc.)
 │   ├── Dockerfile         # VPS deployment

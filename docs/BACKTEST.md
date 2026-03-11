@@ -190,8 +190,8 @@ bun run optimize --markets BTC-15m,ETH-15m --iterations 200 --output universal_s
 
 ## 数据源
 
-- **Binance**: 历史K线数据 (BTCUSDT, ETHUSDT)
-- **Bybit**: 多交易所价格验证 (集成中)
+- **Binance**: 实时价格流 + 历史K线数据 (BTCUSDT, ETHUSDT)
+- **Bybit**: K线数据回退源
 
 ## 注意事项
 

@@ -62,9 +62,10 @@ packages/bot/src/
 │                   #   snapshotPublisher, orderRecovery, orderStatusSync, onchainRuntime)
 ├── trading/        # Trading logic (trader, accountStats, accountService, executionService,
 │                   #   heartbeatService, walletService, liveGuards, liveSettler, orderManager,
-│                   #   persistence, terminal, traderState)
-├── __tests__/      # Test files (vitest)
-└── types.ts        # ALL TypeScript interfaces
+│                   #   persistence, terminal, traderState, tradeTypes, signalPayload)
+├── backtest/       # Backtesting engine (replay, strategy optimizer, multi-period)
+├── contracts/      # Internal contract ABIs
+└── __tests__/      # Test files (vitest, 33 files)
 
 packages/shared/src/
 └── contracts/      # Shared DTOs exported as @orakel/shared/contracts
@@ -86,25 +87,38 @@ Executed every 1 second per market:
 
 ```
 1. Data Collection (parallel via packages/bot/src/pipeline/fetch.ts)
-   ├─ Binance REST + WebSocket: Candles + real-time ticks
-   ├─ Polymarket WebSocket + REST: Live pricing + orderbook
-   └─ Chainlink RPC: On-chain price feed (fallback)
+   ├─ Binance REST + WebSocket: Candles + real-time ticks (Bybit as fallback)
+   ├─ Polymarket WebSocket + REST: Live pricing + orderbook (notional liquidity)
+   ├─ Chainlink RPC: On-chain price feed (fallback)
+   └─ isLive flag propagated through pipeline for live-only signal gating
 
 2. Technical Indicators (packages/bot/src/indicators/)
    ├─ Heiken Ashi, RSI(14), MACD(12,26,9), VWAP, Realized Volatility
 
 3. Probability Scoring (packages/bot/src/engines/probability.ts)
-   ├─ TA Direction Score + Time Awareness (linear decay)
+   ├─ TA Direction Score + Time Awareness (2h decay, floor 0.5)
 
 4. Market Regime Detection (packages/bot/src/engines/regime.ts) — Informational only
    ├─ TREND_UP / TREND_DOWN / CHOP / RANGE
 
 5. Edge Computation (packages/bot/src/engines/edge.ts)
    ├─ Edge = ModelProb - MarketPrice, arbitrage + vig detection
+   ├─ Micro-bias adjustments: orderbook imbalance + spot-chainlink delta
 
 6. Trade Decision (packages/bot/src/engines/edge.ts → packages/bot/src/trading/trader.ts)
-   ├─ Phase detection: EARLY / MID / LATE
-   ├─ Execute if edge >= threshold AND prob >= minProb
+   ├─ Phase detection: EARLY (0.05-0.45) / MID / LATE
+   ├─ Execute if edge >= threshold AND prob >= minProb AND isLive passes
+   ├─ Notional liquidity gating (bidNotional/askNotional, not raw share counts)
+   ├─ priceToBeat must be parsed from Chainlink — no silent fallback (returns null)
+
+7. Execution (packages/bot/src/trading/executionService.ts)
+   ├─ Separate maker price (limit order) vs taker tolerance (worst fill)
+   ├─ Expected PnL gate: reject trades where fee-adjusted EV < 0
+   └─ Hold-to-settle strategy: positions held until window settlement
+
+8. Risk (packages/bot/src/trading/accountService.ts)
+   ├─ Projected worst-case = realized loss + max potential loss on open positions
+   └─ Daily loss limit checked against projected worst-case exposure
 ```
 
 ### Unified Settlement System
@@ -146,7 +160,7 @@ Query logic is organized into `packages/bot/src/repositories/` modules: tradeRep
 
 2. **Multi-Sensor Fusion** — Price source fallback chain: Binance WS > Polymarket WS > Chainlink WS > Chainlink RPC > Binance REST
 
-3. **Simplified Strategy Engine** — No regime multipliers, no confidence scoring, no volatility-implied probability blending. Simple TA-based scoring with linear time decay.
+3. **Strategy Engine** — TA-based scoring with time decay (2h window, floor 0.5). Micro-bias from orderbook imbalance and spot-chainlink delta. Separate maker/taker pricing. Expected PnL gate pre-execution. No regime multipliers or confidence scoring.
 
 4. **Cycle-Aware State** — Pending start/stop states for graceful window boundary transitions. Never start/stop mid-window.
 
@@ -215,10 +229,12 @@ import type { AppConfig, RiskConfig } from "./types.ts";
 ## Critical Reminders
 
 1. **Imports must use `.ts` extensions** — Required by `verbatimModuleSyntax`. Use `import type` for type-only imports.
-2. **All bot types live in `packages/bot/src/types.ts`** — Single source of truth for TypeScript interfaces.
+2. **Types are distributed across domain modules** — `core/configTypes.ts` (config interfaces), `core/marketDataTypes.ts` (market data types incl. OrderBookSummary with notional fields), `trading/tradeTypes.ts` (trade signals, decisions, edge results), `trading/accountTypes.ts` (account types). No single `types.ts`.
 3. **Config validated by Zod** — Invalid values cause fail-fast at startup (`packages/bot/src/core/env.ts`, `packages/bot/src/core/config.ts`).
-4. **Price source priority matters** — Binance WS > Polymarket WS > Chainlink RPC > Binance REST (`packages/bot/src/pipeline/fetch.ts`).
+4. **Price source priority matters** — Binance WS > Polymarket WS > Chainlink WS > Chainlink RPC > Binance REST (`packages/bot/src/pipeline/fetch.ts`).
 5. **Run `bun run lint:fix` before committing** — Biome enforces all style rules across `packages/`.
 6. **CI runs**: `bun run check:ci` = lint → typecheck → test. Docker build runs after checks pass.
 7. **Settlement vs Redemption** — Settlement (won/lost) happens in main loop via `resolveTrades()`. Redemption (on-chain claiming) is `packages/bot/src/trading/liveSettler.ts`.
 8. **Window boundaries are sacred** — Trades keyed by `windowStartMs`. Never start/stop mid-window (use pending states).
+9. **Notional liquidity, not shares** — Liquidity gating uses `bidNotional`/`askNotional` (price × size), not raw share counts. Low-priced markets appear artificially liquid with share counts.
+10. **priceToBeat has no fallback** — If Chainlink price is unavailable, `priceToBeat` returns null with `priceToBeatSource: "missing"`. Never silently falls back to Polymarket price.
