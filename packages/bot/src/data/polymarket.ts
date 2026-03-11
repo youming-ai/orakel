@@ -489,6 +489,18 @@ export function summarizeOrderBook(book: GammaValue, depthLevels: number = 5): O
 		const rec = asRecord(x);
 		return acc + (toNumber(rec?.size) ?? 0);
 	}, 0);
+	const bidNotional = bids.slice(0, depthLevels).reduce((acc, x) => {
+		const rec = asRecord(x);
+		const size = toNumber(rec?.size) ?? 0;
+		const price = toNumber(rec?.price) ?? 0;
+		return acc + size * price;
+	}, 0);
+	const askNotional = asks.slice(0, depthLevels).reduce((acc, x) => {
+		const rec = asRecord(x);
+		const size = toNumber(rec?.size) ?? 0;
+		const price = toNumber(rec?.price) ?? 0;
+		return acc + size * price;
+	}, 0);
 
 	return {
 		bestBid,
@@ -496,5 +508,7 @@ export function summarizeOrderBook(book: GammaValue, depthLevels: number = 5): O
 		spread,
 		bidLiquidity,
 		askLiquidity,
+		bidNotional,
+		askNotional,
 	};
 }

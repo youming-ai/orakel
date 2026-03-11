@@ -274,6 +274,8 @@ describe("summarizeOrderBook", () => {
 			spread: null,
 			bidLiquidity: 0,
 			askLiquidity: 0,
+			bidNotional: 0,
+			askNotional: 0,
 		});
 	});
 
@@ -284,6 +286,8 @@ describe("summarizeOrderBook", () => {
 			spread: null,
 			bidLiquidity: 0,
 			askLiquidity: 0,
+			bidNotional: 0,
+			askNotional: 0,
 		});
 	});
 
@@ -298,6 +302,8 @@ describe("summarizeOrderBook", () => {
 			spread: 0.020000000000000018,
 			bidLiquidity: 100,
 			askLiquidity: 50,
+			bidNotional: 65,
+			askNotional: 33.5,
 		});
 	});
 
@@ -427,6 +433,41 @@ describe("summarizeOrderBook", () => {
 		});
 		expect(result.bidLiquidity).toBe(10);
 		expect(result.askLiquidity).toBe(20);
+	});
+});
+
+describe("summarizeOrderBook notional", () => {
+	it("should compute bidNotional as sum(size * price) for bid levels", () => {
+		const book = {
+			bids: [
+				{ price: "0.55", size: "100" },
+				{ price: "0.50", size: "200" },
+			],
+			asks: [{ price: "0.60", size: "150" }],
+		};
+		const result = summarizeOrderBook(book);
+		expect(result.bidNotional).toBeCloseTo(155, 5);
+		expect(result.askNotional).toBeCloseTo(90, 5);
+	});
+
+	it("should return 0 notional for empty order book", () => {
+		const book = { bids: [], asks: [] };
+		const result = summarizeOrderBook(book);
+		expect(result.bidNotional).toBe(0);
+		expect(result.askNotional).toBe(0);
+	});
+
+	it("should respect depthLevels for notional calculation", () => {
+		const book = {
+			bids: [
+				{ price: "0.55", size: "100" },
+				{ price: "0.50", size: "200" },
+				{ price: "0.45", size: "300" },
+			],
+			asks: [],
+		};
+		const result = summarizeOrderBook(book, 2);
+		expect(result.bidNotional).toBeCloseTo(155, 5);
 	});
 });
 
