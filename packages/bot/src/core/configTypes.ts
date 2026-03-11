@@ -66,6 +66,8 @@ export interface StrategyConfig {
 	chopEdgeMultiplier?: number;
 	/** Skip trades entirely in CHOP regime (default false) */
 	skipChop?: boolean;
+	/** Position hold strategy: hold_to_settle (default) holds until window settlement */
+	holdStrategy?: "hold_to_settle" | "active_stop";
 }
 
 // ── Engine tuning ────────────────────────────────────────

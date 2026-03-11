@@ -72,6 +72,10 @@ export interface TradeSignal {
 	arbitrage: boolean;
 	tokens: { upTokenId: string; downTokenId: string } | null;
 	conditionId: string | null;
+	/** Source of priceToBeat value for auditability */
+	priceToBeatSource?: "parsed" | "missing";
+	/** Best bid-ask spread for the traded side */
+	spread?: number | null;
 }
 
 export interface TradeResult {

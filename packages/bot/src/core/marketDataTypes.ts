@@ -45,6 +45,8 @@ export interface OrderBookSummary {
 	spread: number | null;
 	bidLiquidity: number | null;
 	askLiquidity: number | null;
+	bidNotional: number | null;
+	askNotional: number | null;
 }
 
 export interface PolymarketSnapshot {
