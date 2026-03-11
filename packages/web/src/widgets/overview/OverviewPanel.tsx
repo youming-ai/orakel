@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { OverviewTab } from "@/components/analytics/OverviewTab";
+import { OverviewSkeleton } from "@/components/OverviewSkeleton";
 import { useDashboardStateWithWs, useLiveStats, usePaperClearStop, usePaperStats } from "@/lib/queries";
 import { buildPnlTimeline, buildStatsFromTrades } from "@/lib/stats";
 import { useUIStore } from "@/lib/store";
@@ -19,7 +20,11 @@ export function OverviewPanel() {
 	const todayStats = viewMode === "paper" ? state?.todayStats : state?.liveTodayStats;
 
 	if (!state) {
-		return null;
+		return (
+			<main className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-20 sm:pb-6">
+				<OverviewSkeleton />
+			</main>
+		);
 	}
 
 	return (

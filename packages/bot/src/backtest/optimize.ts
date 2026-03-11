@@ -179,9 +179,6 @@ async function main(): Promise<void> {
 		log.info(`    minVolatility15m: ${result.params.minVolatility15m}`);
 		log.info(`    maxVolatility15m: ${result.params.maxVolatility15m}`);
 		log.info(`    candleAggregationMinutes: ${result.params.candleAggregationMinutes}`);
-		log.info(`    minPriceToBeatMovePct: ${result.params.minPriceToBeatMovePct}`);
-		log.info(`    minExpectedEdge: ${result.params.minExpectedEdge}`);
-		log.info(`    maxEntryPrice: ${result.params.maxEntryPrice}`);
 		log.info(`    edgeDownBias: ${result.params.edgeDownBias}`);
 	}
 

@@ -16,7 +16,6 @@ function makeStrategy(overrides: Partial<StrategyConfig> = {}): StrategyConfig {
 		minVolatility15m: undefined,
 		maxVolatility15m: undefined,
 		candleAggregationMinutes: undefined,
-		minPriceToBeatMovePct: undefined,
 		...overrides,
 	};
 }
@@ -287,36 +286,6 @@ describe("decide", () => {
 		expect(result.reason).toBe("vol_above_0.05");
 	});
 
-	it("returns NO_TRADE when price move vs priceToBeat is below strategy minimum", () => {
-		const result = decide({
-			remainingMinutes: 8,
-			edgeUp: 0.2,
-			edgeDown: 0.01,
-			modelUp: 0.8,
-			modelDown: 0.2,
-			priceToBeatMovePct: 0.001,
-			strategy: makeStrategy({ minPriceToBeatMovePct: 0.002 }),
-		});
-
-		expect(result.action).toBe("NO_TRADE");
-		expect(result.reason).toBe("ptb_move_below_0.002");
-	});
-
-	it("applies priceToBeat move threshold directionally for DOWN entries", () => {
-		const result = decide({
-			remainingMinutes: 8,
-			edgeUp: 0.02,
-			edgeDown: 0.2,
-			modelUp: 0.2,
-			modelDown: 0.8,
-			priceToBeatMovePct: -0.003,
-			strategy: makeStrategy({ minPriceToBeatMovePct: 0.002 }),
-		});
-
-		expect(result.action).toBe("ENTER");
-		expect(result.side).toBe("DOWN");
-	});
-
 	it("enters with STRONG strength when edge >= 20%", () => {
 		const result = decide({
 			remainingMinutes: 12,
@@ -522,118 +491,6 @@ describe("decide", () => {
 			});
 			expect(result.action).toBe("ENTER");
 		});
-	});
-});
-
-describe("minExpectedEdge filter", () => {
-	it("returns NO_TRADE when edge is below minExpectedEdge", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.06,
-			edgeDown: 0.01,
-			modelUp: 0.65,
-			modelDown: 0.35,
-			strategy: makeStrategy({ minExpectedEdge: 0.08 }),
-		});
-
-		expect(result.action).toBe("NO_TRADE");
-		expect(result.reason).toBe("expected_edge_below_0.08");
-	});
-
-	it("allows trade when edge meets minExpectedEdge", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.1,
-			edgeDown: 0.01,
-			modelUp: 0.7,
-			modelDown: 0.3,
-			strategy: makeStrategy({ minExpectedEdge: 0.08 }),
-		});
-
-		expect(result.action).toBe("ENTER");
-		expect(result.side).toBe("UP");
-	});
-
-	it("does not apply when minExpectedEdge is undefined", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.06,
-			edgeDown: 0.01,
-			modelUp: 0.65,
-			modelDown: 0.35,
-			strategy: makeStrategy(),
-		});
-
-		expect(result.action).toBe("ENTER");
-	});
-});
-
-describe("maxEntryPrice filter", () => {
-	it("returns NO_TRADE when market price exceeds maxEntryPrice", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.1,
-			edgeDown: 0.01,
-			modelUp: 0.7,
-			modelDown: 0.3,
-			strategy: makeStrategy({ maxEntryPrice: 0.55 }),
-		});
-
-		expect(result.action).toBe("NO_TRADE");
-		expect(result.reason).toBe("entry_price_above_0.55");
-	});
-
-	it("allows trade when market price is at maxEntryPrice", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.1,
-			edgeDown: 0.01,
-			modelUp: 0.6,
-			modelDown: 0.4,
-			strategy: makeStrategy({ maxEntryPrice: 0.5 }),
-		});
-
-		expect(result.action).toBe("ENTER");
-	});
-
-	it("allows cheap side trades (market price < 0.50)", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.01,
-			edgeDown: 0.15,
-			modelUp: 0.3,
-			modelDown: 0.7,
-			strategy: makeStrategy({ maxEntryPrice: 0.58 }),
-		});
-
-		expect(result.action).toBe("ENTER");
-		expect(result.side).toBe("DOWN");
-	});
-
-	it("does not apply when modelUp/Down is null", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.1,
-			edgeDown: 0.01,
-			modelUp: null,
-			modelDown: null,
-			strategy: makeStrategy({ maxEntryPrice: 0.4 }),
-		});
-
-		expect(result.action).toBe("ENTER");
-	});
-
-	it("does not apply when maxEntryPrice is undefined", () => {
-		const result = decide({
-			remainingMinutes: 12,
-			edgeUp: 0.1,
-			edgeDown: 0.01,
-			modelUp: 0.7,
-			modelDown: 0.3,
-			strategy: makeStrategy(),
-		});
-
-		expect(result.action).toBe("ENTER");
 	});
 });
 

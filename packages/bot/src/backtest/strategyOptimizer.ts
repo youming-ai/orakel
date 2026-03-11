@@ -16,9 +16,6 @@ export interface StrategyParameterSpace {
 	minVolatility15m: { min: number; max: number; step: number };
 	maxVolatility15m: { min: number; max: number; step: number };
 	candleAggregationMinutes: number[];
-	minPriceToBeatMovePct: { min: number; max: number; step: number };
-	minExpectedEdge: { min: number; max: number; step: number };
-	maxEntryPrice: { min: number; max: number; step: number };
 	edgeDownBias: { min: number; max: number; step: number };
 }
 
@@ -60,12 +57,6 @@ export function createDefaultParameterSpace(): StrategyParameterSpace {
 
 		candleAggregationMinutes: [1, 2, 3],
 
-		minPriceToBeatMovePct: { min: 0.0005, max: 0.0015, step: 0.0002 },
-
-		minExpectedEdge: { min: 0.04, max: 0.07, step: 0.005 },
-
-		maxEntryPrice: { min: 0.55, max: 0.6, step: 0.01 },
-
 		edgeDownBias: { min: 0.01, max: 0.03, step: 0.005 },
 	};
 }
@@ -83,9 +74,6 @@ export function* generateParameterCombinations(space: StrategyParameterSpace): G
 		minVolatility15m: generateRange(space.minVolatility15m),
 		maxVolatility15m: generateRange(space.maxVolatility15m),
 		candleAggregationMinutes: space.candleAggregationMinutes,
-		minPriceToBeatMovePct: generateRange(space.minPriceToBeatMovePct),
-		minExpectedEdge: generateRange(space.minExpectedEdge),
-		maxEntryPrice: generateRange(space.maxEntryPrice),
 		edgeDownBias: generateRange(space.edgeDownBias),
 	};
 
@@ -107,38 +95,29 @@ export function* generateParameterCombinations(space: StrategyParameterSpace): G
 											if (minVol >= maxVol) continue;
 
 											for (const agg of ranges.candleAggregationMinutes) {
-												for (const ptbMove of ranges.minPriceToBeatMovePct) {
-													for (const minEdge of ranges.minExpectedEdge) {
-														for (const maxEntry of ranges.maxEntryPrice) {
-															for (const bias of ranges.edgeDownBias) {
-																count++;
-																if (count > maxCombinations) {
-																	log.warn(`Parameter space too large, limiting to ${maxCombinations} combinations`);
-																	return;
-																}
-
-																yield {
-																	edgeThresholdEarly: edgeEarly,
-																	edgeThresholdMid: edgeMid,
-																	edgeThresholdLate: edgeLate,
-																	minProbEarly: probEarly,
-																	minProbMid: probMid,
-																	minProbLate: probLate,
-																	maxGlobalTradesPerWindow: 2,
-																	skipMarkets: [],
-																	minTimeLeftMin: minTime,
-																	maxTimeLeftMin: maxTime,
-																	minVolatility15m: minVol,
-																	maxVolatility15m: maxVol,
-																	candleAggregationMinutes: agg,
-																	minPriceToBeatMovePct: ptbMove,
-																	minExpectedEdge: minEdge,
-																	maxEntryPrice: maxEntry,
-																	edgeDownBias: bias,
-																};
-															}
-														}
+												for (const bias of ranges.edgeDownBias) {
+													count++;
+													if (count > maxCombinations) {
+														log.warn(`Parameter space too large, limiting to ${maxCombinations} combinations`);
+														return;
 													}
+
+													yield {
+														edgeThresholdEarly: edgeEarly,
+														edgeThresholdMid: edgeMid,
+														edgeThresholdLate: edgeLate,
+														minProbEarly: probEarly,
+														minProbMid: probMid,
+														minProbLate: probLate,
+														maxGlobalTradesPerWindow: 2,
+														skipMarkets: [],
+														minTimeLeftMin: minTime,
+														maxTimeLeftMin: maxTime,
+														minVolatility15m: minVol,
+														maxVolatility15m: maxVol,
+														candleAggregationMinutes: agg,
+														edgeDownBias: bias,
+													};
 												}
 											}
 										}
@@ -177,9 +156,6 @@ export function generateRandomParameters(space: StrategyParameterSpace, count: n
 			minVolatility15m: minVol,
 			maxVolatility15m: maxVol,
 			candleAggregationMinutes: randomPick(space.candleAggregationMinutes),
-			minPriceToBeatMovePct: randomInRange(space.minPriceToBeatMovePct.min, space.minPriceToBeatMovePct.max),
-			minExpectedEdge: randomInRange(space.minExpectedEdge.min, space.minExpectedEdge.max),
-			maxEntryPrice: randomInRange(space.maxEntryPrice.min, space.maxEntryPrice.max),
 			edgeDownBias: randomInRange(space.edgeDownBias.min, space.edgeDownBias.max),
 		});
 	}
@@ -275,12 +251,6 @@ export function createUniversalStrategy(btcResult: OptimizationResult, ethResult
 		minVolatility15m: avg(btcResult.params.minVolatility15m ?? 0.0016, ethResult.params.minVolatility15m ?? 0.0019),
 		maxVolatility15m: avg(btcResult.params.maxVolatility15m ?? 0.03, ethResult.params.maxVolatility15m ?? 0.03),
 		candleAggregationMinutes: btcResult.params.candleAggregationMinutes ?? 2,
-		minPriceToBeatMovePct: avg(
-			btcResult.params.minPriceToBeatMovePct ?? 0.0008,
-			ethResult.params.minPriceToBeatMovePct ?? 0.0012,
-		),
-		minExpectedEdge: avg(btcResult.params.minExpectedEdge ?? 0.05, ethResult.params.minExpectedEdge ?? 0.05),
-		maxEntryPrice: avg(btcResult.params.maxEntryPrice ?? 0.58, ethResult.params.maxEntryPrice ?? 0.58),
 		edgeDownBias: avg(btcResult.params.edgeDownBias ?? 0.02, ethResult.params.edgeDownBias ?? 0.02),
 	};
 }

@@ -71,7 +71,6 @@ export function decide(params: {
 	modelUp?: number | null;
 	modelDown?: number | null;
 	volatility15m?: number | null;
-	priceToBeatMovePct?: number | null;
 	regime?: Regime | null;
 	strategy: StrategyConfig;
 	edgeConfig?: Partial<EdgeConfig>;
@@ -87,7 +86,6 @@ export function decide(params: {
 		modelUp = null,
 		modelDown = null,
 		volatility15m = null,
-		priceToBeatMovePct = null,
 		regime = null,
 		strategy,
 		edgeConfig,
@@ -171,8 +169,6 @@ export function decide(params: {
 	const bestSide: Side = edgeUp > edgeDown ? "UP" : "DOWN";
 	const bestEdge = bestSide === "UP" ? edgeUp : edgeDown;
 	const bestModel = bestSide === "UP" ? modelUp : modelDown;
-	const directionalMovePct =
-		priceToBeatMovePct === null ? null : bestSide === "UP" ? priceToBeatMovePct : -priceToBeatMovePct;
 
 	if (bestEdge < threshold) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `edge_below_${+threshold.toPrecision(10)}` };
@@ -180,37 +176,6 @@ export function decide(params: {
 
 	if (bestModel !== null && bestModel < minProb) {
 		return { action: "NO_TRADE", side: null, phase, regime, reason: `prob_below_${minProb}` };
-	}
-
-	if (typeof strategy.minExpectedEdge === "number" && bestEdge < strategy.minExpectedEdge) {
-		return { action: "NO_TRADE", side: null, phase, regime, reason: `expected_edge_below_${strategy.minExpectedEdge}` };
-	}
-
-	if (typeof strategy.maxEntryPrice === "number" && bestModel !== null) {
-		const bestMarketPrice = bestModel - bestEdge;
-		if (bestMarketPrice > strategy.maxEntryPrice) {
-			return {
-				action: "NO_TRADE",
-				side: null,
-				phase,
-				regime,
-				reason: `entry_price_above_${strategy.maxEntryPrice}`,
-			};
-		}
-	}
-
-	if (
-		directionalMovePct !== null &&
-		typeof strategy.minPriceToBeatMovePct === "number" &&
-		directionalMovePct < strategy.minPriceToBeatMovePct
-	) {
-		return {
-			action: "NO_TRADE",
-			side: null,
-			phase,
-			regime,
-			reason: `ptb_move_below_${strategy.minPriceToBeatMovePct}`,
-		};
 	}
 
 	const strength: Strength =

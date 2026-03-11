@@ -6,7 +6,6 @@ import { clamp } from "../core/utils.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
 import {
 	aggregateCandles,
-	applyTimeAwareness,
 	blendProbabilities,
 	computeAdaptiveTaWeight,
 	computeRealizedVolatility,
@@ -46,16 +45,11 @@ export function computeMarketDecision(
 	strategy: StrategyConfig,
 	isLive: boolean = false,
 ): ComputeResult {
-	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin, aggregatedPrice } = data;
+	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin } = data;
 	if (poly.ok && poly.degraded) {
 		log.warn(`Polymarket snapshot degraded for ${market.id}; using fallback orderbook/price data`);
 	}
 
-	const divergenceThreshold = strategy.divergenceThreshold ?? 0.004;
-	const priceDivergence = aggregatedPrice?.divergence?.maxDivergence ?? null;
-	if (priceDivergence !== null && priceDivergence > divergenceThreshold) {
-		log.info(`${market.id} price divergence: ${(priceDivergence * 100).toFixed(3)}% - confidence boost applied`);
-	}
 	const effectiveTimeLeftMin = timeLeftMin ?? market.candleWindowMinutes;
 	const aggregationMinutes = Math.max(1, Number(strategy.candleAggregationMinutes ?? 1));
 	const sampledCandles: Candle[] = aggregateCandles(candles, aggregationMinutes);
@@ -168,7 +162,6 @@ export function computeMarketDecision(
 	}
 	const orderbookImbalance = netImbalance;
 
-	const timeAware = applyTimeAwareness(scored.rawUp, effectiveTimeLeftMin, market.candleWindowMinutes);
 	const volImpliedUp = estimatePriceToBeatProbability({
 		currentPrice: currentPrice ?? lastPrice,
 		priceToBeat,
@@ -176,29 +169,14 @@ export function computeMarketDecision(
 		volatility15m,
 		probabilityConfig: CONFIG.probability,
 	});
-	const priceToBeatMovePct =
-		priceToBeat !== null &&
-		Number.isFinite(priceToBeat) &&
-		priceToBeat > 0 &&
-		Number.isFinite(currentPrice ?? lastPrice)
-			? ((currentPrice ?? lastPrice) - priceToBeat) / priceToBeat
-			: null;
 	const adaptiveTaWeight = computeAdaptiveTaWeight(
 		effectiveTimeLeftMin,
 		market.candleWindowMinutes,
 		strategy.taWeightEarly ?? 0.7,
 		strategy.taWeightLate ?? 0.3,
 	);
-	const blended = blendProbabilities(timeAware.adjustedUp, volImpliedUp, adaptiveTaWeight);
-
-	let microBias = 0;
-	if (orderbookImbalance !== null) {
-		microBias += clamp(orderbookImbalance * 0.03, -0.02, 0.02);
-	}
-	if (spotChainlinkDelta !== null && data.market.resolutionSource === "chainlink") {
-		microBias += clamp(spotChainlinkDelta * 0.5, -0.01, 0.01);
-	}
-	const finalUp = clamp(blended.finalUp + microBias, 0, 1);
+	const blended = blendProbabilities(scored.rawUp, volImpliedUp, adaptiveTaWeight);
+	const finalUp = clamp(blended.finalUp, 0, 1);
 	const finalDown = 1 - finalUp;
 
 	const marketUp = poly.ok ? (poly.prices?.up ?? null) : null;
@@ -212,32 +190,14 @@ export function computeMarketDecision(
 		edgeConfig: CONFIG.edge,
 	});
 
-	// Apply directional divergence-based edge boost when cross-exchange price divergence exceeds threshold.
-	// If Binance price > Bybit price, the primary exchange sees higher value → boost UP edge only.
-	// If Binance price < Bybit price → boost DOWN edge only.
-	let boostedEdge = edge;
-	if (priceDivergence !== null && priceDivergence > divergenceThreshold && aggregatedPrice?.divergence) {
-		const boostFactor = strategy.divergenceBoostFactor ?? 0.5;
-		const boostMax = strategy.divergenceBoostMax ?? 0.02;
-		const boost = Math.min(priceDivergence * boostFactor, boostMax);
-		const { price1, price2 } = aggregatedPrice.divergence;
-		const binanceHigher = price1 > price2;
-		boostedEdge = {
-			...edge,
-			edgeUp: edge.edgeUp !== null ? edge.edgeUp + (binanceHigher ? boost : 0) : null,
-			edgeDown: edge.edgeDown !== null ? edge.edgeDown + (binanceHigher ? 0 : boost) : null,
-		};
-	}
-
 	const rec: TradeDecision = decide({
 		remainingMinutes: effectiveTimeLeftMin,
 		windowMinutes: market.candleWindowMinutes,
-		edgeUp: boostedEdge.edgeUp,
-		edgeDown: boostedEdge.edgeDown,
+		edgeUp: edge.edgeUp,
+		edgeDown: edge.edgeDown,
 		modelUp: finalUp,
 		modelDown: finalDown,
 		volatility15m,
-		priceToBeatMovePct,
 		regime: regimeInfo.regime,
 		strategy,
 		edgeConfig: CONFIG.edge,

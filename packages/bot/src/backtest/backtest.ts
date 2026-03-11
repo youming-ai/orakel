@@ -110,9 +110,6 @@ async function loadStrategyFromConfig(key: string) {
 			minVolatility15m: 0.00175,
 			maxVolatility15m: 0.03,
 			candleAggregationMinutes: 2,
-			minPriceToBeatMovePct: 0.001,
-			minExpectedEdge: 0.05,
-			maxEntryPrice: 0.58,
 			edgeDownBias: 0.02,
 		};
 	}

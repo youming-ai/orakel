@@ -315,9 +315,6 @@ const STRATEGY_PATCH_KEYS = new Set<keyof StrategyConfig>([
 	"maxVolatility15m",
 	"minVolatility15m",
 	"candleAggregationMinutes",
-	"minPriceToBeatMovePct",
-	"minExpectedEdge",
-	"maxEntryPrice",
 ]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -572,9 +569,6 @@ export const CONFIG: AppConfig = {
 		minVolatility15m: FILE_STRATEGY.minVolatility15m,
 		maxVolatility15m: FILE_STRATEGY.maxVolatility15m,
 		candleAggregationMinutes: FILE_STRATEGY.candleAggregationMinutes,
-		minPriceToBeatMovePct: FILE_STRATEGY.minPriceToBeatMovePct,
-		minExpectedEdge: FILE_STRATEGY.minExpectedEdge,
-		maxEntryPrice: FILE_STRATEGY.maxEntryPrice,
 	},
 
 	// Legacy combined risk (backward compat — prefer paperRisk/liveRisk)
@@ -619,9 +613,6 @@ export function reloadConfig(): AppConfig {
 		minVolatility15m: fileStrategy.minVolatility15m,
 		maxVolatility15m: fileStrategy.maxVolatility15m,
 		candleAggregationMinutes: fileStrategy.candleAggregationMinutes,
-		minPriceToBeatMovePct: fileStrategy.minPriceToBeatMovePct,
-		minExpectedEdge: fileStrategy.minExpectedEdge,
-		maxEntryPrice: fileStrategy.maxEntryPrice,
 	};
 
 	perMarketStrategy = fileConfig.perMarketStrategy;
