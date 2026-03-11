@@ -20,23 +20,48 @@ function asRecord(value: unknown): Record<string, unknown> {
 	return {};
 }
 
-function computeLimitPrice(
-	signal: TradeSignal,
-	riskConfig: RiskConfig,
-): { price: number; isUp: boolean; marketPrice: number } | { error: string } {
+interface PriceResult {
+	price: number;
+	isUp: boolean;
+	marketPrice: number;
+}
+
+export function computeMakerPrice(signal: TradeSignal, riskConfig: RiskConfig): PriceResult | { error: string } {
 	const isUp = signal.side === "UP";
 	const marketPrice = isUp ? parseFloat(String(signal.marketUp)) : parseFloat(String(signal.marketDown));
 	if (!Number.isFinite(marketPrice)) {
 		return { error: "price_not_finite" };
 	}
 
-	// Phase-adaptive limit discount: LATE uses smaller discount for better fill rate,
-	// EARLY uses full discount since there's more time to get filled.
+	const spread = signal.spread ?? 0.02;
 	const maxDiscount = Number(riskConfig.limitDiscount ?? 0.1);
-	const phaseMultiplier = signal.phase === "LATE" ? 0.5 : signal.phase === "MID" ? 0.75 : 1.0;
-	const limitDiscount = Math.max(0.01, maxDiscount * phaseMultiplier);
+	const adaptiveDiscount = Math.min(Math.max(spread * 0.5, 0.01), maxDiscount);
+	const priceRaw = Math.max(0.01, marketPrice - adaptiveDiscount);
+	const price = Math.round(priceRaw * 100) / 100;
 
-	const priceRaw = Math.max(0.01, marketPrice - limitDiscount);
+	if (price < CONFIG.execution.minOrderPrice || price > CONFIG.execution.maxOrderPrice) {
+		return { error: "price_out_of_range" };
+	}
+
+	const oppositePrice = isUp ? parseFloat(String(signal.marketDown)) : parseFloat(String(signal.marketUp));
+	if (price > CONFIG.execution.confidentPrice && oppositePrice < CONFIG.execution.confidentOpposite) {
+		return { error: "market_too_confident" };
+	}
+
+	return { price, isUp, marketPrice };
+}
+
+export function computeTakerPrice(signal: TradeSignal, riskConfig: RiskConfig): PriceResult | { error: string } {
+	void riskConfig;
+	const isUp = signal.side === "UP";
+	const marketPrice = isUp ? parseFloat(String(signal.marketUp)) : parseFloat(String(signal.marketDown));
+	if (!Number.isFinite(marketPrice)) {
+		return { error: "price_not_finite" };
+	}
+
+	const spread = signal.spread ?? 0.02;
+	const takerTolerance = Math.min(Math.max(spread * 1.0, 0.01), 0.03);
+	const priceRaw = Math.min(0.99, marketPrice + takerTolerance);
 	const price = Math.round(priceRaw * 100) / 100;
 
 	if (price < CONFIG.execution.minOrderPrice || price > CONFIG.execution.maxOrderPrice) {
@@ -65,7 +90,11 @@ async function executeTradeInternal(
 	mode: "paper" | "live" = "paper",
 ): Promise<TradeResult> {
 	const { riskConfig } = options;
-	const priceResult = computeLimitPrice(signal, riskConfig);
+	const isLatePhase = signal.phase === "LATE";
+	const isHighConfidence = signal.strength === "STRONG" || signal.strength === "GOOD";
+	const isGtdOrder = mode === "paper" || !isLatePhase || !isHighConfidence;
+
+	const priceResult = isGtdOrder ? computeMakerPrice(signal, riskConfig) : computeTakerPrice(signal, riskConfig);
 	if ("error" in priceResult) {
 		log.info(`${mode} trade skipped for ${signal.marketId}: ${priceResult.error}`);
 		return { success: false, reason: priceResult.error };
@@ -73,6 +102,16 @@ async function executeTradeInternal(
 	const { price, isUp, marketPrice } = priceResult;
 	const { side } = signal;
 	const tradeSize = Number(riskConfig.maxTradeSizeUsdc || 0);
+	const bestEdge = signal.side === "UP" ? (signal.edgeUp ?? 0) : (signal.edgeDown ?? 0);
+	const feeRate = isGtdOrder ? 0.0 : 0.02;
+	const expectedPnl = bestEdge * tradeSize - tradeSize * feeRate;
+	if (expectedPnl <= 0) {
+		log.info(
+			`${mode} trade skipped for ${signal.marketId}: negative_expected_pnl (edge=${bestEdge.toFixed(4)} fees=${(tradeSize * feeRate).toFixed(2)})`,
+		);
+		return { success: false, reason: "negative_expected_pnl" };
+	}
+
 	const timing = getCandleWindowTiming(options.marketConfig?.candleWindowMinutes ?? 15);
 
 	if (mode === "paper") {
@@ -137,11 +176,9 @@ async function executeTradeInternal(
 
 	try {
 		const negRisk = false;
-		const isLatePhase = signal.phase === "LATE";
-		const isHighConfidence = signal.strength === "STRONG" || signal.strength === "GOOD";
 		let result: unknown;
 
-		if (isLatePhase && isHighConfidence) {
+		if (!isGtdOrder) {
 			log.info(`Posting FOK market order: ${side} amount=${tradeSize} worst-price=${price} (token: ${tokenId})`);
 			result = await client.createAndPostMarketOrder(
 				{ tokenID: tokenId, side: Side.BUY, amount: tradeSize, price },
@@ -181,7 +218,6 @@ async function executeTradeInternal(
 
 		log.info("Order result:", JSON.stringify(result));
 		const liveTradeTimestamp = new Date().toISOString();
-		const isGtdOrder = !isLatePhase || !isHighConfidence;
 		const defaultStatus = isGtdOrder ? "placed" : "filled";
 
 		if (!resultOrderId && !resultId) {
