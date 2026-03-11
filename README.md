@@ -141,10 +141,6 @@ bunx drizzle-kit push
 | [CLAUDE.md](./CLAUDE.md) | Claude Code development guide |
 | [AGENTS.md](./AGENTS.md) | AI agent context, code style |
 
-## License
-
-MIT
-
 ## Disclaimer
 
 This project does not constitute financial advice. Trading involves significant risk. Participate at your own risk.

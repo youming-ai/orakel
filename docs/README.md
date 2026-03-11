@@ -5,7 +5,6 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/youming-ai/orakel.git
 cd orakel
 cp .env.example .env
 docker compose up --build
@@ -211,9 +210,4 @@ GitHub Actions 工作流：
 - `AGENTS.md` - AI 代理上下文和代码规范
 - `docs/ARCHITECTURE_REVIEW.md` - 系统架构详细评估
 - `docs/BACKTEST.md` - 回测系统文档
-- `docs/CONTRIBUTING.md` - 贡献指南
 - 本文档 - 技术架构和开发指南
-
-## 许可证
-
-MIT
