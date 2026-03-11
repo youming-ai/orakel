@@ -1,0 +1,20 @@
+{
+	"name": "@orakel/shared",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		"./contracts": {
+			"import": "./src/contracts/index.ts",
+			"types": "./src/contracts/index.ts"
+		}
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"typescript": "^5.9.3"
+	}
+}
