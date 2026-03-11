@@ -95,7 +95,7 @@ bun run backtest:multi --fillMode historical --quoteMode historical
       "minProbMid": 0.58,
       "minProbLate": 0.62,
       "minTimeLeftMin": 3,
-      "maxTimeLeftMin": 11.5,
+      "maxTimeLeftMin": 8,
       "minVolatility15m": 0.00175,
       "maxVolatility15m": 0.03,
       "candleAggregationMinutes": 2,
@@ -154,7 +154,7 @@ bun run optimize --markets BTC-15m,ETH-15m --iterations 200 --output universal_s
 | minProbMid | 中期最小概率 | 0.58 |
 | minProbLate | 晚期最小概率 | 0.62 |
 | minTimeLeftMin | 最小剩余时间(分钟) | 3 |
-| maxTimeLeftMin | 最大剩余时间(分钟) | 11.5 |
+| maxTimeLeftMin | 最大剩余时间(分钟) | 8 |
 | minVolatility15m | 最小15分钟波动率 | 0.00175 |
 | maxVolatility15m | 最大15分钟波动率 | 0.03 |
 | candleAggregationMinutes | 蜡烛聚合分钟数 | 2 |

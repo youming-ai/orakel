@@ -1,9 +1,9 @@
 services:
   bot:
-    # Use pre-built image (CI/CD) or local build
     image: ${IMAGE_TAG:-orakel-bot:local}
     build:
       context: .
+      dockerfile: packages/bot/Dockerfile
       args:
         - BUILD_UID=${UID:-1000}
         - BUILD_GID=${GID:-1000}
@@ -26,23 +26,21 @@ services:
     networks:
       - orakel-network
 
-  web:
-    image: ${WEB_IMAGE_TAG:-orakel-web:local}
-    build:
-      context: ./web
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: orakel
+      POSTGRES_PASSWORD: orakel
+      POSTGRES_DB: orakel
     ports:
-      - "${WEB_PORT:-9998}:80"
-    restart: unless-stopped
-    depends_on:
-      - bot
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - orakel-network
+
+volumes:
+  postgres_data:
 
 networks:
   orakel-network:

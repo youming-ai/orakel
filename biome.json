@@ -1,7 +1,7 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
 	"files": {
-		"includes": ["src/**", "web/src/**"]
+		"includes": ["packages/*/src/**"]
 	},
 	"formatter": {
 		"lineWidth": 120
@@ -34,7 +34,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["src/__tests__/**/*.test.ts", "src/**/__tests__/**/*.ts"],
+			"includes": ["packages/*/src/**/__tests__/**/*.test.ts", "packages/*/src/**/__tests__/**/*.ts"],
 			"linter": {
 				"rules": {
 					"suspicious": {
@@ -47,7 +47,7 @@
 			}
 		},
 		{
-			"includes": ["src/core/logger.ts"],
+			"includes": ["packages/bot/src/core/logger.ts"],
 			"linter": {
 				"rules": {
 					"suspicious": {

@@ -1,6 +1,6 @@
 # Orakel
 
-Automated trading bot for Polymarket **Crypto Up/Down** multi-timeframe markets. Paper trading, live trading, web dashboard, Docker deployment.
+Automated trading bot for Polymarket **Crypto Up/Down** multi-timeframe markets. Paper trading, live trading, web dashboard.
 
 **Tech Stack**: Bun + TypeScript + Hono + PostgreSQL (backend), React 19 + Vite + shadcn/ui + Tailwind v4 (frontend)
 
@@ -11,53 +11,94 @@ Automated trading bot for Polymarket **Crypto Up/Down** multi-timeframe markets.
 | BTC-15m | 15 min | BTCUSDT | Chainlink BTC/USD | `btc-up-or-down-15m` |
 | ETH-15m | 15 min | ETHUSDT | Chainlink ETH/USD | `eth-up-or-down-15m` |
 
-## Features
+## Monorepo Structure
 
-- **Paper Trading** -- Simulate with real-time data, no real money
-- **Live Trading** -- Polymarket CLOB orders (GTD + FOK), on-chain settlement
-- **Technical Analysis** -- Heiken Ashi, RSI, MACD, VWAP, Realized Volatility
-- **Probability Model** -- TA-scored probability with configurable edge thresholds
-- **Market Regime** -- TREND / RANGE / CHOP detection (informational)
-- **Web Dashboard** -- Real-time monitoring, P&L charts, trade history
-- **Docker Deployment** -- One-command `docker compose up`
+This is a Bun workspace monorepo with separate deployment targets:
+
+- **Frontend** (`packages/web/`) → Cloudflare Workers
+- **Backend** (`packages/bot/`) → VPS via Docker
+- **Shared** (`packages/shared/`) → Type definitions used by both
+
+```
+orakel/
+├── bun.workspaces              # Workspace configuration
+├── package.json                # Root workspace manifest
+├── packages/
+│   ├── shared/                 # Shared types and contracts
+│   ├── bot/                    # Backend trading bot (Docker VPS)
+│   └── web/                    # Frontend dashboard (Cloudflare Workers)
+├── docker-compose.yml          # Local development stack
+└── drizzle/                    # Database migrations
+```
 
 ## Quick Start
 
-```bash
-git clone https://github.com/youming-ai/orakel.git
-cd orakel
-cp .env.example .env
-# Edit .env with your configuration
-docker compose up --build
-```
-
-- Dashboard: http://localhost:9998
-- Bot API: http://localhost:9999
-
-## Development
+### Development (Local)
 
 ```bash
-# Install dependencies
-bun install                          # Backend deps
-cd web && bun install && cd ..       # Frontend deps
+# Install dependencies for all packages
+bun install
 
-# Run development servers
-bun run dev                          # Bot + web dashboard (concurrent)
-bun run start                        # Bot only (port 9999)
-cd web && bun run dev                # Frontend only (port 5173)
+# Start all services (bot + frontend dev server)
+bun run dev
+
+# Or start individually
+bun run dev:bot      # Backend only (port 9999)
+bun run dev:web      # Frontend only (port 5173)
 ```
 
-### Development Commands
+### Production
+
+```bash
+# Deploy frontend to Cloudflare Workers
+cd packages/web
+bun run deploy
+
+# Build and run the bot on VPS
+docker build -f packages/bot/Dockerfile -t orakel-bot .
+docker run -d -p 9999:9999 --env-file .env orakel-bot
+```
+
+## Development Commands
 
 | Command | Description |
 |---------|-------------|
-| `bun run lint` | Biome check (lint + format) |
-| `bun run lint:fix` | Auto-fix lint issues |
+| `bun install` | Install all workspace dependencies |
+| `bun run dev` | Start all development servers |
+| `bun run build` | Build all packages |
 | `bun run typecheck` | TypeScript type checking |
-| `bun run test` | Vitest unit tests |
-| `bun run test:watch` | Vitest in watch mode |
+| `bun run test` | Run tests |
+| `bun run lint` | Biome linting |
+| `bun run lint:fix` | Auto-fix lint issues |
 
-Pre-push: `bun run lint && bun run typecheck && bun run test`
+## Frontend Deployment (Cloudflare Workers)
+
+```bash
+cd packages/web
+
+# Login (first time)
+wrangler login
+
+# Set API endpoint secret
+wrangler secret put API_URL
+
+# Deploy
+bun run deploy
+```
+
+## Backend Deployment (Docker VPS)
+
+```bash
+# Build image
+docker build -f packages/bot/Dockerfile -t orakel-bot .
+
+# Run container
+docker run -d \
+  -p 9999:9999 \
+  -v $(pwd)/config.json:/app/config.json:ro \
+  --env-file .env \
+  orakel-bot
+```
 
 ## Configuration
 
@@ -71,37 +112,11 @@ Pre-push: `bun run lint && bun run typecheck && bun run test`
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PAPER_MODE` | `false` | Start in paper trading mode |
-| `ACTIVE_MARKETS` | `""` | Enabled markets (empty = all supported markets) |
+| `ACTIVE_MARKETS` | `""` | Enabled markets (empty = all supported) |
 | `API_TOKEN` | `""` | Bearer token for API auth |
-| `PRIVATE_KEY` | `""` | Wallet key for live trading (auto-connects) |
+| `PRIVATE_KEY` | `""` | Wallet key for live trading |
 | `DATABASE_URL` | `""` | PostgreSQL connection string |
-
-## Documentation
-
-| 文档 | 描述 |
-|------|------|
-| [docs/README.md](./docs/README.md) | 技术架构、开发指南、核心流程 |
-| [CLAUDE.md](./CLAUDE.md) | Claude Code 开发指南、架构细节 |
-| [AGENTS.md](./AGENTS.md) | AI 代理上下文、代码规范 |
-
-## Project Structure
-
-```
-├── src/                      # Backend source
-│   ├── app/                  # 应用启动、API、WebSocket
-│   ├── runtime/              # 交易运行时
-│   ├── repositories/         # 数据访问层
-│   ├── trading/              # 交易执行
-│   ├── pipeline/             # 市场数据处理
-│   ├── engines/              # 决策引擎
-│   ├── indicators/           # 技术指标
-│   ├── data/                 # 外部数据适配器
-│   └── __tests__/            # 测试文件
-├── web/                      # Frontend (React + Vite)
-├── docs/                     # 技术文档
-├── drizzle/                  # 数据库迁移
-└── docker-compose.yml        # Docker 配置
-```
+| `API_URL` | `""` | Bot API URL for frontend |
 
 ## Database
 
@@ -117,6 +132,14 @@ bunx drizzle-kit migrate
 # Direct schema push (development only)
 bunx drizzle-kit push
 ```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/README.md](./docs/README.md) | Technical architecture |
+| [CLAUDE.md](./CLAUDE.md) | Claude Code development guide |
+| [AGENTS.md](./AGENTS.md) | AI agent context, code style |
 
 ## License
 

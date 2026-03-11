@@ -1,45 +1,26 @@
 {
-  "name": "orakel",
-  "version": "0.1.0",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "concurrently \"bun run start\" \"cd web && bun run dev\"",
-    "backtest": "bun run src/backtest/replay.ts",
-    "backtest:multi": "bun run src/backtest/backtest.ts",
-    "optimize": "bun run src/backtest/optimize.ts",
-    "optimize:quick": "bun run src/backtest/quickOptimize.ts",
-    "typecheck": "tsc --noEmit",
-    "typecheck:ci": "tsc --noEmit -p tsconfig.check.json",
-    "typecheck:web": "cd web && tsc --noEmit",
-    "typecheck:all": "tsc --noEmit -p tsconfig.check.json && cd web && tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "biome check src/",
-    "lint:web": "biome check web/src/",
-    "lint:all": "bun run lint && bun run lint:web",
-    "lint:fix": "biome check --write src/",
-    "lint:fix:web": "biome check --write web/src/",
-    "format": "biome format --write src/",
-    "check:ci": "bun run lint:all && bun run typecheck:all && bun run test"
-  },
-  "dependencies": {
-    "@polymarket/clob-client": "^5.8.0",
-    "drizzle-orm": "^0.45.1",
-    "ethers": "^5.8.0",
-    "hono": "^4.12.6",
-    "postgres": "^3.4.8",
-    "ws": "^8.19.0",
-    "zod": "^4.3.6"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.6",
-    "@types/bun": "latest",
-    "@types/ws": "^8.18.1",
-    "concurrently": "^9.2.1",
-    "drizzle-kit": "^0.31.9",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
-  }
+	"name": "orakel",
+	"version": "0.1.0",
+	"type": "module",
+	"private": true,
+	"workspaces": ["packages/*"],
+	"scripts": {
+		"start": "bun run --filter @orakel/bot start",
+		"dev": "concurrently \"bun run dev:bot\" \"bun run dev:web\"",
+		"dev:bot": "bun run --filter @orakel/bot dev",
+		"dev:web": "bun run --filter @orakel/web dev",
+		"build": "bun run --filter @orakel/web build",
+		"typecheck": "bun run --filter '*' typecheck",
+		"test": "bun run --filter @orakel/bot test",
+		"lint": "biome check packages/",
+		"lint:fix": "biome check --write packages/",
+		"format": "biome format --write packages/",
+		"check:ci": "bun run lint && bun run typecheck && bun run test"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.6",
+		"@types/bun": "latest",
+		"concurrently": "^9.2.1",
+		"typescript": "^5.9.3"
+	}
 }

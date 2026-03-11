@@ -28,7 +28,7 @@
       "minProbMid": 0.60,
       "minProbLate": 0.65,
       "maxGlobalTradesPerWindow": 2,
-      "maxTimeLeftMin": 10,
+      "maxTimeLeftMin": 8,
       "skipMarkets": [],
       "candleAggregationMinutes": 1
     }
