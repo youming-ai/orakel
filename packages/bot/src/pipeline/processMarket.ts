@@ -2,6 +2,7 @@ import { CONFIG, getStrategyForMarket } from "../core/config.ts";
 import type { MarketConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import type { CandleWindowTiming, OrderBookSummary } from "../core/marketDataTypes.ts";
+import { isLiveRunning } from "../core/state.ts";
 import { persistSignal } from "../trading/persistence.ts";
 import type { MacdResult, StreamHandles, TradeDecision, TradeSignal } from "../trading/tradeTypes.ts";
 import { computeMarketDecision } from "./compute.ts";
@@ -68,7 +69,7 @@ export async function processMarket({
 	const data = await fetchMarketData(market, timing, streams);
 	if (!data.ok) return { ok: false, market, error: data.error };
 
-	const { marketSlug, marketStartMs, currentPrice, poly } = data;
+	const { marketSlug, currentPrice, poly } = data;
 	if (marketSlug && state.priceToBeatState.slug !== marketSlug) {
 		state.priceToBeatState = { slug: marketSlug, value: null, setAtMs: null };
 		const parsedPrice = poly.ok && poly.market ? priceToBeatFromPolymarketMarket(poly.market) : null;
@@ -81,21 +82,10 @@ export async function processMarket({
 		}
 	}
 
-	if (state.priceToBeatState.slug && state.priceToBeatState.value === null && currentPrice !== null) {
-		const nowMs = Date.now();
-		const okToLatch = marketStartMs === null ? true : nowMs >= marketStartMs;
-		if (okToLatch) {
-			state.priceToBeatState = {
-				slug: state.priceToBeatState.slug,
-				value: Number(currentPrice),
-				setAtMs: nowMs,
-			};
-		}
-	}
-
 	const priceToBeat = state.priceToBeatState.slug === marketSlug ? state.priceToBeatState.value : null;
+	const priceToBeatSource: "parsed" | "missing" = priceToBeat !== null ? "parsed" : "missing";
 	const strategy = getStrategyForMarket(market.id);
-	const result = computeMarketDecision(data, priceToBeat, CONFIG, strategy);
+	const result = computeMarketDecision(data, priceToBeat, CONFIG, strategy, isLiveRunning());
 	if (result.edge.vigTooHigh) {
 		log.info(
 			`${market.id} vig too high: rawSum=${result.edge.rawSum?.toFixed(4)} (>${1.08}), skipping signal generation`,
@@ -112,7 +102,7 @@ export async function processMarket({
 	state.prevMarketUp = result.marketUp ?? state.prevMarketUp;
 	state.prevMarketDown = result.marketDown ?? state.prevMarketDown;
 
-	const signalPayload = persistSignal({
+	const signalParams = {
 		market,
 		regimeInfo: result.regimeInfo,
 		edge: result.edge,
@@ -127,10 +117,12 @@ export async function processMarket({
 		marketDown: result.marketDown,
 		spotPrice: data.spotPrice,
 		currentPrice,
+		priceToBeatSource,
 		marketSlug,
 		rec: result.rec,
 		poly,
-	});
+	};
+	const signalPayload = persistSignal(signalParams);
 
 	return {
 		ok: true,

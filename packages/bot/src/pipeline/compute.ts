@@ -2,6 +2,7 @@ import { CONFIG } from "../core/config.ts";
 import type { AppConfig, StrategyConfig } from "../core/configTypes.ts";
 import { createLogger } from "../core/logger.ts";
 import type { Candle, RawMarketData } from "../core/marketDataTypes.ts";
+import { clamp } from "../core/utils.ts";
 import { computeEdge, decide } from "../engines/edge.ts";
 import {
 	aggregateCandles,
@@ -43,6 +44,7 @@ export function computeMarketDecision(
 	priceToBeat: number | null,
 	config: AppConfig,
 	strategy: StrategyConfig,
+	isLive: boolean = false,
 ): ComputeResult {
 	const { market, candles, currentPrice, lastPrice, spotPrice, poly, timeLeftMin, aggregatedPrice } = data;
 	if (poly.ok && poly.degraded) {
@@ -188,8 +190,16 @@ export function computeMarketDecision(
 		strategy.taWeightLate ?? 0.3,
 	);
 	const blended = blendProbabilities(timeAware.adjustedUp, volImpliedUp, adaptiveTaWeight);
-	const finalUp = blended.finalUp;
-	const finalDown = blended.finalDown;
+
+	let microBias = 0;
+	if (orderbookImbalance !== null) {
+		microBias += clamp(orderbookImbalance * 0.03, -0.02, 0.02);
+	}
+	if (spotChainlinkDelta !== null && data.market.resolutionSource === "chainlink") {
+		microBias += clamp(spotChainlinkDelta * 0.5, -0.01, 0.01);
+	}
+	const finalUp = clamp(blended.finalUp + microBias, 0, 1);
+	const finalDown = 1 - finalUp;
 
 	const marketUp = poly.ok ? (poly.prices?.up ?? null) : null;
 	const marketDown = poly.ok ? (poly.prices?.down ?? null) : null;
@@ -233,6 +243,7 @@ export function computeMarketDecision(
 		edgeConfig: CONFIG.edge,
 		marketId: market.id,
 		marketYes: marketUp,
+		isLive,
 	});
 
 	const pLong = Number.isFinite(finalUp) ? (finalUp * 100).toFixed(0) : "-";

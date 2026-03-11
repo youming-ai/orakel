@@ -464,6 +464,65 @@ describe("decide", () => {
 		expect(result.action).toBe("NO_TRADE");
 		expect(result.reason).toBe("edge_below_0.1");
 	});
+
+	describe("live price range filter", () => {
+		it("should filter price range when isLive=true and marketYes is within skip range", () => {
+			const result = decide({
+				remainingMinutes: 8,
+				edgeUp: 0.15,
+				edgeDown: 0.01,
+				modelUp: 0.7,
+				modelDown: 0.3,
+				strategy: makeStrategy({ liveSkipPriceMin: 0.4, liveSkipPriceMax: 0.6 }),
+				marketYes: 0.5,
+				isLive: true,
+			});
+			expect(result.action).toBe("NO_TRADE");
+			expect(result.reason).toContain("price_range_filtered");
+		});
+
+		it("should NOT filter price range when isLive=false", () => {
+			const result = decide({
+				remainingMinutes: 8,
+				edgeUp: 0.15,
+				edgeDown: 0.01,
+				modelUp: 0.7,
+				modelDown: 0.3,
+				strategy: makeStrategy({ liveSkipPriceMin: 0.4, liveSkipPriceMax: 0.6 }),
+				marketYes: 0.5,
+				isLive: false,
+			});
+			expect(result.action).toBe("ENTER");
+		});
+
+		it("should NOT filter when liveSkipPriceMin/Max undefined", () => {
+			const result = decide({
+				remainingMinutes: 8,
+				edgeUp: 0.15,
+				edgeDown: 0.01,
+				modelUp: 0.7,
+				modelDown: 0.3,
+				strategy: makeStrategy(),
+				marketYes: 0.5,
+				isLive: true,
+			});
+			expect(result.action).toBe("ENTER");
+		});
+
+		it("should allow trade when marketYes is outside skip range", () => {
+			const result = decide({
+				remainingMinutes: 8,
+				edgeUp: 0.15,
+				edgeDown: 0.01,
+				modelUp: 0.7,
+				modelDown: 0.3,
+				strategy: makeStrategy({ liveSkipPriceMin: 0.4, liveSkipPriceMax: 0.6 }),
+				marketYes: 0.7,
+				isLive: true,
+			});
+			expect(result.action).toBe("ENTER");
+		});
+	});
 });
 
 describe("minExpectedEdge filter", () => {

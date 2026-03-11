@@ -10,8 +10,9 @@ import type {
 	PolymarketSnapshot,
 	PriceTick,
 } from "../core/marketDataTypes.ts";
+import { fetchKlines as fetchBinanceKlines } from "../data/binance.ts";
+import { fetchKlines as fetchBybitKlines } from "../data/bybit.ts";
 import { fetchChainlinkPrice } from "../data/chainlink.ts";
-import { fetchKlines, fetchLastPrice } from "../data/coinbase.ts";
 import {
 	fetchClobPrice,
 	fetchLiveEventsBySeriesId,
@@ -25,6 +26,23 @@ import { aggregatePrices } from "../data/priceAggregator.ts";
 import type { StreamHandles } from "../trading/tradeTypes.ts";
 
 const log = createLogger("pipeline-fetch");
+
+async function fetchKlinesWithFallback({
+	symbol,
+	interval,
+	limit,
+}: {
+	symbol: string;
+	interval: string;
+	limit: number;
+}): Promise<import("../core/marketDataTypes.ts").Candle[]> {
+	const binanceKlines = await fetchBinanceKlines({ symbol, interval, limit });
+	if (binanceKlines.length > 0) {
+		return binanceKlines;
+	}
+	log.warn(`Binance klines failed for ${symbol}, trying Bybit...`);
+	return fetchBybitKlines({ symbol, interval, limit });
+}
 
 const clobCircuitBreaker = {
 	failures: 0,
@@ -162,6 +180,8 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 		spread: null,
 		bidLiquidity: null,
 		askLiquidity: null,
+		bidNotional: null,
+		askNotional: null,
 	};
 	let downBookSummary: OrderBookSummary = {
 		bestBid: null,
@@ -169,6 +189,8 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 		spread: null,
 		bidLiquidity: null,
 		askLiquidity: null,
+		bidNotional: null,
+		askNotional: null,
 	};
 
 	if (clobCircuitBreaker.isOpen()) {
@@ -182,6 +204,8 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 			spread: Number(market.spread) || null,
 			bidLiquidity: null,
 			askLiquidity: null,
+			bidNotional: null,
+			askNotional: null,
 		};
 		downBookSummary = {
 			bestBid: null,
@@ -189,6 +213,8 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 			spread: Number(market.spread) || null,
 			bidLiquidity: null,
 			askLiquidity: null,
+			bidNotional: null,
+			askNotional: null,
 		};
 	} else {
 		try {
@@ -217,6 +243,8 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 				spread: Number(market.spread) || null,
 				bidLiquidity: null,
 				askLiquidity: null,
+				bidNotional: null,
+				askNotional: null,
 			};
 			downBookSummary = {
 				bestBid: null,
@@ -224,6 +252,8 @@ async function fetchPolymarketSnapshot(marketDef: MarketConfig): Promise<Polymar
 				spread: Number(market.spread) || null,
 				bidLiquidity: null,
 				askLiquidity: null,
+				bidNotional: null,
+				askNotional: null,
 			};
 		}
 	}
@@ -275,17 +305,18 @@ export async function fetchMarketData(
 							decimals: market.chainlink.decimals,
 						});
 
-		const [klines1mRaw, lastPriceRaw, chainlink, poly, aggregatedPrice] = await withTimeout(
+		const [klines1mRaw, aggregatedPrice, chainlink, poly] = await withTimeout(
 			Promise.all([
-				fetchKlines({ symbol: market.spotSymbol, interval: "1m", limit: CONFIG.infra.klineHistoryLimit }),
-				fetchLastPrice({ symbol: market.spotSymbol }),
+				fetchKlinesWithFallback({ symbol: market.spotSymbol, interval: "1m", limit: CONFIG.infra.klineHistoryLimit }),
+				aggregatePrices(market.spotSymbol),
 				chainlinkPromise,
 				fetchPolymarketSnapshot(market),
-				aggregatePrices(market.spotSymbol),
 			]),
 			15_000,
 			`fetchMarketData(${market.id})`,
 		);
+
+		const lastPriceRaw = aggregatedPrice?.average ?? null;
 
 		const settlementMs = poly.ok && poly.market?.endDate ? new Date(String(poly.market.endDate)).getTime() : null;
 		const settlementLeftMin = settlementMs ? (settlementMs - Date.now()) / 60_000 : null;
