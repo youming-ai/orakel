@@ -6,10 +6,10 @@ ARG BUILD_GID=1000
 FROM oven/bun:1-alpine AS deps
 WORKDIR /app
 
-COPY package.json bun.workspaces ./
+COPY package.json bun.lock bun.workspaces ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/bot/package.json ./packages/bot/
-COPY packages/bot/bun.lock* ./packages/bot/ 2>/dev/null || true
+COPY packages/web/package.json ./packages/web/
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
@@ -34,11 +34,10 @@ RUN if id bun >/dev/null 2>&1; then \
 	fi
 
 COPY --from=deps /app/node_modules node_modules
-COPY --from=deps /app/packages/shared/node_modules packages/shared/node_modules 2>/dev/null || true
 COPY package.json bun.workspaces ./
 COPY packages/shared packages/shared
 COPY packages/bot packages/bot
-COPY drizzle drizzle 2>/dev/null || true
+COPY drizzle drizzle
 
 USER bun
 EXPOSE 9999

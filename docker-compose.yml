@@ -26,22 +26,6 @@ services:
     networks:
       - orakel-network
 
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: orakel
-      POSTGRES_PASSWORD: orakel
-      POSTGRES_DB: orakel
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - orakel-network
-
-volumes:
-  postgres_data:
-
 networks:
   orakel-network:
     driver: bridge

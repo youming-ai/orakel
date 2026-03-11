@@ -4,8 +4,9 @@ compatibility_date = "2025-03-11"
 [build]
 command = "bun run build"
 
-[site]
-bucket = "./dist"
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
 
 [vars]
 API_URL = "https://api.orakel.example.com"
