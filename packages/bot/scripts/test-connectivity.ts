@@ -175,30 +175,57 @@ async function testRpcEndpoints(): Promise<void> {
 	}
 }
 
-async function testCoinbaseApi(): Promise<void> {
-	console.log("=== Coinbase API Test ===\n");
+async function testBinanceApi(): Promise<void> {
+	console.log("=== Binance API Test ===\n");
 
-	const COINBASE_BASE_URL = "https://api.exchange.coinbase.com";
+	const BINANCE_BASE_URL = "https://api.binance.com";
+	const url = new URL("/api/v3/ticker/price", BINANCE_BASE_URL);
+	url.searchParams.set("symbol", "BTCUSDT");
 
-	const url = new URL("/products/BTC-USD/ticker", COINBASE_BASE_URL);
-
-	console.log("Testing: BTC-USD Ticker");
+	console.log("Testing: BTC-USDT Ticker");
 	console.log(`  URL: ${url}`);
 
 	const result = await measureRequest(url);
 	printResult(result);
 
 	if (result.success && result.data) {
-		const CoinbaseResponseSchema = z.object({
-			trade_id: z.number(),
+		const BinanceResponseSchema = z.object({
+			symbol: z.string(),
 			price: z.string(),
-			size: z.string(),
-			time: z.string(),
 		});
-		const parsed = CoinbaseResponseSchema.safeParse(result.data);
+		const parsed = BinanceResponseSchema.safeParse(result.data);
 		if (parsed.success) {
+			console.log(`  Symbol: ${parsed.data.symbol}`);
 			console.log(`  Price: $${parsed.data.price}`);
-			console.log(`  Time: ${parsed.data.time}`);
+		}
+	}
+	console.log("");
+}
+
+async function testBybitApi(): Promise<void> {
+	console.log("=== Bybit API Test ===\n");
+
+	const url = new URL("/v5/market/tickers", CONFIG.spotBaseUrl);
+	url.searchParams.set("category", "spot");
+	url.searchParams.set("symbol", "BTCUSDT");
+
+	console.log("Testing: Market Tickers");
+	console.log(`  URL: ${url}`);
+
+	const result = await measureRequest(url);
+	printResult(result);
+
+	if (result.success && result.data) {
+		const BybitResponseSchema = z.object({
+			result: z.object({
+				list: z.array(z.object({ symbol: z.string(), lastPrice: z.string() })),
+			}),
+		});
+		const parsed = BybitResponseSchema.safeParse(result.data);
+		if (parsed.success && parsed.data.result.list.length > 0) {
+			const ticker = parsed.data.result.list[0];
+			console.log(`  Symbol: ${ticker.symbol}`);
+			console.log(`  Last Price: ${ticker.lastPrice}`);
 		}
 	}
 	console.log("");
@@ -219,6 +246,7 @@ printHeader();
 await testPolymarketApi();
 await testPolymarketGamma();
 await testRpcEndpoints();
-await testCoinbaseApi();
+await testBinanceApi();
+await testBybitApi();
 
 printFooter();

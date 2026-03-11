@@ -1,5 +1,6 @@
 import { createLogger } from "../core/logger.ts";
-import { fetchLastPrice } from "./coinbase.ts";
+import { fetchLastPrice as fetchBinancePrice } from "./binance.ts";
+import { fetchLastPrice as fetchBybitPrice } from "./bybit.ts";
 
 const log = createLogger("price-aggregator");
 
@@ -25,26 +26,41 @@ export interface AggregatedPrice {
 }
 
 export async function aggregatePrices(symbol: string): Promise<AggregatedPrice | null> {
-	const price = await fetchLastPrice({ symbol });
+	const now = Date.now();
 
-	if (price === null) {
-		log.warn(`No price data available for ${symbol}`);
-		return null;
+	const binancePrice = await fetchBinancePrice({ symbol });
+	if (binancePrice !== null) {
+		return {
+			average: binancePrice,
+			sources: [
+				{
+					name: "binance",
+					price: binancePrice,
+					timestamp: now,
+				},
+			],
+			divergence: null,
+			confidence: 0.9,
+		};
 	}
 
-	const now = Date.now();
-	const sources: PriceSource[] = [
-		{
-			name: "coinbase",
-			price,
-			timestamp: now,
-		},
-	];
+	log.warn(`Binance failed for ${symbol}, trying Bybit...`);
+	const bybitPrice = await fetchBybitPrice({ symbol });
+	if (bybitPrice !== null) {
+		return {
+			average: bybitPrice,
+			sources: [
+				{
+					name: "bybit",
+					price: bybitPrice,
+					timestamp: now,
+				},
+			],
+			divergence: null,
+			confidence: 0.8,
+		};
+	}
 
-	return {
-		average: price,
-		sources,
-		divergence: null,
-		confidence: 0.8,
-	};
+	log.error(`Both Binance and Bybit failed for ${symbol}`);
+	return null;
 }

@@ -491,7 +491,10 @@ function readJsonConfig(): ConfigFile {
 			return ConfigFileSchema.parse({});
 		}
 	} catch (err) {
-		log.warn("Failed to read/parse config.json, using defaults:", err);
+		// Suppress warning in test environment
+		if (process.env.VITEST !== "true") {
+			log.warn("Failed to read/parse config.json, using defaults:", err);
+		}
 		return ConfigFileSchema.parse({});
 	}
 }
