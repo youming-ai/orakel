@@ -104,8 +104,24 @@ export function buildReplayRawMarketData(params: {
 				down: polyPrices?.down ?? 0.5,
 			},
 			orderbook: {
-				up: { bestBid: null, bestAsk: null, spread: null, bidLiquidity: null, askLiquidity: null },
-				down: { bestBid: null, bestAsk: null, spread: null, bidLiquidity: null, askLiquidity: null },
+				up: {
+					bestBid: null,
+					bestAsk: null,
+					spread: null,
+					bidLiquidity: null,
+					askLiquidity: null,
+					bidNotional: null,
+					askNotional: null,
+				},
+				down: {
+					bestBid: null,
+					bestAsk: null,
+					spread: null,
+					bidLiquidity: null,
+					askLiquidity: null,
+					bidNotional: null,
+					askNotional: null,
+				},
 			},
 		},
 	};
