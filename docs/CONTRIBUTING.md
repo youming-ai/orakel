@@ -26,11 +26,8 @@ If you find a bug or have a feature suggestion, please first search [Issues](htt
 git clone https://github.com/YOUR_USERNAME/orakel.git
 cd orakel
 
-# Install dependencies
+# Install dependencies (all packages)
 bun install
-
-# Install web dependencies
-cd web && bun install && cd ..
 
 # Create feature branch
 git checkout -b feature/your-feature
@@ -56,20 +53,29 @@ git checkout -b feature/your-feature
 
 ```
 orakel/
-├── src/              # Bot core code
-│   ├── engines/      # Trading strategy engines
-│   ├── indicators/   # Technical indicators
-│   └── data/         # Data sources
-├── web/              # Frontend code (Vite + React)
+├── packages/
+│   ├── shared/       # @orakel/shared — Shared types and contracts
+│   ├── bot/          # @orakel/bot — Trading bot backend
+│   │   ├── src/
+│   │   │   ├── engines/      # Trading strategy engines
+│   │   │   ├── indicators/   # Technical indicators
+│   │   │   ├── data/         # Data sources (Binance, Polymarket, Chainlink)
+│   │   │   ├── trading/      # Trade execution
+│   │   │   ├── pipeline/     # Market data processing
+│   │   │   └── __tests__/    # Test files
+│   │   └── scripts/          # Utility scripts
+│   └── web/          # @orakel/web — Frontend dashboard (Vite + React)
 ├── data/             # Runtime data
+├── drizzle/          # Database migrations
 └── config.json       # Strategy configuration
 ```
 
 ## Tech Stack
 
-- **Backend**: Bun, TypeScript, Hono, ethers
-- **Frontend**: Vite, React 19, Tailwind CSS v4, shadcn/ui
+- **Backend**: Bun, TypeScript, Hono, Drizzle ORM, PostgreSQL, ethers
+- **Frontend**: Vite, React 19, Tailwind CSS v4, shadcn/ui, TanStack Query, Zustand
 - **Blockchain**: Polygon, Polymarket CLOB
+- **Deployment**: Docker (VPS), Cloudflare Workers (frontend)
 
 ## License
 

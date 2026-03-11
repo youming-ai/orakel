@@ -17,21 +17,33 @@ docker compose up --build
 ## 项目结构
 
 ```
-src/
-├── app/                    # API 服务器、WebSocket、启动/关闭
-├── runtime/                # 交易运行时 (主循环、结算周期)
-├── repositories/           # 数据访问层 (Drizzle ORM)
-├── trading/                # 交易执行、账户统计、订单管理
-├── pipeline/               # 市场数据处理 (获取 → 计算)
-├── engines/                # 决策引擎 (边缘计算、概率、市场状态)
-├── indicators/             # 技术指标 (RSI, MACD, VWAP, Heiken Ashi)
-├── data/                   # 外部数据适配器 (Binance, Polymarket, Chainlink)
-├── db/                     # 数据库配置和 Schema
-└── __tests__/              # 测试文件
+packages/
+├── shared/                 # @orakel/shared — 共享类型和合约
+│   └── src/contracts/      # TypeScript 接口 + Zod schemas
+├── bot/                    # @orakel/bot — 交易机器人后端
+│   ├── src/
+│   │   ├── app/            # API 服务器、WebSocket、启动/关闭
+│   │   ├── runtime/        # 交易运行时 (主循环、结算周期)
+│   │   ├── repositories/   # 数据访问层 (Drizzle ORM)
+│   │   ├── trading/        # 交易执行、账户统计、订单管理
+│   │   ├── pipeline/       # 市场数据处理 (获取 → 计算)
+│   │   ├── engines/        # 决策引擎 (边缘计算、概率、市场状态)
+│   │   ├── indicators/     # 技术指标 (RSI, MACD, VWAP, Heiken Ashi)
+│   │   ├── data/           # 外部数据适配器 (Bybit, Polymarket, Chainlink)
+│   │   ├── db/             # 数据库配置和 Schema
+│   │   └── __tests__/      # 测试文件
+│   └── scripts/            # 实用脚本
+└── web/                    # @orakel/web — 前端仪表板
+    ├── src/
+    │   ├── components/     # React 组件 + shadcn/ui
+    │   ├── lib/            # API 客户端、状态管理、工具函数
+    │   ├── hooks/          # 自定义 React hooks
+    │   └── widgets/        # 页面级组件
+    └── wrangler.toml       # Cloudflare Workers 配置
 
-web/                        # 前端 (React 19 + Vite + shadcn/ui)
 docs/                       # 本文档
 drizzle/                    # 数据库迁移
+config.json                 # 策略配置 (热重载)
 ```
 
 ## 核心架构
@@ -40,7 +52,7 @@ drizzle/                    # 数据库迁移
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Binance WS │    │ Chainlink   │    │ Polymarket  │    │  PostgreSQL │
+│  Bybit WS   │    │ Chainlink   │    │ Polymarket  │    │  PostgreSQL │
 │  价格/蜡烛图 │    │ 预言机价格   │    │  赔率/CLOB  │    │  持久化存储  │
 └──────┬──────┘    └──────┬──────┘    └──────┬──────┘    └──────┬──────┘
        │                  │                  │                  │
@@ -66,18 +78,18 @@ drizzle/                    # 数据库迁移
 
 ### 交易决策流程
 
-1. **技术指标** (`indicators/`)
+1. **技术指标** (`packages/bot/src/indicators/`)
    - VWAP - 量价锚点
    - RSI(14) - 动量强度
    - MACD - 趋势确认
    - Heiken Ashi - 噪声过滤
 
-2. **概率模型** (`engines/probability.ts`)
+2. **概率模型** (`packages/bot/src/engines/probability.ts`)
    - 技术评分 + 时间衰减
    - `priceToBeat` 距离/波动率模型
    - 混合概率: 65% PTB + 35% TA
 
-3. **边缘计算** (`engines/edge.ts`)
+3. **边缘计算** (`packages/bot/src/engines/edge.ts`)
    - `edge = modelProb - marketProb`
    - 订单簿滑点调整
    - 三阶段阈值: Early(0.06) / Mid(0.08) / Late(0.10)
@@ -121,17 +133,21 @@ drizzle/                    # 数据库迁移
 ## 开发命令
 
 ```bash
-# 后端
-bun install
+# 从仓库根目录
+bun install              # 安装所有工作区依赖
 bun run dev              # Bot + Dashboard 并发启动
 bun run start            # 仅启动 Bot (port 9999)
-bun run typecheck        # TypeScript 检查
-bun run lint             # Biome 检查
-bun run test             # Vitest 测试
+bun run typecheck        # TypeScript 检查 (所有包)
+bun run lint             # Biome 检查 (所有包)
+bun run test             # Vitest 测试 (bot 包)
+bun run check:ci         # 完整 CI 检查
 
-# 前端
-cd web && bun install
-bun run dev              # Vite dev server (port 5173)
+# 单独包命令
+cd packages/bot && bun run dev        # Bot 开发模式 (带监视)
+cd packages/bot && bun run typecheck:ci  # 不含测试的类型检查
+cd packages/web && bun run dev        # Web 开发服务器 (port 5173)
+cd packages/web && bun run build      # 构建前端生产版本
+cd packages/web && bun run deploy     # 部署到 Cloudflare Workers
 
 # 数据库
 bunx drizzle-kit generate  # 生成迁移
@@ -142,47 +158,60 @@ bunx drizzle-kit migrate   # 应用迁移
 
 | 文件 | 作用 |
 |------|------|
-| `src/index.ts` | 入口点，主循环，启动流程 |
-| `src/pipeline/processMarket.ts` | 市场处理管道 |
-| `src/engines/edge.ts` | 边缘计算 + 交易决策 |
-| `src/trading/trader.ts` | 交易执行 (Paper/Live) |
-| `src/app/api/routes.ts` | API 路由定义 |
-| `src/db/schema.ts` | 数据库表结构 |
+| `packages/bot/src/index.ts` | 入口点，主循环，启动流程 |
+| `packages/bot/src/pipeline/processMarket.ts` | 市场处理管道 |
+| `packages/bot/src/engines/edge.ts` | 边缘计算 + 交易决策 |
+| `packages/bot/src/trading/trader.ts` | 交易执行 (Paper/Live) |
+| `packages/bot/src/app/api/routes.ts` | API 路由定义 |
+| `packages/bot/src/db/schema.ts` | 数据库表结构 |
+| `packages/shared/src/contracts/` | 共享 DTO 和类型 |
 
 ## 测试
 
-测试集中放在 `src/__tests__/`：
+测试集中放在 `packages/bot/src/__tests__/`：
 
 ```bash
 bun run test                    # 全部测试
-bunx vitest run src/__tests__/edge.test.ts   # 单个文件
-bunx vitest run -t "computeEdge"             # 匹配名称
+bunx vitest run packages/bot/src/__tests__/edge.test.ts   # 单个文件
+bunx vitest run -t "computeEdge" --config packages/bot/vitest.config.ts  # 匹配名称
 ```
 
 当前测试覆盖: **17 个文件, 313 个测试**
 
 ## 部署
 
-### Docker (推荐)
+### Docker (后端 VPS)
 
 ```bash
 docker compose up --build
 ```
 
+### Cloudflare Workers (前端)
+
+```bash
+cd packages/web
+wrangler login              # 首次登录
+wrangler secret put API_URL # 设置 API 端点
+bun run deploy              # 部署
+```
+
 ### CI/CD
 
 GitHub Actions 工作流：
-1. Lint (`bunx biome lint`)
-2. Typecheck (`bunx tsc --noEmit`)
+1. Lint (`bun run lint`)
+2. Typecheck (`bun run typecheck`)
 3. Test (`bun run test`)
 4. Docker 构建
 
-预提交检查：`bun run lint && bun run typecheck && bun run test`
+预提交检查：`bun run check:ci`
 
 ## 文档导航
 
 - 根目录 `README.md` - 项目概览和快速开始
 - `AGENTS.md` - AI 代理上下文和代码规范
+- `docs/ARCHITECTURE_REVIEW.md` - 系统架构详细评估
+- `docs/BACKTEST.md` - 回测系统文档
+- `docs/CONTRIBUTING.md` - 贡献指南
 - 本文档 - 技术架构和开发指南
 
 ## 许可证

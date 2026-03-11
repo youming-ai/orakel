@@ -6,7 +6,7 @@
 
 ## 新增组件
 
-### 1. 策略优化器 (`src/backtest/strategyOptimizer.ts`)
+### 1. 策略优化器 (`packages/bot/src/backtest/strategyOptimizer.ts`)
 
 提供参数空间定义、随机参数生成和策略评分功能。
 
@@ -21,7 +21,7 @@ const configs = generateRandomParameters(space, 100);
 const score = calculateStrategyScore(summary, periodDays);
 ```
 
-### 2. 多周期回测引擎 (`src/backtest/multiPeriodBacktest.ts`)
+### 2. 多周期回测引擎 (`packages/bot/src/backtest/multiPeriodBacktest.ts`)
 
 支持7天、30天、180天的多周期回测。
 
@@ -44,7 +44,7 @@ const results = await runMultiPeriodBacktest({
 });
 ```
 
-### 3. 策略优化CLI (`src/backtest/optimize.ts`)
+### 3. 策略优化CLI (`packages/bot/src/backtest/optimize.ts`)
 
 自动优化策略参数，找出最优配置。
 
@@ -62,7 +62,7 @@ bun run optimize --daysAgo 7 --iterations 50
 bun run optimize --output results.json
 ```
 
-### 4. 多周期回测CLI (`src/backtest/backtest.ts`)
+### 4. 多周期回测CLI (`packages/bot/src/backtest/backtest.ts`)
 
 运行单个策略的多周期回测。
 
