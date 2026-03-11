@@ -145,6 +145,8 @@ function makeResult(params: {
 				spread: 0.02,
 				bidLiquidity: 10_000,
 				askLiquidity: 10_000,
+				bidNotional: 4_900,
+				askNotional: 5_100,
 			},
 			down: {
 				bestBid: 0.49,
@@ -152,6 +154,8 @@ function makeResult(params: {
 				spread: 0.02,
 				bidLiquidity: 10_000,
 				askLiquidity: 10_000,
+				bidNotional: 4_900,
+				askNotional: 5_100,
 			},
 		},
 		signalPayload: makeSignalPayload({
@@ -362,5 +366,65 @@ describe("dispatchTradeCandidates", () => {
 			expect.any(Object),
 			"live",
 		);
+	});
+
+	it("should skip trade when notional liquidity is below minimum", async () => {
+		const { dispatchTradeCandidates } = await import("../runtime/tradeDispatch.ts");
+		const liveTracker = makeLiveTracker();
+		const result = makeResult({
+			marketId: "BTC-15m",
+			marketSlug: "btc-updown-15m-1772898300",
+			side: "UP",
+			edge: 0.12,
+		});
+
+		if (result.orderbook?.up) {
+			result.orderbook.up.askNotional = 4_900;
+			result.orderbook.up.askLiquidity = 20_000;
+		}
+
+		await dispatchTradeCandidates({
+			results: [result],
+			paperTracker: {
+				has: vi.fn(),
+				record: vi.fn(),
+				canTradeGlobally: vi.fn(),
+			},
+			liveTracker,
+			onLiveOrderPlaced: vi.fn(),
+		});
+
+		expect(executeTrade).not.toHaveBeenCalled();
+		expect(liveTracker.record).not.toHaveBeenCalled();
+	});
+
+	it("should allow trade when notional liquidity meets minimum", async () => {
+		const { dispatchTradeCandidates } = await import("../runtime/tradeDispatch.ts");
+		const liveTracker = makeLiveTracker();
+		const result = makeResult({
+			marketId: "BTC-15m",
+			marketSlug: "btc-updown-15m-1772898300",
+			side: "UP",
+			edge: 0.12,
+		});
+
+		if (result.orderbook?.up) {
+			result.orderbook.up.askNotional = 5_000;
+			result.orderbook.up.askLiquidity = 20_000;
+		}
+
+		await dispatchTradeCandidates({
+			results: [result],
+			paperTracker: {
+				has: vi.fn(),
+				record: vi.fn(),
+				canTradeGlobally: vi.fn(),
+			},
+			liveTracker,
+			onLiveOrderPlaced: vi.fn(),
+		});
+
+		expect(executeTrade).toHaveBeenCalledOnce();
+		expect(liveTracker.record).toHaveBeenCalledOnce();
 	});
 });

@@ -95,7 +95,7 @@ export async function dispatchTradeCandidates({
 		const windowKey = String(timing.startMs);
 		const settlementKey = getSettlementExposureKey(candidate, timing.endMs);
 		const sideBook = signal.side === "UP" ? (candidate.orderbook?.up ?? null) : (candidate.orderbook?.down ?? null);
-		const sideLiquidity = sideBook?.askLiquidity ?? sideBook?.bidLiquidity ?? null;
+		const sideLiquidity = sideBook?.askNotional ?? sideBook?.bidNotional ?? null;
 
 		if (isPaperRunning()) {
 			const paperAccount = getAccount("paper");
