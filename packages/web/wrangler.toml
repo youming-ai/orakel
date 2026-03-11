@@ -1,0 +1,12 @@
+name = "orakel-web"
+compatibility_date = "2025-03-11"
+
+[build]
+command = "bun run build"
+
+[site]
+bucket = "./dist"
+
+[vars]
+API_URL = "https://api.orakel.example.com"
+

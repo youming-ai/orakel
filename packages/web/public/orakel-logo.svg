@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Gradient for the main ring -->
+    <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="50%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    
+    <!-- Gradient for the K element -->
+    <linearGradient id="kGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle (optional, for dark mode visibility) -->
+  <circle cx="256" cy="256" r="240" fill="#0a0a0a"/>
+  
+  <!-- Outer ring -->
+  <circle 
+    cx="256" 
+    cy="256" 
+    r="180" 
+    fill="none" 
+    stroke="url(#ringGradient)" 
+    stroke-width="24"
+    stroke-linecap="round"
+  />
+  
+  <!-- Tick marks around the ring (representing trading ticks) -->
+  <g stroke="url(#ringGradient)" stroke-width="6" stroke-linecap="round">
+    <!-- Top tick -->
+    <line x1="256" y1="50" x2="256" y2="70"/>
+    <!-- Right tick -->
+    <line x1="462" y1="256" x2="442" y2="256"/>
+    <!-- Bottom tick -->
+    <line x1="256" y1="462" x2="256" y2="442"/>
+    <!-- Left tick -->
+    <line x1="50" y1="256" x2="70" y2="256"/>
+  </g>
+  
+  <!-- Inner K shape (stylized candlestick + K) -->
+  <g transform="translate(256, 256)">
+    <!-- Vertical bar of K -->
+    <line 
+      x1="-40" 
+      y1="-90" 
+      x2="-40" 
+      y2="90" 
+      stroke="url(#kGradient)" 
+      stroke-width="28" 
+      stroke-linecap="round"
+    />
+    
+    <!-- Upper diagonal of K (candlestick body) -->
+    <line 
+      x1="-40" 
+      y1="-10" 
+      x2="60" 
+      y2="-90" 
+      stroke="url(#kGradient)" 
+      stroke-width="28" 
+      stroke-linecap="round"
+    />
+    
+    <!-- Lower diagonal of K (candlestick body) -->
+    <line 
+      x1="-40" 
+      y1="10" 
+      x2="60" 
+      y2="90" 
+      stroke="url(#kGradient)" 
+      stroke-width="28" 
+      stroke-linecap="round"
+    />
+  </g>
+  
+  <!-- Small dot in center (oracle eye pupil) -->
+  <circle cx="256" cy="256" r="12" fill="#F59E0B"/>
+</svg>
