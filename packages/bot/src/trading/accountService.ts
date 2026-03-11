@@ -272,6 +272,11 @@ export class AccountStatsManager {
 			if (today.pnl <= -risk.dailyMaxLossUsdc) {
 				return { canTrade: false, reason: "daily_max_loss_reached" };
 			}
+			const pendingCount = this.getPendingTrades().length;
+			const projectedWorstCase = -today.pnl + pendingCount * risk.maxTradeSizeUsdc;
+			if (projectedWorstCase >= risk.dailyMaxLossUsdc) {
+				return { canTrade: false, reason: "projected_exposure_exceeded" };
+			}
 		}
 		return { canTrade: true };
 	}
@@ -284,6 +289,10 @@ export class AccountStatsManager {
 		return { stoppedAt: this.state.stoppedAt, reason: this.state.stopReason };
 	}
 
+	/**
+	 * Manual circuit breaker - prevents NEW trades but does NOT exit existing positions.
+	 * Current hold strategy: hold_to_settle (all positions held until window settlement).
+	 */
 	triggerStopLoss(reason: string): void {
 		if (this.state.stoppedAt) return;
 		this.state.stoppedAt = new Date().toISOString();

@@ -16,8 +16,8 @@ vi.mock("../db/queries.ts", () => ({
 
 vi.mock("../core/config.ts", () => ({
 	CONFIG: {
-		paperRisk: { dailyMaxLossUsdc: 100 },
-		liveRisk: { dailyMaxLossUsdc: 100 },
+		paperRisk: { dailyMaxLossUsdc: 100, maxTradeSizeUsdc: 30 },
+		liveRisk: { dailyMaxLossUsdc: 100, maxTradeSizeUsdc: 30 },
 	},
 }));
 
@@ -316,5 +316,44 @@ describe("forceResolveStuckTrades persistence and pricing (BUG 5+6)", () => {
 		expect(stats.wins).toBe(0);
 		expect(stats.losses).toBe(1);
 		expect(stats.totalPnl).toBeCloseTo(-10.0, 2);
+	});
+});
+
+describe("projected exposure", () => {
+	it("should block trade when projected exposure exceeds daily limit", async () => {
+		const mgr = makeManager();
+		addTestTrade(mgr, { price: 0.5, size: 40, priceToBeat: 2100 });
+		await mgr.resolveTrades(1000, new Map([["ETH-15m", 1900]]));
+
+		addTestTrade(mgr, { windowStartMs: 2000 });
+		addTestTrade(mgr, { windowStartMs: 3000 });
+		addTestTrade(mgr, { windowStartMs: 4000 });
+
+		expect(mgr.canTradeWithStopCheck()).toEqual({ canTrade: false, reason: "projected_exposure_exceeded" });
+	});
+
+	it("should allow trade when projected exposure is within limit", async () => {
+		const mgr = makeManager();
+		addTestTrade(mgr, { price: 0.5, size: 40, priceToBeat: 2100 });
+		await mgr.resolveTrades(1000, new Map([["ETH-15m", 1900]]));
+
+		addTestTrade(mgr, { windowStartMs: 2000 });
+		addTestTrade(mgr, { windowStartMs: 3000 });
+
+		expect(mgr.canTradeWithStopCheck()).toEqual({ canTrade: true });
+	});
+
+	it("should count pending trades in worst-case projection", async () => {
+		const withoutPending = makeManager();
+		addTestTrade(withoutPending, { price: 0.7, size: 100, priceToBeat: 2100 });
+		await withoutPending.resolveTrades(1000, new Map([["ETH-15m", 1900]]));
+		expect(withoutPending.canTradeWithStopCheck()).toEqual({ canTrade: true });
+
+		const withPending = makeManager();
+		addTestTrade(withPending, { price: 0.7, size: 100, priceToBeat: 2100 });
+		await withPending.resolveTrades(1000, new Map([["ETH-15m", 1900]]));
+		addTestTrade(withPending, { windowStartMs: 2000 });
+
+		expect(withPending.canTradeWithStopCheck()).toEqual({ canTrade: false, reason: "projected_exposure_exceeded" });
 	});
 });
