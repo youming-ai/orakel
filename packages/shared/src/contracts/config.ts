@@ -22,10 +22,10 @@ export interface InfraConfig {
 	pollIntervalMs: number;
 	cliTimeoutMs: number;
 	cliRetries: number;
-	chainlinkWssUrls: string[];
-	chainlinkHttpUrl: string;
-	chainlinkAggregator: string;
-	chainlinkDecimals: number;
+	binanceRestUrl: string;
+	binanceWsUrl: string;
+	bybitRestUrl: string;
+	bybitWsUrl: string;
 	polymarketGammaUrl: string;
 	polymarketClobUrl: string;
 	polymarketClobWsUrl: string;

@@ -23,7 +23,7 @@ export interface WindowSnapshotDto {
 	endMs: number;
 	timeLeftSeconds: number;
 	priceToBeat: number | null;
-	chainlinkPrice: number | null;
+	btcPrice: number | null;
 	deviation: number | null;
 	modelProbUp: number | null;
 	marketProbUp: number | null;
@@ -49,7 +49,7 @@ export interface StateSnapshotPayload {
 
 export interface SignalNewPayload {
 	windowSlug: string;
-	chainlinkPrice: number;
+	btcPrice: number;
 	priceToBeat: number;
 	deviation: number;
 	modelProbUp: number;

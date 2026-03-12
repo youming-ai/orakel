@@ -8,8 +8,8 @@ export interface StatusDto {
 	livePendingStart: boolean;
 	livePendingStop: boolean;
 	currentWindow: WindowSnapshotDto | null;
-	chainlinkPrice: number | null;
-	chainlinkPriceAgeMs: number | null;
+	btcPrice: number | null;
+	btcPriceAgeMs: number | null;
 	cliAvailable: boolean;
 	dbConnected: boolean;
 	uptimeMs: number;
@@ -45,7 +45,7 @@ export interface SignalRecordDto {
 	id: number;
 	windowSlug: string;
 	timestamp: string;
-	chainlinkPrice: number;
+	btcPrice: number;
 	priceToBeat: number;
 	deviation: number;
 	modelProbUp: number;
