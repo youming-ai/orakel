@@ -1,39 +1,53 @@
 {
-  "paper": {
-    "risk": {
-      "maxTradeSizeUsdc": 5,
-      "limitDiscount": 0.04,
-      "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 2,
-      "minLiquidity": 5000,
-      "maxTradesPerWindow": 2
-    }
-  },
-  "live": {
-    "risk": {
-      "maxTradeSizeUsdc": 5,
-      "limitDiscount": 0.04,
-      "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 2,
-      "minLiquidity": 5000,
-      "maxTradesPerWindow": 2
-    }
-  },
   "strategy": {
-    "default": {
-      "edgeThresholdEarly": 0.04,
-      "edgeThresholdMid": 0.07,
-      "edgeThresholdLate": 0.10,
-      "minProbEarly": 0.54,
-      "minProbMid": 0.57,
-      "minProbLate": 0.60,
-      "maxGlobalTradesPerWindow": 1,
-      "minTimeLeftMin": 3,
-      "maxTimeLeftMin": 11,
-      "taWeightEarly": 0.60,
-      "taWeightLate": 0.40,
-      "skipMarkets": [],
-      "candleAggregationMinutes": 1
+    "edgeThresholdEarly": 0.04,
+    "edgeThresholdMid": 0.06,
+    "edgeThresholdLate": 0.08,
+    "phaseEarlySeconds": 180,
+    "phaseLateSeconds": 60,
+    "sigmoidScale": 5,
+    "minVolatility": 0.0001,
+    "maxEntryPrice": 0.95,
+    "minTimeLeftSeconds": 30,
+    "maxTimeLeftSeconds": 270
+  },
+  "risk": {
+    "paper": {
+      "maxTradeSizeUsdc": 5,
+      "dailyMaxLossUsdc": 100,
+      "maxOpenPositions": 2,
+      "maxTradesPerWindow": 1
+    },
+    "live": {
+      "maxTradeSizeUsdc": 5,
+      "dailyMaxLossUsdc": 50,
+      "maxOpenPositions": 1,
+      "maxTradesPerWindow": 1
     }
+  },
+  "execution": {
+    "orderType": "limit",
+    "limitDiscount": 0.02,
+    "minOrderPrice": 0.05,
+    "maxOrderPrice": 0.95
+  },
+  "infra": {
+    "pollIntervalMs": 3000,
+    "cliTimeoutMs": 30000,
+    "cliRetries": 2,
+    "binanceRestUrl": "https://api.binance.com/api/v3",
+    "binanceWsUrl": "wss://stream.binance.com:9443/ws/btcusdt@trade",
+    "bybitRestUrl": "https://api.bybit.com",
+    "bybitWsUrl": "wss://stream.bybit.com/v5/public/spot",
+    "polymarketGammaUrl": "https://gamma-api.polymarket.com",
+    "polymarketClobUrl": "https://clob.polymarket.com",
+    "polymarketClobWsUrl": "wss://ws-subscriptions-clob.polymarket.com/ws/market",
+    "slugPrefix": "btc-updown-5m",
+    "windowSeconds": 300
+  },
+  "maintenance": {
+    "signalLogRetentionDays": 7,
+    "pruneIntervalMs": 3600000,
+    "redeemIntervalMs": 300000
   }
 }
