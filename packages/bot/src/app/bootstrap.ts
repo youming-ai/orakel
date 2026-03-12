@@ -6,7 +6,7 @@ import { checkCliAvailable } from "../cli/commands.ts";
 import { loadConfigFromFile } from "../core/config.ts";
 import { loadEnv } from "../core/env.ts";
 import { createLogger } from "../core/logger.ts";
-import { applyPendingStarts, applyPendingStops } from "../core/state.ts";
+import { applyPendingStarts, applyPendingStops, requestPaperStart } from "../core/state.ts";
 import { createBinanceAdapter } from "../data/binance.ts";
 import { createBybitAdapter } from "../data/bybit.ts";
 import { createOrderBookAdapter } from "../data/polymarket.ts";
@@ -79,6 +79,11 @@ export async function bootstrapApp(): Promise<void> {
 	}, 1000);
 
 	mainLoop.start();
+
+	if (env.PAPER_MODE) {
+		requestPaperStart();
+		log.info("Auto-started paper trading (PAPER_MODE=true)");
+	}
 
 	const watcher = watch(CONFIG_PATH, async () => {
 		try {
