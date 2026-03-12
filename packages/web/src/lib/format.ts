@@ -30,8 +30,9 @@ export function fmtDate(ts: string): string {
 /** Format price based on market id */
 export function fmtPrice(id: string, price: number | null): string {
 	if (price === null) return "---";
-	// All BTC timeframes use 0 decimals
-	if (id.startsWith("BTC")) return `$${price.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+	if (id.startsWith("BTC")) {
+		return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+	}
 	return `$${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
