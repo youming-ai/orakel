@@ -2,8 +2,8 @@ import type { WsPublisher } from "../app/ws.ts";
 import { computePhase, computeSlug, computeTimeLeftSeconds, computeWindowBounds } from "../core/clock.ts";
 import { getConfig } from "../core/config.ts";
 import { createLogger } from "../core/logger.ts";
-import { getStateSnapshot, isLiveRunning, isPaperRunning } from "../core/state.ts";
-import type { ChainlinkAdapter } from "../data/chainlink.ts";
+import { getStateSnapshot, isLiveRunning, isPaperRunning, setLatestTickData } from "../core/state.ts";
+import type { PriceAdapter } from "../core/types.ts";
 import { fetchMarketBySlug, type PolymarketOrderBookAdapter } from "../data/polymarket.ts";
 import { type DecisionInput, makeTradeDecision } from "../engine/decision.ts";
 import { computeEdge } from "../engine/edge.ts";
@@ -14,7 +14,6 @@ import { executeLiveTrade } from "../trading/liveTrader.ts";
 import { executePaperTrade } from "../trading/paperTrader.ts";
 import { persistSignal, persistTrade } from "../trading/persistence.ts";
 import { runRedemption } from "./redeemer.ts";
-import { settleWindow } from "./settlement.ts";
 import { advanceWindowState, createWindowState, type WindowTrackerState } from "./windowManager.ts";
 
 const log = createLogger("main-loop");
@@ -22,7 +21,7 @@ const log = createLogger("main-loop");
 const SIGNAL_PARAMS: SignalParams = { sigmoidScale: 5, minVolatility: 0.0001, epsilon: 0.001 };
 
 interface MainLoopDeps {
-	chainlink: ChainlinkAdapter;
+	priceAdapter: PriceAdapter;
 	polymarketWs: PolymarketOrderBookAdapter;
 	paperAccount: AccountManager;
 	liveAccount: AccountManager;
@@ -36,7 +35,7 @@ interface TradeEntry {
 }
 
 export function createMainLoop(deps: MainLoopDeps) {
-	const { chainlink, polymarketWs, paperAccount, liveAccount, ws } = deps;
+	const { priceAdapter, polymarketWs, paperAccount, liveAccount, ws } = deps;
 	const config = getConfig();
 	let currentWindow: WindowTrackerState | null = null;
 	let previousWindow: WindowTrackerState | null = null;
@@ -84,9 +83,9 @@ export function createMainLoop(deps: MainLoopDeps) {
 				return;
 			}
 
-			const priceTick = chainlink.getLatestPrice();
+			const priceTick = priceAdapter.getLatestPrice();
 			if (!priceTick) {
-				log.warn("No Chainlink price available");
+				log.warn("No BTC price available");
 				return;
 			}
 			if (nowMs - priceTick.timestampMs > 5000) {
@@ -100,6 +99,30 @@ export function createMainLoop(deps: MainLoopDeps) {
 			const marketInfo = currentWindow.marketInfo;
 			if (!marketInfo) return;
 
+			setLatestTickData({
+				currentWindow: {
+					slug: currentWindow.slug,
+					state: currentWindow.state,
+					startMs: currentWindow.startMs,
+					endMs: currentWindow.endMs,
+					timeLeftSeconds: timeLeft,
+					priceToBeat: marketInfo.priceToBeat,
+					btcPrice: priceTick.price,
+					deviation: null,
+					modelProbUp: null,
+					marketProbUp: null,
+					edgeUp: null,
+					edgeDown: null,
+					phase,
+					decision: null,
+					volatility: null,
+				},
+				btcPrice: priceTick.price,
+				btcPriceAgeMs: nowMs - priceTick.timestampMs,
+				paperStats: paperAccount.getStats(),
+				liveStats: liveAccount.getStats(),
+			});
+
 			const upBook = polymarketWs.getOrderBook(marketInfo.upTokenId);
 			const downBook = polymarketWs.getOrderBook(marketInfo.downTokenId);
 			if (!upBook?.midpoint || !downBook?.midpoint) {
@@ -110,10 +133,10 @@ export function createMainLoop(deps: MainLoopDeps) {
 			const marketProbUp = upBook.midpoint;
 			const priceToBeat = marketInfo.priceToBeat || priceTick.price;
 			const deviation = (priceTick.price - priceToBeat) / priceToBeat;
-			const recentTicks = chainlink.getRecentTicks(60000);
+			const recentTicks = priceAdapter.getRecentTicks(60000);
 			const volatility = computeVolatility(recentTicks);
 			const modelProbUp = modelProbability(deviation, timeLeft, volatility, SIGNAL_PARAMS);
-			const { edgeUp, edgeDown, bestSide, bestEdge } = computeEdge(modelProbUp, marketProbUp);
+			const { edgeUp, edgeDown, bestEdge } = computeEdge(modelProbUp, marketProbUp);
 
 			const tradesInWindow = getWindowTrades(currentWindow.slug).length;
 			const hasPosition = tradesInWindow > 0;
@@ -135,7 +158,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 
 			await persistSignal({
 				windowSlug: currentWindow.slug,
-				chainlinkPrice: priceTick.price,
+				btcPrice: priceTick.price,
 				priceToBeat,
 				deviation,
 				modelProbUp,
@@ -225,26 +248,36 @@ export function createMainLoop(deps: MainLoopDeps) {
 				}
 			}
 
+			const windowSnapshot = {
+				slug: currentWindow.slug,
+				state: currentWindow.state,
+				startMs: currentWindow.startMs,
+				endMs: currentWindow.endMs,
+				timeLeftSeconds: timeLeft,
+				priceToBeat,
+				btcPrice: priceTick.price,
+				deviation,
+				modelProbUp,
+				marketProbUp,
+				edgeUp,
+				edgeDown,
+				phase,
+				decision: decision.decision,
+				volatility,
+			};
+
+			setLatestTickData({
+				currentWindow: windowSnapshot,
+				btcPrice: priceTick.price,
+				btcPriceAgeMs: nowMs - priceTick.timestampMs,
+				paperStats: paperAccount.getStats(),
+				liveStats: liveAccount.getStats(),
+			});
+
 			ws.broadcast("state:snapshot", {
 				updatedAt: new Date().toISOString(),
 				...getStateSnapshot(),
-				currentWindow: {
-					slug: currentWindow.slug,
-					state: currentWindow.state,
-					startMs: currentWindow.startMs,
-					endMs: currentWindow.endMs,
-					timeLeftSeconds: timeLeft,
-					priceToBeat,
-					chainlinkPrice: priceTick.price,
-					deviation,
-					modelProbUp,
-					marketProbUp,
-					edgeUp,
-					edgeDown,
-					phase,
-					decision: decision.decision,
-					volatility,
-				},
+				currentWindow: windowSnapshot,
 				paperStats: paperAccount.getStats(),
 				liveStats: liveAccount.getStats(),
 			});

@@ -6,7 +6,7 @@ const log = createLogger("persistence");
 
 export async function persistSignal(data: {
 	windowSlug: string;
-	chainlinkPrice: number;
+	btcPrice: number;
 	priceToBeat: number;
 	deviation: number;
 	modelProbUp: number;
@@ -23,7 +23,7 @@ export async function persistSignal(data: {
 		const db = getDb();
 		await db.insert(signals).values({
 			windowSlug: data.windowSlug,
-			chainlinkPrice: String(data.chainlinkPrice),
+			btcPrice: String(data.btcPrice),
 			priceToBeat: String(data.priceToBeat),
 			deviation: String(data.deviation),
 			modelProbUp: String(data.modelProbUp),
