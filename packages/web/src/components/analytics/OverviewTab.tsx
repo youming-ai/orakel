@@ -1,17 +1,12 @@
 import { useMemo } from "react";
-import { HeroPnlCard, MarketCard, StatsGrid, StopLossCard, TodayStatsCard } from "@/components/cards";
+import { HeroPnlCard, MarketCard, StatsGrid, TodayStatsCard } from "@/components/cards";
 import { PnlTimelineChart } from "@/components/charts";
 import { OverviewSkeleton } from "@/components/OverviewSkeleton";
-import type { MarketSnapshot, StopLossStatus, TodayStats } from "@/contracts/http";
+import type { MarketSnapshot, TodayStats } from "@/contracts/http";
 import type { ExtendedStats } from "@/lib/stats";
 
 interface OverviewTabProps {
-	stopLoss?: StopLossStatus | null;
 	todayStats?: TodayStats;
-	clearStopMutation: {
-		mutate: () => void;
-		isPending: boolean;
-	};
 	mergedStats: ExtendedStats;
 	pnlTimeline: Array<{
 		ts: string;
@@ -27,15 +22,7 @@ interface OverviewTabProps {
 
 const MARKET_ORDER = ["BTC-15m", "ETH-15m"];
 
-export function OverviewTab({
-	stopLoss,
-	todayStats,
-	clearStopMutation,
-	mergedStats,
-	pnlTimeline,
-	markets,
-	updatedAt,
-}: OverviewTabProps) {
+export function OverviewTab({ todayStats, mergedStats, pnlTimeline, markets, updatedAt }: OverviewTabProps) {
 	const sortedMarkets = useMemo(() => {
 		return [...markets].sort((a, b) => {
 			const aIndex = MARKET_ORDER.indexOf(a.id);
@@ -53,8 +40,6 @@ export function OverviewTab({
 
 	return (
 		<div className="space-y-4">
-			<StopLossCard stopLoss={stopLoss} onReset={clearStopMutation.mutate} isPending={clearStopMutation.isPending} />
-
 			{todayStats && <TodayStatsCard todayStats={todayStats} stats={mergedStats} />}
 
 			<div className="flex flex-col xl:flex-row xl:items-stretch gap-4">

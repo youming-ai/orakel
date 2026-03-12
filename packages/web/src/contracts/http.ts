@@ -4,13 +4,6 @@ export type RiskConfig = RiskConfigDto;
 
 export interface ConfidenceResult {
 	score: number;
-	factors: {
-		indicatorAlignment: number;
-		volatilityScore: number;
-		orderbookScore: number;
-		timingScore: number;
-		regimeScore: number;
-	};
 	level: "HIGH" | "MEDIUM" | "LOW";
 }
 
@@ -24,28 +17,17 @@ export interface MarketSnapshot {
 	priceToBeat: number | null;
 	marketUp: number | null;
 	marketDown: number | null;
-	rawSum: number | null;
-	arbitrage: boolean;
 	predictLong: number | null;
 	predictShort: number | null;
 	predictDirection: "LONG" | "SHORT" | "NEUTRAL";
-	haColor: string | null;
-	haConsecutive: number;
-	rsi: number | null;
-	macd: { macd: number; signal: number; hist: number; histDelta: number | null } | null;
-	vwapSlope: number | null;
 	timeLeftMin: number | null;
 	phase: string | null;
 	action: string;
 	side: string | null;
 	edge: number | null;
-	strength: string | null;
 	reason: string | null;
 	volatility15m: number | null;
-	blendSource: string | null;
-	volImpliedUp: number | null;
-	spotChainlinkDelta: number | null;
-	orderbookImbalance: number | null;
+	spotDelta: number | null;
 	confidence?: ConfidenceResult;
 }
 
@@ -87,23 +69,10 @@ export interface MarketBreakdown {
 	tradeCount: number;
 }
 
-export interface StopLossStatus {
-	stoppedAt: string | null;
-	reason: string | null;
-}
-
 export interface TodayStats {
 	pnl: number;
 	trades: number;
 	limit: number;
-}
-
-export interface PaperStatsResponse {
-	stats: PaperStats;
-	trades: PaperTradeEntry[];
-	byMarket: Record<string, MarketBreakdown>;
-	stopLoss: StopLossStatus | null;
-	todayStats: TodayStats;
 }
 
 export interface TradeRecord {
@@ -130,12 +99,8 @@ export interface DashboardState {
 	paperPendingStop: boolean;
 	livePendingStart: boolean;
 	livePendingStop: boolean;
-	paperPendingSince?: number | null;
-	livePendingSince?: number | null;
 	paperStats?: PaperStats | null;
 	liveStats?: PaperStats | null;
-	stopLoss?: StopLossStatus | null;
-	liveStopLoss?: StopLossStatus | null;
 	todayStats?: TodayStats;
 	liveTodayStats?: TodayStats;
 }

@@ -41,38 +41,3 @@ export function useLiveCancel() {
 		},
 	});
 }
-
-export function usePaperClearStop() {
-	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: () => api.paperClearStop(),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: queryKeys.state });
-			qc.invalidateQueries({ queryKey: queryKeys.paperStats });
-		},
-	});
-}
-
-export function usePaperReset() {
-	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: () => api.paperReset(),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: queryKeys.state });
-			qc.invalidateQueries({ queryKey: queryKeys.trades("paper") });
-			qc.invalidateQueries({ queryKey: queryKeys.paperStats });
-		},
-	});
-}
-
-export function useLiveReset() {
-	const qc = useQueryClient();
-	return useMutation({
-		mutationFn: () => api.liveReset(),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: queryKeys.state });
-			qc.invalidateQueries({ queryKey: queryKeys.trades("live") });
-			qc.invalidateQueries({ queryKey: queryKeys.liveStats });
-		},
-	});
-}

@@ -23,45 +23,6 @@ function MarketLabel({ id, spotPrice }: { id: string; spotPrice: number | null }
 	);
 }
 
-function MacdHistogram({ macd }: { macd: MarketSnapshot["macd"] }) {
-	if (!macd) return null;
-	const hist = macd.hist;
-	const maxBar = 0.005;
-	const pct = Math.min(Math.abs(hist) / maxBar, 1) * 100;
-	const isPositive = hist >= 0;
-	const delta = macd.histDelta;
-	const momentum = delta !== null ? (delta > 0 ? "rising" : "falling") : null;
-
-	return (
-		<div className="flex items-center gap-2">
-			<span className="text-[11px] uppercase text-muted-foreground w-10 shrink-0">MACD</span>
-			<div className="flex-1 h-1.5 bg-muted/30 rounded-full overflow-hidden relative">
-				<div
-					className={cn(
-						"h-full rounded-full transition-all duration-500",
-						isPositive ? "bg-emerald-500/70" : "bg-red-500/70",
-					)}
-					style={{ width: `${pct}%` }}
-				/>
-			</div>
-			<span
-				className={cn(
-					"text-[11px] font-mono font-medium w-8 text-right shrink-0",
-					isPositive ? "text-emerald-400" : "text-red-400",
-				)}
-			>
-				{hist > 0 ? "+" : ""}
-				{(hist * 1000).toFixed(1)}
-			</span>
-			{momentum && (
-				<span className={cn("text-[10px]", momentum === "rising" ? "text-emerald-400/60" : "text-red-400/60")}>
-					{momentum === "rising" ? "▲" : "▼"}
-				</span>
-			)}
-		</div>
-	);
-}
-
 function ConfidenceMeter({ confidence }: { confidence: MarketSnapshot["confidence"] }) {
 	if (!confidence) return null;
 	const pct = Math.round(confidence.score * 100);
@@ -186,9 +147,7 @@ export function MarketCard({ market: m }: MarketCardProps) {
 					<SimplifiedIndicators market={m} />
 				</div>
 
-				{/* MACD + Confidence */}
 				<div className="space-y-1.5">
-					<MacdHistogram macd={m.macd} />
 					<ConfidenceMeter confidence={m.confidence} />
 				</div>
 

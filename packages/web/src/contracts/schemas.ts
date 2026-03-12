@@ -13,13 +13,6 @@ export const TodayStatsSchema = z.object({
 
 export const ConfidenceSchema = z.object({
 	score: z.number(),
-	factors: z.object({
-		indicatorAlignment: z.number(),
-		volatilityScore: z.number(),
-		orderbookScore: z.number(),
-		timingScore: z.number(),
-		regimeScore: z.number(),
-	}),
 	level: z.enum(["HIGH", "MEDIUM", "LOW"]),
 });
 
@@ -33,35 +26,17 @@ export const MarketSnapshotSchema = z.object({
 	priceToBeat: z.number().nullable(),
 	marketUp: z.number().nullable(),
 	marketDown: z.number().nullable(),
-	rawSum: z.number().nullable(),
-	arbitrage: z.boolean(),
 	predictLong: z.number().nullable(),
 	predictShort: z.number().nullable(),
 	predictDirection: z.enum(["LONG", "SHORT", "NEUTRAL"]),
-	haColor: z.string().nullable(),
-	haConsecutive: z.number(),
-	rsi: z.number().nullable(),
-	macd: z
-		.object({
-			macd: z.number(),
-			signal: z.number(),
-			hist: z.number(),
-			histDelta: z.number().nullable(),
-		})
-		.nullable(),
-	vwapSlope: z.number().nullable(),
 	timeLeftMin: z.number().nullable(),
 	phase: z.string().nullable(),
 	action: z.string(),
 	side: z.string().nullable(),
 	edge: z.number().nullable(),
-	strength: z.string().nullable(),
 	reason: z.string().nullable(),
 	volatility15m: z.number().nullable(),
-	blendSource: z.string().nullable(),
-	volImpliedUp: z.number().nullable(),
-	spotChainlinkDelta: z.number().nullable(),
-	orderbookImbalance: z.number().nullable(),
+	spotDelta: z.number().nullable(),
 	confidence: ConfidenceSchema.optional(),
 });
 
@@ -135,12 +110,8 @@ export const DashboardStateSchema = z.object({
 	paperPendingStop: z.boolean(),
 	livePendingStart: z.boolean(),
 	livePendingStop: z.boolean(),
-	paperPendingSince: z.number().nullable().optional(),
-	livePendingSince: z.number().nullable().optional(),
 	paperStats: PaperStatsSchema.nullable().optional(),
 	liveStats: PaperStatsSchema.nullable().optional(),
-	stopLoss: StopLossStatusSchema.nullable().optional(),
-	liveStopLoss: StopLossStatusSchema.nullable().optional(),
 	todayStats: TodayStatsSchema.optional(),
 	liveTodayStats: TodayStatsSchema.optional(),
 });
@@ -164,7 +135,7 @@ export const StateSnapshotPayloadSchema = z.object({
 
 export const SignalNewPayloadSchema = z.object({
 	windowSlug: z.string(),
-	chainlinkPrice: z.number(),
+	btcPrice: z.number(),
 	priceToBeat: z.number(),
 	deviation: z.number(),
 	modelProbUp: z.number(),

@@ -39,42 +39,24 @@ export function mapWindowToMarketSnapshot(window: WindowSnapshotDto): MarketSnap
 		label: window.slug,
 		ok: true,
 		error: undefined,
-		spotPrice: window.chainlinkPrice,
-		currentPrice: window.chainlinkPrice,
+		spotPrice: window.btcPrice,
+		currentPrice: window.btcPrice,
 		priceToBeat: window.priceToBeat,
 		marketUp: window.marketProbUp,
 		marketDown: window.marketProbUp !== null ? 1 - window.marketProbUp : null,
-		rawSum: window.marketProbUp !== null ? 1 : null,
-		arbitrage: false,
 		predictLong,
 		predictShort,
 		predictDirection: modelProbUp > 0.5 ? "LONG" : modelProbUp < 0.5 ? "SHORT" : "NEUTRAL",
-		haColor: null,
-		haConsecutive: 0,
-		rsi: null,
-		macd: null,
-		vwapSlope: null,
 		timeLeftMin: window.timeLeftSeconds / 60,
 		phase: window.phase,
 		action: decision.startsWith("ENTER") ? "ENTER" : "HOLD",
 		side,
 		edge,
-		strength: null,
 		reason: null,
 		volatility15m: window.volatility,
-		blendSource: null,
-		volImpliedUp: null,
-		spotChainlinkDelta: window.deviation,
-		orderbookImbalance: null,
+		spotDelta: window.deviation,
 		confidence: {
 			score: Math.max(0, Math.min(1, Math.abs(edge))),
-			factors: {
-				indicatorAlignment: 0,
-				volatilityScore: 0,
-				orderbookScore: 0,
-				timingScore: 0,
-				regimeScore: 0,
-			},
 			level: Math.abs(edge) >= 0.08 ? "HIGH" : Math.abs(edge) >= 0.04 ? "MEDIUM" : "LOW",
 		},
 	};
@@ -103,12 +85,27 @@ export function mapStatusToDashboard(status: StatusDto): DashboardState {
 		livePendingStop: status.livePendingStop,
 		paperStats: null,
 		liveStats: null,
-		stopLoss: null,
-		liveStopLoss: null,
 	};
 }
 
 export function mapStateSnapshotToDashboardPatch(payload: StateSnapshotPayload): Partial<DashboardState> {
+	return {
+		updatedAt: payload.updatedAt,
+		markets: payload.currentWindow ? [mapWindowToMarketSnapshot(payload.currentWindow)] : [],
+		paperRunning: payload.paperRunning,
+		liveRunning: payload.liveRunning,
+		paperPendingStart: payload.paperPendingStart,
+		paperPendingStop: payload.paperPendingStop,
+		livePendingStart: payload.livePendingStart,
+		livePendingStop: payload.livePendingStop,
+		paperStats: payload.paperStats,
+		liveStats: payload.liveStats,
+		todayStats: statsToToday(payload.paperStats),
+		liveTodayStats: statsToToday(payload.liveStats),
+	};
+}
+
+export function mapStateSnapshotToDashboard(payload: StateSnapshotPayload): DashboardState {
 	return {
 		updatedAt: payload.updatedAt,
 		markets: payload.currentWindow ? [mapWindowToMarketSnapshot(payload.currentWindow)] : [],

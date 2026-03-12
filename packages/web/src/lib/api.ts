@@ -81,7 +81,4 @@ export const api = {
 	liveStart: () => post<unknown>("/control/start", { mode: "live" }).then((d) => OkResponseSchema.parse(d)),
 	liveStop: () => post<unknown>("/control/stop", { mode: "live" }).then((d) => OkResponseSchema.parse(d)),
 	liveCancel: () => post<unknown>("/control/stop", { mode: "live" }).then((d) => OkResponseSchema.parse(d)),
-	paperClearStop: async () => OkResponseSchema.parse({ ok: true }),
-	paperReset: async () => OkResponseSchema.parse({ ok: true }),
-	liveReset: async () => OkResponseSchema.parse({ ok: true }),
 };
