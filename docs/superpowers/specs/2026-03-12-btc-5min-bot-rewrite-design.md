@@ -4,7 +4,7 @@
 
 Rewrite `packages/bot` from scratch as a focused BTC 5-minute up/down trading bot for Polymarket. The bot monitors Chainlink BTC/USD price relative to each window's Price-to-Beat, compares the implied real probability to Polymarket's market price, and trades when edge is sufficient. Trade execution happens through the official Polymarket CLI as a subprocess.
 
-**Scope**: Only `packages/bot` is rewritten. `packages/web` and `packages/shared` receive minimal contract/type updates to match the new bot API shape. The monorepo structure, tooling (Bun, Biome, Vitest, Drizzle), and deployment targets (Docker VPS for bot, Cloudflare Workers for web) are unchanged.
+**Scope**: Only `packages/bot` is rewritten. `packages/shared` is rewritten to match the new DTO contracts (it has no independent consumers besides bot and web). `packages/web` is **out of scope** for this plan — it will intentionally break (typecheck failures) until a follow-up plan updates it. The monorepo structure, tooling (Bun, Biome, Vitest, Drizzle), and deployment targets (Docker VPS for bot, Cloudflare Workers for web) are unchanged.
 
 ## Target Market
 
@@ -13,7 +13,7 @@ Rewrite `packages/bot` from scratch as a focused BTC 5-minute up/down trading bo
 - **URL pattern**: `btc-updown-5m-{epoch_end_seconds}` (timestamp = window end time)
 - **Resolution**: "Up" if Chainlink BTC/USD price at window end >= price at window start. Otherwise "Down". Uses `>=`, so flat resolves as Up.
 - **Cycle**: 288 markets per day, continuous, every 5 minutes. New market appears ~5 minutes before its window starts.
-- **Resolution source**: Chainlink BTC/USD data stream (`data.chain.link/streams/btc-usd`)
+- **Resolution source**: Chainlink BTC/USD price feed on Polygon PoS (aggregator contract `0xc907E116054Ad103354f2D350FD2514433D57F6f`, 8 decimals). The bot reads this via WebSocket subscription to Polygon WSS RPC (primary) and HTTP RPC polling (fallback).
 - **Market discovery**: The bot discovers the current active window by computing the slug from the current time (`btc-updown-5m-{windowEndEpoch}`) and fetching it from the Gamma API via `GET /markets?slug={slug}`. No series ID is needed — slug-based lookup is the primary discovery mechanism. The `slugPrefix` config (`btc-updown-5m-`) is used only for filtering when listing multiple markets (e.g., for backtest data fetching). If slug lookup returns no result (market not yet created), the bot retries next tick.
 
 ## Data Sources
@@ -825,7 +825,7 @@ For reference, the web changes needed eventually:
 
 - **config.ts**: Export `StrategyConfig`, `RiskConfigDto`, `ConfigUpdateDto` (new shapes from config section)
 - **state.ts**: Export `StateSnapshotPayload`, `SignalNewPayload`, `TradeExecutedPayload`, `AccountStatsDto`, `WsEventType`, `WsMessage` (new shapes from WS contracts section)
-- **http.ts**: Export `StatusDto`, `StatsDto`, `TradeRecordDto`, `ConfigSnapshotDto` (new shapes from API contracts section)
+- **http.ts**: Export `StatusDto`, `StatsDto`, `TradeRecordDto`, `SignalRecordDto`, `ConfigSnapshotDto`, `ConfigUpdateDto`, `ControlRequestDto`, `ControlResponseDto`, `RiskConfigDto` (all API request/response shapes)
 - **schemas.ts**: Zod schemas for runtime validation of the above types (used by both bot and web)
 
 All old types (`MarketSnapshot`, `ConfidenceDto`, `PaperStats`, `DashboardStateDto`, etc.) are removed.
@@ -837,8 +837,9 @@ Unchanged:
 - Frontend: Cloudflare Workers
 
 New requirement:
-- Docker image must include `polymarket` CLI binary
-- Dockerfile needs: install Rust toolchain OR download pre-built binary from GitHub releases
+- Docker image must include `polymarket` CLI binary (pinned to v0.1.5 or later)
+- Dockerfile downloads the pre-built binary from GitHub releases: `https://github.com/Polymarket/polymarket-cli/releases/download/v0.1.5/polymarket-linux-amd64`
+- Pin the version in a `POLYMARKET_CLI_VERSION` build arg for reproducibility
 
 ## Migration Path
 
@@ -853,4 +854,4 @@ New requirement:
 
 1. **Market discovery**: Uses slug-based lookup (`GET /markets?slug=btc-updown-5m-{epochEnd}`), not series ID. No series ID needed.
 2. **CLI in Docker**: Download pre-built binary from GitHub releases in Dockerfile (faster, no Rust toolchain needed). Use `curl` to fetch the latest release for linux-amd64 during build. Fallback: user can mount a host-compiled binary via Docker volume.
-3. **Backtest data source**: Primary source is the Polymarket CLOB price history API (1-minute fidelity). Secondary source is the bot's own `signals` table accumulated during live operation (1-second fidelity). See Backtest Validation section for details.
+3. **Backtest data source**: The bot's own `signals` table (1-second fidelity) is the primary high-fidelity source, available for windows after the bot starts running. For historical windows before the bot existed, fallback to on-chain Chainlink data for BTC/USD and CLOB price-history API for market prices (lower fidelity). See Backtest Validation section for details.
