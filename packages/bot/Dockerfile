@@ -17,9 +17,13 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 FROM oven/bun:1-alpine AS release
 ARG BUILD_UID
 ARG BUILD_GID
+ARG POLYMARKET_CLI_VERSION=v0.1.5
 
 WORKDIR /app
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init curl
+RUN curl -sSL -o /usr/local/bin/polymarket \
+    "https://github.com/Polymarket/polymarket-cli/releases/download/${POLYMARKET_CLI_VERSION}/polymarket-linux-amd64" \
+    && chmod +x /usr/local/bin/polymarket
 
 RUN if id bun >/dev/null 2>&1; then \
 		CURRENT_UID=$(id -u bun) && \
