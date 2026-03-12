@@ -1,7 +1,6 @@
-import { useMemo } from "react";
-import { HeroPnlCard, MarketCard, StatsGrid, TodayStatsCard } from "@/components/cards";
+import { HeroPnlCard, SignalCard, StatsGrid, TodayStatsCard } from "@/components/cards";
 import { PnlTimelineChart } from "@/components/charts";
-import { OverviewSkeleton } from "@/components/OverviewSkeleton";
+import { Card, CardContent } from "@/components/ui/card";
 import type { MarketSnapshot, TodayStats } from "@/contracts/http";
 import type { ExtendedStats } from "@/lib/stats";
 
@@ -20,45 +19,36 @@ interface OverviewTabProps {
 	updatedAt?: string;
 }
 
-const MARKET_ORDER = ["BTC-15m", "ETH-15m"];
-
 export function OverviewTab({ todayStats, mergedStats, pnlTimeline, markets, updatedAt }: OverviewTabProps) {
-	const sortedMarkets = useMemo(() => {
-		return [...markets].sort((a, b) => {
-			const aIndex = MARKET_ORDER.indexOf(a.id);
-			const bIndex = MARKET_ORDER.indexOf(b.id);
-			if (aIndex === -1 && bIndex === -1) return 0;
-			if (aIndex === -1) return 1;
-			if (bIndex === -1) return -1;
-			return aIndex - bIndex;
-		});
-	}, [markets]);
-
-	if (mergedStats.totalTrades === 0 && markets.length === 0) {
-		return <OverviewSkeleton />;
-	}
+	const signalMarket = markets[0];
 
 	return (
 		<div className="space-y-4">
-			{todayStats && <TodayStatsCard todayStats={todayStats} stats={mergedStats} />}
+			<div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+				<div className="flex flex-col gap-4 xl:flex-[3]">
+					{signalMarket ? (
+						<SignalCard market={signalMarket} />
+					) : (
+						<Card className="border-border/60 bg-muted/20 shadow-sm">
+							<CardContent className="py-12 text-center text-sm text-muted-foreground">
+								No market signal yet.
+							</CardContent>
+						</Card>
+					)}
+					<PnlTimelineChart timeline={pnlTimeline} />
+				</div>
 
-			<div className="flex flex-col xl:flex-row xl:items-stretch gap-4">
-				<HeroPnlCard
-					totalPnl={mergedStats.totalPnl}
-					bestTrade={mergedStats.bestTrade}
-					worstTrade={mergedStats.worstTrade}
-					profitFactor={mergedStats.profitFactor}
-				/>
-				<StatsGrid stats={mergedStats} />
+				<div className="flex flex-col gap-4 xl:flex-[2]">
+					{todayStats && <TodayStatsCard todayStats={todayStats} stats={mergedStats} />}
+					<HeroPnlCard
+						totalPnl={mergedStats.totalPnl}
+						bestTrade={mergedStats.bestTrade}
+						worstTrade={mergedStats.worstTrade}
+						profitFactor={mergedStats.profitFactor}
+					/>
+					<StatsGrid stats={mergedStats} />
+				</div>
 			</div>
-
-			<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-				{sortedMarkets.map((m) => (
-					<MarketCard key={m.id} market={m} />
-				))}
-			</div>
-
-			<PnlTimelineChart timeline={pnlTimeline} />
 
 			{updatedAt && (
 				<div className="text-center text-[11px] text-muted-foreground/50 py-2">
