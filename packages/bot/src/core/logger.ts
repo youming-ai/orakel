@@ -19,7 +19,6 @@ export function createLogger(module: string): Logger {
 	const emit = (level: LogLevel, msg: string, data?: Record<string, unknown>) => {
 		if (LEVELS[level] < minLevel) return;
 		const entry = { ts: new Date().toISOString(), level, module, msg, ...data };
-		// biome-ignore lint/suspicious/noConsole: logger is the authorized console user
 		console.log(JSON.stringify(entry));
 	};
 	return {

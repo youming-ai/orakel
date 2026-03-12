@@ -11,7 +11,8 @@ export function computeWindowBounds(nowSec: number, windowSec: number): { startS
 }
 
 export function computeSlug(endSec: number, slugPrefix: string): string {
-	return `${slugPrefix}${endSec}`;
+	const sep = slugPrefix.endsWith("-") ? "" : "-";
+	return `${slugPrefix}${sep}${endSec}`;
 }
 
 export function computeTimeLeftSeconds(nowMs: number, endMs: number): number {

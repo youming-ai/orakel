@@ -27,7 +27,7 @@ export const signals = pgTable("signals_v2", {
 	id: serial("id").primaryKey(),
 	windowSlug: text("window_slug").notNull(),
 	timestamp: timestamp("timestamp").defaultNow().notNull(),
-	chainlinkPrice: numeric("chainlink_price", { precision: 16, scale: 2 }).notNull(),
+	btcPrice: numeric("chainlink_price", { precision: 16, scale: 2 }).notNull(),
 	priceToBeat: numeric("price_to_beat", { precision: 16, scale: 2 }).notNull(),
 	deviation: numeric("deviation", { precision: 12, scale: 8 }).notNull(),
 	modelProbUp: numeric("model_prob_up", { precision: 10, scale: 6 }).notNull(),

@@ -4,7 +4,8 @@ const EnvSchema = z.object({
 	PAPER_MODE: z.coerce.boolean().default(true),
 	POLYMARKET_PRIVATE_KEY: z.string().startsWith("0x").optional(),
 	DATABASE_URL: z.string().url(),
-	API_TOKEN: z.string().min(1),
+	API_TOKEN: z.string().min(1).default(""),
+
 	PORT: z.coerce.number().int().positive().default(9999),
 	LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });

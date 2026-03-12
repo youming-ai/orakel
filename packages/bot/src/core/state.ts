@@ -1,3 +1,4 @@
+import type { AccountStatsDto, WindowSnapshotDto } from "@orakel/shared/contracts";
 import { createLogger } from "./logger.ts";
 
 const log = createLogger("state");
@@ -8,6 +9,23 @@ let _paperPendingStart = false;
 let _paperPendingStop = false;
 let _livePendingStart = false;
 let _livePendingStop = false;
+
+/** Cached data from the latest main loop tick — used by /api/status */
+interface LatestTickData {
+	currentWindow: WindowSnapshotDto | null;
+	btcPrice: number | null;
+	btcPriceAgeMs: number | null;
+	paperStats: AccountStatsDto | null;
+	liveStats: AccountStatsDto | null;
+}
+
+let _latestTick: LatestTickData = {
+	currentWindow: null,
+	btcPrice: null,
+	btcPriceAgeMs: null,
+	paperStats: null,
+	liveStats: null,
+};
 
 export function isPaperRunning(): boolean {
 	return _paperRunning;
@@ -98,7 +116,14 @@ export function getStateSnapshot() {
 	};
 }
 
-/** Reset all state - for testing only */
+export function getLatestTickData(): LatestTickData {
+	return _latestTick;
+}
+
+export function setLatestTickData(data: LatestTickData): void {
+	_latestTick = data;
+}
+
 export function resetState(): void {
 	_paperRunning = false;
 	_liveRunning = false;
@@ -106,4 +131,11 @@ export function resetState(): void {
 	_paperPendingStop = false;
 	_livePendingStart = false;
 	_livePendingStop = false;
+	_latestTick = {
+		currentWindow: null,
+		btcPrice: null,
+		btcPriceAgeMs: null,
+		paperStats: null,
+		liveStats: null,
+	};
 }

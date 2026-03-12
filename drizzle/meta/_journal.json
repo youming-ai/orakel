@@ -29,6 +29,13 @@
       "when": 1773126118224,
       "tag": "0003_add-analytics-tables",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1773320469602,
+      "tag": "0004_add-v2-tables",
+      "breakpoints": true
     }
   ]
 }

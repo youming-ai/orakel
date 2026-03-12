@@ -5,6 +5,13 @@ export interface PriceTick {
 	timestampMs: number;
 }
 
+export interface PriceAdapter {
+	getLatestPrice(): PriceTick | null;
+	getRecentTicks(maxAgeMs?: number): PriceTick[];
+	start(): void;
+	stop(): void;
+}
+
 export interface OrderBookSnapshot {
 	bestBid: number | null;
 	bestAsk: number | null;
