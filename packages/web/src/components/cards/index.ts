@@ -1,4 +1,4 @@
 export { HeroPnlCard } from "./HeroPnlCard";
-export { MarketCard } from "./MarketCard";
+export { SignalCard } from "./SignalCard";
 export { StatsGrid } from "./StatsGrid";
 export { TodayStatsCard } from "./TodayStatsCard";
