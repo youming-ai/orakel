@@ -3,7 +3,7 @@ import { classifyCliError, parseCliOutput } from "../cli/executor.ts";
 
 describe("parseCliOutput", () => {
 	it("parses valid JSON output", () => {
-		const result = parseCliOutput<{ value: number }>("{\"value\": 42}");
+		const result = parseCliOutput<{ value: number }>('{"value": 42}');
 		expect(result).toEqual({ value: 42 });
 	});
 

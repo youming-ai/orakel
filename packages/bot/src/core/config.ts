@@ -1,5 +1,5 @@
-import { AppConfigSchema, ConfigUpdateSchema } from "@orakel/shared/contracts";
 import type { AppConfig, ConfigUpdateDto } from "@orakel/shared/contracts";
+import { AppConfigSchema, ConfigUpdateSchema } from "@orakel/shared/contracts";
 import { z } from "zod";
 import { createLogger } from "./logger.ts";
 

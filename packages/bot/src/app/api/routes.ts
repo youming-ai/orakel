@@ -55,7 +55,12 @@ export function createApiRoutes(): Hono {
 		const limit = Number(c.req.query("limit") ?? "100");
 		const db = getDb();
 		const rows = slug
-			? await db.select().from(signals).where(eq(signals.windowSlug, slug)).orderBy(desc(signals.timestamp)).limit(limit)
+			? await db
+					.select()
+					.from(signals)
+					.where(eq(signals.windowSlug, slug))
+					.orderBy(desc(signals.timestamp))
+					.limit(limit)
 			: await db.select().from(signals).orderBy(desc(signals.timestamp)).limit(limit);
 		return c.json(rows);
 	});

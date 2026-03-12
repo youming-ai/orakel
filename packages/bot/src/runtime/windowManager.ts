@@ -1,5 +1,4 @@
-import type { MarketInfo } from "../core/types.ts";
-import type { WindowStateLabel } from "../core/types.ts";
+import type { MarketInfo, WindowStateLabel } from "../core/types.ts";
 
 export interface WindowTrackerState {
 	slug: string;

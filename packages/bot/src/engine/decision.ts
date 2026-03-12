@@ -70,7 +70,12 @@ export function makeTradeDecision(input: DecisionInput): DecisionResult {
 
 	const threshold = getEdgeThreshold(phase, strategy);
 	if (bestEdge < threshold) {
-		return { decision: "SKIP", side: null, edge: bestEdge, reason: `edge ${bestEdge.toFixed(4)} < ${threshold} (${phase})` };
+		return {
+			decision: "SKIP",
+			side: null,
+			edge: bestEdge,
+			reason: `edge ${bestEdge.toFixed(4)} < ${threshold} (${phase})`,
+		};
 	}
 
 	const decision: Decision = bestSide === "UP" ? "ENTER_UP" : "ENTER_DOWN";

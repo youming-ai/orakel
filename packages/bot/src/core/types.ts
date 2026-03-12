@@ -1,4 +1,4 @@
-export type { Side, Phase, Decision, WindowStateLabel } from "@orakel/shared/contracts";
+export type { Decision, Phase, Side, WindowStateLabel } from "@orakel/shared/contracts";
 
 export interface PriceTick {
 	price: number;

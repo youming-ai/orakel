@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createAccountManager, type AccountManager } from "../trading/account.ts";
+import { type AccountManager, createAccountManager } from "../trading/account.ts";
 
 describe("AccountManager", () => {
 	let account: AccountManager;

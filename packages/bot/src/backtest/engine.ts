@@ -1,7 +1,7 @@
-import { getConfig } from "../core/config.ts";
 import { computePhase, computeTimeLeftSeconds } from "../core/clock.ts";
+import { getConfig } from "../core/config.ts";
 import { createLogger } from "../core/logger.ts";
-import { makeTradeDecision, type DecisionInput } from "../engine/decision.ts";
+import { type DecisionInput, makeTradeDecision } from "../engine/decision.ts";
 import { computeEdge } from "../engine/edge.ts";
 import { modelProbability, type SignalParams } from "../engine/signal.ts";
 import type { BacktestResult, BacktestTick } from "./replay.ts";
@@ -66,7 +66,15 @@ export function runBacktest(windows: BacktestWindow[], initialBalance = 10000): 
 				const won = window.outcome === bestSide;
 				const pnl = won ? size * ((1 - entryPrice) / entryPrice) : -size;
 				balance += pnl;
-				trades.push({ side: bestSide, entryPrice, modelProb: modelProbUp, marketProb: tick.marketProbUp, edge: bestEdge, won, pnl });
+				trades.push({
+					side: bestSide,
+					entryPrice,
+					modelProb: modelProbUp,
+					marketProb: tick.marketProbUp,
+					edge: bestEdge,
+					won,
+					pnl,
+				});
 			}
 		}
 	}
