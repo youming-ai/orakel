@@ -1,12 +1,9 @@
 import { computePhase, computeTimeLeftSeconds } from "../core/clock.ts";
 import { getConfig } from "../core/config.ts";
-import { createLogger } from "../core/logger.ts";
 import { type DecisionInput, makeTradeDecision } from "../engine/decision.ts";
 import { computeEdge } from "../engine/edge.ts";
 import { modelProbability, type SignalParams } from "../engine/signal.ts";
 import type { BacktestResult, BacktestTick } from "./replay.ts";
-
-const log = createLogger("backtest");
 
 const SIGNAL_PARAMS: SignalParams = { sigmoidScale: 5, minVolatility: 0.0001, epsilon: 0.001 };
 
@@ -40,7 +37,7 @@ export function runBacktest(windows: BacktestWindow[], initialBalance = 10000): 
 			if (timeLeft <= 0) continue;
 
 			const phase = computePhase(timeLeft, config.strategy.phaseEarlySeconds, config.strategy.phaseLateSeconds);
-			const deviation = (tick.chainlinkPrice - window.priceToBeat) / window.priceToBeat;
+			const deviation = (tick.btcPrice - window.priceToBeat) / window.priceToBeat;
 			const volatility = 0.001;
 			const modelProbUp = modelProbability(deviation, timeLeft, volatility, SIGNAL_PARAMS);
 			const { bestEdge, bestSide } = computeEdge(modelProbUp, tick.marketProbUp);

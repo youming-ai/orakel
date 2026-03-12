@@ -7,7 +7,7 @@ const log = createLogger("replay");
 
 export interface BacktestTick {
 	timestampMs: number;
-	chainlinkPrice: number;
+	btcPrice: number;
 	marketProbUp: number;
 }
 

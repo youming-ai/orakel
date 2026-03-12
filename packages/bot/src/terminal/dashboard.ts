@@ -1,7 +1,3 @@
-import { createLogger } from "../core/logger.ts";
-
-const log = createLogger("dashboard");
-
 interface DashboardData {
 	slug: string;
 	state: string;
@@ -21,7 +17,7 @@ export function renderDashboard(data: DashboardData): void {
 		"=== BTC 5-Min Bot ===",
 		`Window: ${data.slug} | State: ${data.state} | Phase: ${data.phase}`,
 		`Time Left: ${data.timeLeft}s`,
-		`Chainlink: $${data.price.toFixed(2)} | PtB: $${data.priceToBeat.toFixed(2)} | Dev: ${(data.deviation * 100).toFixed(3)}%`,
+		`BTC: $${data.price.toFixed(2)} | PtB: $${data.priceToBeat.toFixed(2)} | Dev: ${(data.deviation * 100).toFixed(3)}%`,
 		`Model P(Up): ${(data.modelProbUp * 100).toFixed(1)}% | Market: ${(data.marketProbUp * 100).toFixed(1)}%`,
 		`Edge: ${(data.edge * 100).toFixed(2)}%`,
 		`Paper P&L: $${data.paperPnl.toFixed(2)}`,
