@@ -19,7 +19,6 @@ function toNumber(value: unknown, fallback = 0): number {
 export function marketIdFromSlug(slug: string): string {
 	const lower = slug.toLowerCase();
 	if (lower.startsWith("btc-")) return "BTC-5m";
-	if (lower.startsWith("eth-")) return "ETH-5m";
 	return slug;
 }
 
