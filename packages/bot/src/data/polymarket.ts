@@ -83,21 +83,25 @@ export function createOrderBookAdapter(clobWsUrl: string): PolymarketOrderBookAd
 	let ws: WebSocket | null = null;
 	let stopped = false;
 
+	let pingInterval: ReturnType<typeof setInterval> | null = null;
+
 	function connect(tokenIds: string[]): void {
 		if (stopped) return;
 		try {
 			ws = new WebSocket(clobWsUrl);
 			ws.onopen = () => {
-				for (const tokenId of tokenIds) {
-					ws?.send(
-						JSON.stringify({
-							type: "subscribe",
-							channel: "best_bid_ask",
-							assets_ids: [tokenId],
-						}),
-					);
-				}
+				ws?.send(
+					JSON.stringify({
+						type: "market",
+						assets_ids: tokenIds,
+						custom_feature_enabled: true,
+					}),
+				);
 				log.info("CLOB WS connected", { tokens: tokenIds.length });
+				if (pingInterval) clearInterval(pingInterval);
+				pingInterval = setInterval(() => {
+					ws?.send("PING");
+				}, 50_000);
 			};
 			ws.onmessage = (event) => {
 				try {
@@ -115,6 +119,7 @@ export function createOrderBookAdapter(clobWsUrl: string): PolymarketOrderBookAd
 				}
 			};
 			ws.onclose = () => {
+				if (pingInterval) clearInterval(pingInterval);
 				if (!stopped) {
 					log.warn("CLOB WS disconnected, reconnecting in 3s");
 					setTimeout(() => connect(tokenIds), 3_000);
@@ -130,6 +135,7 @@ export function createOrderBookAdapter(clobWsUrl: string): PolymarketOrderBookAd
 		subscribe: (tokenIds) => connect(tokenIds),
 		stop: () => {
 			stopped = true;
+			if (pingInterval) clearInterval(pingInterval);
 			ws?.close();
 		},
 	};
