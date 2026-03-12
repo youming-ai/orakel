@@ -5,8 +5,8 @@
     "edgeThresholdLate": 0.08,
     "phaseEarlySeconds": 180,
     "phaseLateSeconds": 60,
-    "sigmoidScale": 5,
-    "minVolatility": 0.0001,
+    "sigmoidScale": 2,
+    "minVolatility": 0.001,
     "maxEntryPrice": 0.95,
     "minTimeLeftSeconds": 30,
     "maxTimeLeftSeconds": 270
