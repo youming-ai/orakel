@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { createLogger } from "../core/logger.ts";
 import { getDb } from "../db/client.ts";
 import { signals, trades } from "../db/schema.ts";
@@ -82,5 +83,28 @@ export async function persistTrade(data: {
 	} catch (err) {
 		log.warn("Failed to persist trade", { error: err instanceof Error ? err.message : String(err) });
 		return 0;
+	}
+}
+
+export async function settleDbTrade(data: {
+	tradeId: number;
+	outcome: "WIN" | "LOSS";
+	settleBtcPrice: number;
+	pnlUsdc: number;
+}): Promise<void> {
+	try {
+		const db = getDb();
+		await db
+			.update(trades)
+			.set({
+				outcome: data.outcome,
+				settleBtcPrice: String(data.settleBtcPrice),
+				pnlUsdc: String(data.pnlUsdc),
+				settledAt: new Date(),
+			})
+			.where(eq(trades.id, data.tradeId));
+		log.info("Trade settled in DB", { tradeId: data.tradeId, outcome: data.outcome, pnl: data.pnlUsdc.toFixed(4) });
+	} catch (err) {
+		log.warn("Failed to settle trade in DB", { error: err instanceof Error ? err.message : String(err) });
 	}
 }

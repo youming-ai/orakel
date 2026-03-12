@@ -12,13 +12,13 @@ import { renderDashboard } from "../terminal/dashboard.ts";
 import type { AccountManager } from "../trading/account.ts";
 import { executeLiveTrade } from "../trading/liveTrader.ts";
 import { executePaperTrade } from "../trading/paperTrader.ts";
-import { persistSignal, persistTrade } from "../trading/persistence.ts";
+import { persistSignal, persistTrade, settleDbTrade } from "../trading/persistence.ts";
 import { runRedemption } from "./redeemer.ts";
 import { advanceWindowState, createWindowState, type WindowTrackerState } from "./windowManager.ts";
 
 const log = createLogger("main-loop");
 
-const SIGNAL_PARAMS: SignalParams = { sigmoidScale: 5, minVolatility: 0.0001, epsilon: 0.001 };
+const EPSILON = 0.001;
 
 interface MainLoopDeps {
 	priceAdapter: PriceAdapter;
@@ -31,12 +31,13 @@ interface MainLoopDeps {
 interface TradeEntry {
 	index: number;
 	side: "UP" | "DOWN";
+	price: number;
+	size: number;
 	tradeId?: number;
 }
 
 export function createMainLoop(deps: MainLoopDeps) {
 	const { priceAdapter, polymarketWs, paperAccount, liveAccount, ws } = deps;
-	const config = getConfig();
 	let currentWindow: WindowTrackerState | null = null;
 	let previousWindow: WindowTrackerState | null = null;
 	const windowTrades = new Map<string, TradeEntry[]>();
@@ -49,7 +50,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 		return windowTrades.get(slug) ?? [];
 	}
 
-	async function discoverWindow(): Promise<void> {
+	async function discoverWindow(config: ReturnType<typeof getConfig>): Promise<void> {
 		const nowSec = Math.floor(Date.now() / 1000);
 		const { startSec, endSec } = computeWindowBounds(nowSec, config.infra.windowSeconds);
 		const slug = computeSlug(endSec, config.infra.slugPrefix);
@@ -64,6 +65,12 @@ export function createMainLoop(deps: MainLoopDeps) {
 
 		previousWindow = currentWindow;
 		currentWindow = createWindowState(slug, startSec * 1000, endSec * 1000);
+
+		const priceTick = priceAdapter.getLatestPrice();
+		if (priceTick) {
+			market.priceToBeat = priceTick.price;
+		}
+
 		currentWindow.marketInfo = market;
 		log.info("Discovered new window", { slug, priceToBeat: market.priceToBeat });
 
@@ -74,14 +81,13 @@ export function createMainLoop(deps: MainLoopDeps) {
 
 	async function processTick(): Promise<void> {
 		try {
+			const config = getConfig();
 			const nowMs = Date.now();
 			const paperRunning = isPaperRunning();
 			const liveRunning = isLiveRunning();
 
-			if (!currentWindow) {
-				await discoverWindow();
-				return;
-			}
+			await discoverWindow(config);
+			if (!currentWindow) return;
 
 			const priceTick = priceAdapter.getLatestPrice();
 			if (!priceTick) {
@@ -135,7 +141,12 @@ export function createMainLoop(deps: MainLoopDeps) {
 			const deviation = (priceTick.price - priceToBeat) / priceToBeat;
 			const recentTicks = priceAdapter.getRecentTicks(60000);
 			const volatility = computeVolatility(recentTicks);
-			const modelProbUp = modelProbability(deviation, timeLeft, volatility, SIGNAL_PARAMS);
+			const signalParams: SignalParams = {
+				sigmoidScale: config.strategy.sigmoidScale,
+				minVolatility: config.strategy.minVolatility,
+				epsilon: EPSILON,
+			};
+			const modelProbUp = modelProbability(deviation, timeLeft, volatility, signalParams);
 			const { edgeUp, edgeDown, bestEdge } = computeEdge(modelProbUp, marketProbUp);
 
 			const tradesInWindow = getWindowTrades(currentWindow.slug).length;
@@ -193,7 +204,29 @@ export function createMainLoop(deps: MainLoopDeps) {
 						},
 						paperAccount,
 					).tradeIndex;
-					getWindowTrades(currentWindow.slug).push({ index: tradeIndex, side });
+					const tradeId = await persistTrade({
+						mode: "paper",
+						windowSlug: currentWindow.slug,
+						windowStartMs: currentWindow.startMs,
+						windowEndMs: currentWindow.endMs,
+						side,
+						price: entryPrice,
+						size: config.risk.paper.maxTradeSizeUsdc,
+						priceToBeat,
+						entryBtcPrice: priceTick.price,
+						edge: decision.edge,
+						modelProb: modelProbUp,
+						marketProb: marketProbUp,
+						phase,
+						orderId: null,
+					});
+					getWindowTrades(currentWindow.slug).push({
+						index: tradeIndex,
+						side,
+						price: entryPrice,
+						size: config.risk.paper.maxTradeSizeUsdc,
+						tradeId,
+					});
 				}
 
 				if (liveRunning && !hasPosition) {
@@ -225,7 +258,13 @@ export function createMainLoop(deps: MainLoopDeps) {
 							phase,
 							orderId: result.orderId,
 						});
-						getWindowTrades(currentWindow.slug).push({ index: 0, side, tradeId });
+						getWindowTrades(currentWindow.slug).push({
+							index: 0,
+							side,
+							price: entryPrice,
+							size: config.risk.live.maxTradeSizeUsdc,
+							tradeId,
+						});
 					}
 				}
 			}
@@ -236,12 +275,22 @@ export function createMainLoop(deps: MainLoopDeps) {
 				const settled = advanceWindowState(previousWindow, nowMs, true);
 				if (settled.state === "SETTLED" && previousWindow.state !== "SETTLED") {
 					const settlePrice = priceTick.price;
-					const trades = getWindowTrades(previousWindow.slug);
-					for (const entry of trades) {
+					const prevPriceToBeat = previousWindow.marketInfo?.priceToBeat || 0;
+					const windowTrades = getWindowTrades(previousWindow.slug);
+					for (const entry of windowTrades) {
 						const won =
-							(entry.side === "UP" && settlePrice >= priceToBeat) ||
-							(entry.side === "DOWN" && settlePrice < priceToBeat);
+							(entry.side === "UP" && settlePrice >= prevPriceToBeat) ||
+							(entry.side === "DOWN" && settlePrice < prevPriceToBeat);
 						paperAccount.settleTrade(entry.index, won);
+						if (entry.tradeId) {
+							const pnl = won ? entry.size * ((1 - entry.price) / entry.price) : -entry.size;
+							await settleDbTrade({
+								tradeId: entry.tradeId,
+								outcome: won ? "WIN" : "LOSS",
+								settleBtcPrice: settlePrice,
+								pnlUsdc: pnl,
+							});
+						}
 						if (liveRunning) await runRedemption();
 					}
 					previousWindow.state = "SETTLED";
@@ -316,8 +365,9 @@ export function createMainLoop(deps: MainLoopDeps) {
 
 	return {
 		start() {
-			interval = setInterval(processTick, config.infra.pollIntervalMs);
-			log.info("Main loop started", { intervalMs: config.infra.pollIntervalMs });
+			const startConfig = getConfig();
+			interval = setInterval(processTick, startConfig.infra.pollIntervalMs);
+			log.info("Main loop started", { intervalMs: startConfig.infra.pollIntervalMs });
 		},
 		stop() {
 			if (interval) clearInterval(interval);
