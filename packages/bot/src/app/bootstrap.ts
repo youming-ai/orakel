@@ -1,4 +1,5 @@
 import { watch } from "node:fs";
+import { resolve } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { checkCliAvailable } from "../cli/commands.ts";
@@ -6,8 +7,10 @@ import { loadConfigFromFile } from "../core/config.ts";
 import { loadEnv } from "../core/env.ts";
 import { createLogger } from "../core/logger.ts";
 import { applyPendingStarts, applyPendingStops } from "../core/state.ts";
-import { createChainlinkAdapter } from "../data/chainlink.ts";
+import { createBinanceAdapter } from "../data/binance.ts";
+import { createBybitAdapter } from "../data/bybit.ts";
 import { createOrderBookAdapter } from "../data/polymarket.ts";
+import { createPriceAggregator } from "../data/priceAggregator.ts";
 import { connectDb } from "../db/client.ts";
 import { createMainLoop } from "../runtime/mainLoop.ts";
 import { createAccountManager } from "../trading/account.ts";
@@ -16,17 +19,23 @@ import { createWsPublisher } from "./ws.ts";
 
 const log = createLogger("bootstrap");
 
+const CONFIG_PATH = resolve(import.meta.dir, "../../../../config.json");
+
 export async function bootstrapApp(): Promise<void> {
 	const env = loadEnv();
-	const config = await loadConfigFromFile("./config.json");
+	const config = await loadConfigFromFile(CONFIG_PATH);
 	await connectDb(env.DATABASE_URL);
 
-	const chainlink = createChainlinkAdapter({
-		httpUrl: config.infra.chainlinkHttpUrl,
-		aggregator: config.infra.chainlinkAggregator,
-		decimals: config.infra.chainlinkDecimals,
+	const binance = createBinanceAdapter({
+		restUrl: config.infra.binanceRestUrl,
+		wsUrl: config.infra.binanceWsUrl,
 	});
-	chainlink.start();
+	const bybit = createBybitAdapter({
+		restUrl: config.infra.bybitRestUrl,
+		wsUrl: config.infra.bybitWsUrl,
+	});
+	const priceAdapter = createPriceAggregator(binance, bybit);
+	priceAdapter.start();
 
 	const polymarketWs = createOrderBookAdapter(config.infra.polymarketClobWsUrl);
 
@@ -41,11 +50,11 @@ export async function bootstrapApp(): Promise<void> {
 	const liveAccount = createAccountManager(0);
 
 	const ws = createWsPublisher();
-	const mainLoop = createMainLoop({ chainlink, polymarketWs, paperAccount, liveAccount, ws });
+	const mainLoop = createMainLoop({ priceAdapter, polymarketWs, paperAccount, liveAccount, ws });
 
 	const app = new Hono();
 	app.use("*", cors());
-	app.route("/api", createApiRoutes());
+	app.route("/api", createApiRoutes({ cliAvailable }));
 
 	const server = Bun.serve({
 		port: env.PORT,
@@ -71,9 +80,9 @@ export async function bootstrapApp(): Promise<void> {
 
 	mainLoop.start();
 
-	const watcher = watch("./config.json", async () => {
+	const watcher = watch(CONFIG_PATH, async () => {
 		try {
-			await loadConfigFromFile("./config.json");
+			await loadConfigFromFile(CONFIG_PATH);
 			log.info("Config reloaded");
 		} catch (err) {
 			log.warn("Config reload failed", { error: err instanceof Error ? err.message : String(err) });
@@ -83,7 +92,7 @@ export async function bootstrapApp(): Promise<void> {
 	process.on("SIGINT", () => {
 		log.info("Shutting down...");
 		mainLoop.stop();
-		chainlink.stop();
+		priceAdapter.stop();
 		polymarketWs.stop();
 		watcher.close();
 		server.stop();
