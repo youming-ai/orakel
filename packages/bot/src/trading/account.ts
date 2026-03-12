@@ -1,0 +1,86 @@
+import type { AccountStatsDto, Side } from "@orakel/shared/contracts";
+
+interface PendingTrade {
+	side: Side;
+	size: number;
+	price: number;
+	settled: boolean;
+	won: boolean | null;
+	pnl: number | null;
+	timestamp: number;
+}
+
+export interface AccountManager {
+	recordTrade(params: { side: Side; size: number; price: number }): number;
+	settleTrade(index: number, won: boolean): void;
+	getStats(): AccountStatsDto;
+	getTodayLossUsdc(): number;
+	getPendingCount(): number;
+}
+
+export function createAccountManager(initialBalanceUsdc: number): AccountManager {
+	let balance = initialBalanceUsdc;
+	const trades: PendingTrade[] = [];
+
+	function computePnl(trade: PendingTrade, won: boolean): number {
+		return won ? trade.size * ((1 - trade.price) / trade.price) : -trade.size;
+	}
+
+	return {
+		recordTrade({ side, size, price }) {
+			const idx = trades.length;
+			trades.push({ side, size, price, settled: false, won: null, pnl: null, timestamp: Date.now() });
+			return idx;
+		},
+
+		settleTrade(index, won) {
+			const trade = trades[index];
+			if (!trade || trade.settled) return;
+			trade.settled = true;
+			trade.won = won;
+			trade.pnl = computePnl(trade, won);
+			balance += trade.pnl;
+		},
+
+		getStats() {
+			const settled = trades.filter((t) => t.settled);
+			const wins = settled.filter((t) => t.won === true).length;
+			const losses = settled.filter((t) => t.won === false).length;
+			const pending = trades.filter((t) => !t.settled).length;
+			const totalPnl = settled.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+
+			const todayStart = new Date();
+			todayStart.setHours(0, 0, 0, 0);
+			const todayMs = todayStart.getTime();
+			const todayTrades = settled.filter((t) => t.timestamp >= todayMs);
+			const todayPnl = todayTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+
+			const total = wins + losses;
+			return {
+				totalTrades: total,
+				wins,
+				losses,
+				pending,
+				winRate: total > 0 ? wins / total : 0,
+				totalPnl,
+				todayPnl,
+				todayTrades: todayTrades.length,
+				dailyMaxLoss: 0,
+				balanceUsdc: balance,
+			};
+		},
+
+		getTodayLossUsdc() {
+			const todayStart = new Date();
+			todayStart.setHours(0, 0, 0, 0);
+			const todayMs = todayStart.getTime();
+			return trades
+				.filter((t) => t.settled && t.timestamp >= todayMs && (t.pnl ?? 0) < 0)
+				.reduce((sum, t) => sum + Math.abs(t.pnl ?? 0), 0);
+		},
+
+		getPendingCount() {
+			return trades.filter((t) => !t.settled).length;
+		},
+	};
+}
