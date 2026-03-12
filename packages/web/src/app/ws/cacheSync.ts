@@ -1,6 +1,8 @@
+import type { StateSnapshotPayload } from "@orakel/shared/contracts";
 import type { QueryClient } from "@tanstack/react-query";
 import type { DashboardState } from "@/contracts/http";
 import type { WsMessage } from "@/contracts/ws";
+import { mapStateSnapshotToDashboardPatch } from "@/lib/mappers";
 import { queryKeys } from "@/shared/query/queryKeys";
 
 export function createWsCacheHandler(qc: QueryClient) {
@@ -9,25 +11,10 @@ export function createWsCacheHandler(qc: QueryClient) {
 			case "state:snapshot": {
 				const prev = qc.getQueryData<DashboardState>(queryKeys.state);
 				if (prev) {
-					const patch = msg.data;
+					const patch = mapStateSnapshotToDashboardPatch(msg.data as StateSnapshotPayload);
 					qc.setQueryData(queryKeys.state, {
 						...prev,
-						markets: patch.markets ?? prev.markets,
-						updatedAt: patch.updatedAt ?? prev.updatedAt,
-						paperRunning: patch.paperRunning ?? prev.paperRunning,
-						liveRunning: patch.liveRunning ?? prev.liveRunning,
-						paperPendingStart: patch.paperPendingStart ?? prev.paperPendingStart,
-						paperPendingStop: patch.paperPendingStop ?? prev.paperPendingStop,
-						livePendingStart: patch.livePendingStart ?? prev.livePendingStart,
-						livePendingStop: patch.livePendingStop ?? prev.livePendingStop,
-						paperPendingSince: patch.paperPendingSince ?? prev.paperPendingSince,
-						livePendingSince: patch.livePendingSince ?? prev.livePendingSince,
-						paperStats: patch.paperStats ?? prev.paperStats,
-						liveStats: patch.liveStats ?? prev.liveStats,
-						stopLoss: patch.stopLoss !== undefined ? patch.stopLoss : prev.stopLoss,
-						liveStopLoss: patch.liveStopLoss !== undefined ? patch.liveStopLoss : prev.liveStopLoss,
-						todayStats: patch.todayStats ?? prev.todayStats,
-						liveTodayStats: patch.liveTodayStats ?? prev.liveTodayStats,
+						...patch,
 					});
 				}
 				break;

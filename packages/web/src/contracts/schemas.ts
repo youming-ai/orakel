@@ -1,1 +1,200 @@
-export * from "@orakel/shared/contracts";
+import { z } from "zod";
+
+export const StopLossStatusSchema = z.object({
+	stoppedAt: z.string().nullable(),
+	reason: z.string().nullable(),
+});
+
+export const TodayStatsSchema = z.object({
+	pnl: z.number(),
+	trades: z.number(),
+	limit: z.number(),
+});
+
+export const ConfidenceSchema = z.object({
+	score: z.number(),
+	factors: z.object({
+		indicatorAlignment: z.number(),
+		volatilityScore: z.number(),
+		orderbookScore: z.number(),
+		timingScore: z.number(),
+		regimeScore: z.number(),
+	}),
+	level: z.enum(["HIGH", "MEDIUM", "LOW"]),
+});
+
+export const MarketSnapshotSchema = z.object({
+	id: z.string(),
+	label: z.string(),
+	ok: z.boolean(),
+	error: z.string().optional(),
+	spotPrice: z.number().nullable(),
+	currentPrice: z.number().nullable(),
+	priceToBeat: z.number().nullable(),
+	marketUp: z.number().nullable(),
+	marketDown: z.number().nullable(),
+	rawSum: z.number().nullable(),
+	arbitrage: z.boolean(),
+	predictLong: z.number().nullable(),
+	predictShort: z.number().nullable(),
+	predictDirection: z.enum(["LONG", "SHORT", "NEUTRAL"]),
+	haColor: z.string().nullable(),
+	haConsecutive: z.number(),
+	rsi: z.number().nullable(),
+	macd: z
+		.object({
+			macd: z.number(),
+			signal: z.number(),
+			hist: z.number(),
+			histDelta: z.number().nullable(),
+		})
+		.nullable(),
+	vwapSlope: z.number().nullable(),
+	timeLeftMin: z.number().nullable(),
+	phase: z.string().nullable(),
+	action: z.string(),
+	side: z.string().nullable(),
+	edge: z.number().nullable(),
+	strength: z.string().nullable(),
+	reason: z.string().nullable(),
+	volatility15m: z.number().nullable(),
+	blendSource: z.string().nullable(),
+	volImpliedUp: z.number().nullable(),
+	spotChainlinkDelta: z.number().nullable(),
+	orderbookImbalance: z.number().nullable(),
+	confidence: ConfidenceSchema.optional(),
+});
+
+export const PaperStatsSchema = z.object({
+	totalTrades: z.number(),
+	wins: z.number(),
+	losses: z.number(),
+	pending: z.number(),
+	winRate: z.number(),
+	totalPnl: z.number(),
+	todayPnl: z.number(),
+	todayTrades: z.number(),
+	dailyMaxLoss: z.number(),
+	balanceUsdc: z.number(),
+});
+
+export const PaperTradeEntrySchema = z.object({
+	id: z.string(),
+	marketId: z.string(),
+	windowStartMs: z.number(),
+	side: z.enum(["UP", "DOWN"]),
+	price: z.number(),
+	size: z.number(),
+	priceToBeat: z.number(),
+	currentPriceAtEntry: z.number().nullable(),
+	timestamp: z.string(),
+	resolved: z.boolean(),
+	won: z.boolean().nullable(),
+	pnl: z.number().nullable(),
+	settlePrice: z.number().nullable(),
+});
+
+export const MarketBreakdownSchema = z.object({
+	wins: z.number(),
+	losses: z.number(),
+	pending: z.number(),
+	winRate: z.number(),
+	totalPnl: z.number(),
+	tradeCount: z.number(),
+});
+
+export const PaperStatsResponseSchema = z.object({
+	stats: PaperStatsSchema,
+	trades: z.array(PaperTradeEntrySchema),
+	byMarket: z.record(z.string(), MarketBreakdownSchema),
+	stopLoss: StopLossStatusSchema.nullable(),
+	todayStats: TodayStatsSchema,
+});
+
+export const TradeRecordSchema = z.object({
+	timestamp: z.string(),
+	market: z.string(),
+	marketSlug: z.string().nullable(),
+	side: z.string(),
+	amount: z.string(),
+	price: z.string(),
+	orderId: z.string(),
+	status: z.string(),
+	mode: z.string(),
+	pnl: z.number().nullable(),
+	won: z.number().nullable(),
+	currentPriceAtEntry: z.number().nullable(),
+});
+
+export const DashboardStateSchema = z.object({
+	markets: z.array(MarketSnapshotSchema),
+	updatedAt: z.string(),
+	paperRunning: z.boolean(),
+	liveRunning: z.boolean(),
+	paperPendingStart: z.boolean(),
+	paperPendingStop: z.boolean(),
+	livePendingStart: z.boolean(),
+	livePendingStop: z.boolean(),
+	paperPendingSince: z.number().nullable().optional(),
+	livePendingSince: z.number().nullable().optional(),
+	paperStats: PaperStatsSchema.nullable().optional(),
+	liveStats: PaperStatsSchema.nullable().optional(),
+	stopLoss: StopLossStatusSchema.nullable().optional(),
+	liveStopLoss: StopLossStatusSchema.nullable().optional(),
+	todayStats: TodayStatsSchema.optional(),
+	liveTodayStats: TodayStatsSchema.optional(),
+});
+
+export const OkResponseSchema = z.object({
+	ok: z.boolean(),
+});
+
+export const StateSnapshotPayloadSchema = z.object({
+	updatedAt: z.string(),
+	paperRunning: z.boolean(),
+	liveRunning: z.boolean(),
+	paperPendingStart: z.boolean(),
+	paperPendingStop: z.boolean(),
+	livePendingStart: z.boolean(),
+	livePendingStop: z.boolean(),
+	currentWindow: z.unknown().nullable(),
+	paperStats: z.unknown().nullable(),
+	liveStats: z.unknown().nullable(),
+});
+
+export const SignalNewPayloadSchema = z.object({
+	windowSlug: z.string(),
+	chainlinkPrice: z.number(),
+	priceToBeat: z.number(),
+	deviation: z.number(),
+	modelProbUp: z.number(),
+	marketProbUp: z.number(),
+	edgeUp: z.number(),
+	edgeDown: z.number(),
+	phase: z.string(),
+	decision: z.string(),
+	reason: z.string().nullable(),
+});
+
+export const TradeExecutedPayloadSchema = z.object({
+	mode: z.enum(["paper", "live"]),
+	windowSlug: z.string(),
+	side: z.enum(["UP", "DOWN"]),
+	price: z.number(),
+	size: z.number(),
+	edge: z.number(),
+	orderId: z.string().nullable(),
+	timestamp: z.string(),
+});
+
+export const BalanceSnapshotPayloadSchema = z
+	.object({
+		balanceUsdc: z.number().optional(),
+	})
+	.passthrough();
+
+export const WsMessageSchema = z.object({
+	type: z.enum(["state:snapshot", "signal:new", "trade:executed", "balance:snapshot"]),
+	data: z.unknown(),
+	ts: z.number(),
+});
