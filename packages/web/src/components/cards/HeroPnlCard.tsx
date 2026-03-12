@@ -15,7 +15,7 @@ export function HeroPnlCard({ totalPnl, bestTrade, worstTrade, profitFactor }: H
 	return (
 		<Card
 			className={cn(
-				"flex flex-col justify-center p-5 sm:p-6 shrink-0 xl:w-80 shadow-sm",
+				"flex flex-col justify-center p-5 shadow-sm sm:p-6",
 				totalPnl >= 0 ? "border-emerald-500/20" : "border-red-500/20",
 			)}
 		>

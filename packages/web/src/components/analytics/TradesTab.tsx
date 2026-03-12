@@ -1,15 +1,13 @@
 import { ArrowDownRight, ArrowUpRight, Hash, Scale, Target } from "lucide-react";
 import { useMemo } from "react";
 import type { TradeRecord } from "@/contracts/http";
-import type { MarketRow, ViewMode } from "@/lib/types";
+import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { MarketComparisonTable } from "../MarketComparisonTable";
 import { TradeTable } from "../TradeTable";
 
 interface TradesTabProps {
 	viewMode: ViewMode;
 	liveTrades: TradeRecord[];
-	marketRows: MarketRow[];
 }
 
 function TradeSummaryBar({ trades }: { trades: TradeRecord[] }) {
@@ -101,7 +99,7 @@ function MiniStat({
 	);
 }
 
-export function TradesTab({ viewMode, liveTrades, marketRows }: TradesTabProps) {
+export function TradesTab({ viewMode, liveTrades }: TradesTabProps) {
 	return (
 		<div className="space-y-4">
 			<div>
@@ -110,7 +108,6 @@ export function TradesTab({ viewMode, liveTrades, marketRows }: TradesTabProps) 
 				</h2>
 				<TradeSummaryBar trades={liveTrades} />
 			</div>
-			<MarketComparisonTable rows={marketRows} />
 			<TradeTable trades={liveTrades} paperMode={viewMode === "paper"} />
 		</div>
 	);
