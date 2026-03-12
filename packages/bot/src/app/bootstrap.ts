@@ -49,7 +49,16 @@ export async function bootstrapApp(): Promise<void> {
 
 	const server = Bun.serve({
 		port: env.PORT,
-		fetch: app.fetch,
+		fetch: (req, serverInstance) => {
+			const url = new URL(req.url);
+			if (url.pathname === "/ws") {
+				if (serverInstance.upgrade(req)) {
+					return new Response(null);
+				}
+				return new Response("WebSocket upgrade failed", { status: 400 });
+			}
+			return app.fetch(req);
+		},
 		websocket: ws.getWebSocketHandler(),
 	});
 
