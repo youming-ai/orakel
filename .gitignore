@@ -29,3 +29,4 @@ dist/
 backtest-results-*.json
 optimization-results-*.json
 optimized_results.json
+.superpowers/
