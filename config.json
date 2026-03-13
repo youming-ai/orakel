@@ -15,12 +15,12 @@
     "paper": {
       "maxTradeSizeUsdc": 5,
       "dailyMaxLossUsdc": 100,
-      "maxOpenPositions": 2,
+      "maxOpenPositions": 1,
       "maxTradesPerWindow": 1
     },
     "live": {
       "maxTradeSizeUsdc": 5,
-      "dailyMaxLossUsdc": 50,
+      "dailyMaxLossUsdc": 100,
       "maxOpenPositions": 1,
       "maxTradesPerWindow": 1
     }

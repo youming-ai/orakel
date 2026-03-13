@@ -1,11 +1,13 @@
 import { useCallback } from "react";
+import { useDashboardStateWithWs } from "@/app/ws/useDashboardStateWithWs";
 import { Toaster } from "@/components/ui/toaster";
 import { ConfirmToggleDialog } from "@/features/botControl/ConfirmToggleDialog";
+import { useLiveCancel, useLiveToggle, usePaperCancel, usePaperToggle } from "@/features/botControl/mutations";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import { useDashboardStateWithWs, useLiveCancel, useLiveToggle, usePaperCancel, usePaperToggle } from "@/lib/queries";
 import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
-import { AppRouter } from "./router";
+import { DashboardPanel } from "@/widgets/dashboard/DashboardPanel";
+import { AppLayout } from "./layout/AppLayout";
 
 export function AppShell() {
 	const prefersReducedMotion = useReducedMotion();
@@ -94,7 +96,9 @@ export function AppShell() {
 
 	return (
 		<>
-			<AppRouter layoutProps={layoutProps} />
+			<AppLayout {...layoutProps}>
+				<DashboardPanel />
+			</AppLayout>
 			<ConfirmToggleDialog />
 			<Toaster />
 		</>

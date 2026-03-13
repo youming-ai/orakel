@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useDashboardStateWithWs } from "@/app/ws/useDashboardStateWithWs";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -9,7 +10,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useDashboardStateWithWs, useLiveToggle, usePaperToggle } from "@/lib/queries";
+import { useLiveToggle, usePaperToggle } from "@/features/botControl/mutations";
 import { useUIStore } from "@/lib/store";
 import { toast } from "@/lib/toast";
 

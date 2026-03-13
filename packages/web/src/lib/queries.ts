@@ -1,15 +1,23 @@
-import { useDashboardStateWithWs } from "@/app/ws/useDashboardStateWithWs";
-import { useLiveStats, usePaperStats } from "@/entities/account/queries";
-import { useTrades } from "@/entities/trade/queries";
-import { useLiveCancel, useLiveToggle, usePaperCancel, usePaperToggle } from "@/features/botControl/mutations";
+import type { StateSnapshotPayload } from "@orakel/shared/contracts";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "./api";
 
-export {
-	useDashboardStateWithWs,
-	useLiveCancel,
-	useLiveStats,
-	useLiveToggle,
-	usePaperCancel,
-	usePaperStats,
-	usePaperToggle,
-	useTrades,
-};
+export function usePaperStats(enabled: boolean) {
+	return useQuery({
+		queryKey: ["paperStats"],
+		queryFn: () => api.getPaperStats(),
+		enabled,
+		staleTime: 5000,
+		refetchInterval: 10000,
+	});
+}
+
+export function useLiveStats(enabled: boolean) {
+	return useQuery({
+		queryKey: ["liveStats"],
+		queryFn: () => api.getLiveStats(),
+		enabled,
+		staleTime: 5000,
+		refetchInterval: 10000,
+	});
+}

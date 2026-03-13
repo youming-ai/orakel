@@ -1,5 +1,4 @@
 import { Activity, Loader2, Play, Zap } from "lucide-react";
-import { Link, useLocation } from "react-router";
 
 import { cn } from "@/lib/utils";
 
@@ -77,8 +76,6 @@ export function Header({
 	onPaperToggle,
 	onLiveToggle,
 }: HeaderProps) {
-	const location = useLocation();
-	const isTradesActive = location.pathname === "/logs";
 	const isRunning = viewMode === "paper" ? paperRunning : liveRunning;
 	const pendingStart = viewMode === "paper" ? paperPendingStart : livePendingStart;
 	const pendingStop = viewMode === "paper" ? paperPendingStop : livePendingStop;
@@ -93,23 +90,11 @@ export function Header({
 		<header className="sticky top-3 z-50 mb-0.5 max-w-7xl mx-auto px-3 sm:px-6">
 			<div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full overflow-hidden relative">
 				<nav aria-label="Main navigation" className="flex items-center gap-2.5 cursor-default select-none min-w-0">
-					<Link to="/" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity no-underline shrink-0">
+					<div className="flex items-center gap-1.5 shrink-0">
 						<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-md border border-primary/20">
 							<Zap className="size-3.5" aria-hidden="true" />
 						</div>
 						<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
-					</Link>
-					<div className="hidden md:flex items-center gap-2.5 shrink-0">
-						<div className="h-4 w-px bg-border/60 shrink-0" />
-						<Link
-							to="/logs"
-							className={cn(
-								"text-xs text-muted-foreground hover:text-foreground transition-colors no-underline shrink-0",
-								isTradesActive && "text-foreground",
-							)}
-						>
-							logs
-						</Link>
 					</div>
 				</nav>
 

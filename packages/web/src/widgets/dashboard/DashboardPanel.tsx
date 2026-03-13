@@ -1,16 +1,21 @@
 import { useMemo } from "react";
+import { useDashboardStateWithWs } from "@/app/ws/useDashboardStateWithWs";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { OverviewTab } from "@/components/analytics/OverviewTab";
+import { TradesTab } from "@/components/analytics/TradesTab";
 import { OverviewSkeleton } from "@/components/OverviewSkeleton";
-import { useDashboardStateWithWs, useLiveStats, usePaperStats } from "@/lib/queries";
+import { useLiveStats, usePaperStats } from "@/entities/account/queries";
+import { useTrades } from "@/entities/trade/queries";
 import { buildPnlTimeline, buildStatsFromTrades } from "@/lib/stats";
 import { useUIStore } from "@/lib/store";
 
-export function OverviewPanel() {
+export function DashboardPanel() {
 	const viewMode = useUIStore((s) => s.viewMode);
 	const { data: state } = useDashboardStateWithWs();
 	const { data: paperStatsData } = usePaperStats(viewMode === "paper");
 	const { data: liveStatsData } = useLiveStats(viewMode === "live");
+	const { data: trades = [] } = useTrades(viewMode);
+
 	const statsData = viewMode === "paper" ? paperStatsData : liveStatsData;
 	const currentTrades = statsData?.trades ?? [];
 	const mergedStats = useMemo(() => buildStatsFromTrades(currentTrades), [currentTrades]);
@@ -35,6 +40,9 @@ export function OverviewPanel() {
 					markets={state.markets ?? []}
 					updatedAt={state.updatedAt}
 				/>
+				<div className="rounded-xl border bg-card p-4 sm:p-6 shadow-sm">
+					<TradesTab viewMode={viewMode} liveTrades={trades} />
+				</div>
 			</main>
 		</AppErrorBoundary>
 	);

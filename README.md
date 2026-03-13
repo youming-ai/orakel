@@ -1,6 +1,6 @@
 # Orakel
 
-Automated trading bot for Polymarket **BTC 5-minute Up/Down** markets. CLI-first architecture using Polymarket CLI for trade execution, Chainlink for price feeds, paper + live trading, web dashboard.
+Automated trading bot for Polymarket **BTC 5-minute Up/Down** markets. CLI-first architecture using Polymarket CLI for trade execution, Binance/Bybit for price feeds, paper + live trading, web dashboard.
 
 **Tech Stack**: Bun + TypeScript + Hono + PostgreSQL (backend), React 19 + Vite + shadcn/ui + Tailwind v4 (frontend)
 
@@ -8,9 +8,9 @@ Automated trading bot for Polymarket **BTC 5-minute Up/Down** markets. CLI-first
 
 | Market | Timeframe | Price Source | Resolution | Polymarket Slug |
 |--------|-----------|-------------|------------|-----------------|
-| BTC 5m | 5 min | Chainlink BTC/USD | `end >= start` = Up | `btc-updown-5m-{epoch}` |
+| BTC 5m | 5 min | Binance BTC/USDT | `end >= start` = Up | `btc-updown-5m-{epoch}` |
 
-288 markets per day, each resolving via Chainlink BTC/USD oracle. "Up" wins if BTC price at window end >= price at window start.
+288 markets per day, each resolving via BTC price at window end. "Up" wins if BTC price at window end >= price at window start.
 
 ## Monorepo Structure
 
@@ -24,11 +24,10 @@ orakel/
 │   │   │   ├── core/       # Config, env, logger, state, clock
 │   │   │   ├── engine/     # Signal model, edge computation, trade decision
 │   │   │   ├── cli/        # Polymarket CLI subprocess executor
-│   │   │   ├── data/       # Chainlink + Polymarket adapters
+│   │   │   ├── data/       # Binance + Bybit + Polymarket adapters
 │   │   │   ├── trading/    # Paper trader, live trader, account, persistence
 │   │   │   ├── runtime/    # Main loop, window manager, settlement, redeemer
 │   │   │   ├── terminal/   # Terminal dashboard
-│   │   │   ├── backtest/   # Backtest engine + replay
 │   │   │   ├── db/         # Drizzle ORM schema + client
 │   │   │   └── __tests__/  # Vitest tests (9 files, 61 tests)
 │   │   └── Dockerfile
@@ -103,16 +102,16 @@ Hot-reloadable, no restart needed. See `config.json` for full schema with strate
 ## Architecture
 
 ```
-Chainlink BTC/USD ──(HTTP poll 3s)──► Signal Engine ──► Trade Decision
-                                          ▲                    │
-Polymarket CLOB WS ──(best_bid_ask)──────┘          ┌─────────┴──────────┐
-                                                     ▼                    ▼
-                                              Paper Trader          Live Trader
-                                              (in-memory)       (Polymarket CLI)
+Binance/Bybit BTC/USDT ──(WebSocket)──► Signal Engine ──► Trade Decision
+                                              ▲                    │
+Polymarket CLOB WS ──(best_bid_ask)──────────┘          ┌─────────┴──────────┐
+                                                          ▼                    ▼
+                                                   Paper Trader          Live Trader
+                                                   (in-memory)       (Polymarket CLI)
 ```
 
-**Data sources**: Chainlink (BTC price via `eth_call`) + Polymarket (orderbook via CLOB WebSocket)
-**Signal model**: Price deviation (Chainlink vs PriceToBeat) → sigmoid probability → edge vs market midpoint
+**Data sources**: Binance (primary) + Bybit (fallback) for BTC price via WebSocket + Polymarket (orderbook via CLOB WebSocket)
+**Signal model**: Price deviation (BTC vs PriceToBeat) → sigmoid probability → edge vs market midpoint
 **Execution**: Polymarket CLI (`polymarket` binary) as subprocess with JSON output
 
 ## Documentation
