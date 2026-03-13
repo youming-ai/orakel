@@ -10,10 +10,16 @@ import { computeEdge } from "../engine/edge.ts";
 import { computeVolatility, modelProbability, type SignalParams } from "../engine/signal.ts";
 import { renderDashboard } from "../terminal/dashboard.ts";
 import type { AccountManager } from "../trading/account.ts";
-import { executeLiveTrade } from "../trading/liveTrader.ts";
+import {
+	cancelAllOrders,
+	checkOrderFilled,
+	executeLiveTrade,
+	getLiveBalance,
+	hasLivePosition,
+} from "../trading/liveTrader.ts";
 import { executePaperTrade } from "../trading/paperTrader.ts";
 import { persistSignal, persistTrade, settleDbTrade } from "../trading/persistence.ts";
-import { runRedemption } from "./redeemer.ts";
+import { settleLiveWindow } from "./liveSettlement.ts";
 import { advanceWindowState, createWindowState, type WindowTrackerState } from "./windowManager.ts";
 
 const log = createLogger("main-loop");
@@ -44,6 +50,8 @@ export function createMainLoop(deps: MainLoopDeps) {
 	let consecutiveFailures = 0;
 	let safeMode = false;
 	let interval: ReturnType<typeof setInterval> | null = null;
+	let liveBalanceBefore: number | null = null;
+	let liveCancelledThisWindow = false;
 
 	function getWindowTrades(slug: string): TradeEntry[] {
 		if (!windowTrades.has(slug)) windowTrades.set(slug, []);
@@ -64,6 +72,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 		}
 
 		previousWindow = currentWindow;
+		liveCancelledThisWindow = false;
 		currentWindow = createWindowState(slug, startSec * 1000, endSec * 1000);
 
 		const priceTick = priceAdapter.getLatestPrice();
@@ -152,13 +161,14 @@ export function createMainLoop(deps: MainLoopDeps) {
 			const tradesInWindow = getWindowTrades(currentWindow.slug).length;
 			const hasPosition = tradesInWindow > 0;
 
+			const activeRisk = liveRunning ? config.risk.live : config.risk.paper;
 			const decisionInput: DecisionInput = {
 				modelProbUp,
 				marketProbUp,
 				timeLeftSeconds: timeLeft,
 				phase,
 				strategy: config.strategy,
-				risk: config.risk.paper,
+				risk: activeRisk,
 				hasPositionInWindow: hasPosition,
 				todayLossUsdc: paperAccount.getTodayLossUsdc(),
 				openPositions: paperAccount.getPendingCount(),
@@ -230,70 +240,125 @@ export function createMainLoop(deps: MainLoopDeps) {
 				}
 
 				if (liveRunning && !hasPosition) {
-					const result = await executeLiveTrade(
-						{
-							tokenId,
-							side,
-							price: entryPrice,
-							size: config.risk.live.maxTradeSizeUsdc,
-							windowSlug: currentWindow.slug,
-							edge: decision.edge,
-						},
-						config,
-					);
-					if (result.success) {
-						const tradeId = await persistTrade({
-							mode: "live",
-							windowSlug: currentWindow.slug,
-							windowStartMs: currentWindow.startMs,
-							windowEndMs: currentWindow.endMs,
-							side,
-							price: entryPrice,
-							size: config.risk.live.maxTradeSizeUsdc,
-							priceToBeat,
-							entryBtcPrice: priceTick.price,
-							edge: decision.edge,
-							modelProb: modelProbUp,
-							marketProb: marketProbUp,
-							phase,
-							orderId: result.orderId,
+					const balanceResult = await getLiveBalance();
+					const balance = balanceResult.balance;
+					if (!balanceResult.ok) {
+						log.warn("Failed to get live balance, skipping trade", { error: balanceResult.error });
+					} else if (balance === null || balance === undefined) {
+						log.warn("Live balance missing, skipping trade");
+					} else if (balance < config.risk.live.maxTradeSizeUsdc) {
+						log.warn("Insufficient live balance", {
+							balance,
+							required: config.risk.live.maxTradeSizeUsdc,
 						});
-						getWindowTrades(currentWindow.slug).push({
-							index: 0,
-							side,
-							price: entryPrice,
-							size: config.risk.live.maxTradeSizeUsdc,
-							tradeId,
-						});
+					} else {
+						const posResult = await hasLivePosition(marketInfo.upTokenId, marketInfo.downTokenId);
+						if (posResult.ok && posResult.hasPosition) {
+							log.info("Already have live position in this window");
+						} else {
+							liveBalanceBefore = balance;
+							const result = await executeLiveTrade(
+								{
+									tokenId,
+									side,
+									price: entryPrice,
+									size: config.risk.live.maxTradeSizeUsdc,
+									windowSlug: currentWindow.slug,
+									edge: decision.edge,
+								},
+								config,
+							);
+							if (result.success) {
+								await new Promise((resolve) => setTimeout(resolve, 1000));
+								if (!result.orderId) {
+									log.warn("Live orderId missing after successful execution");
+								} else {
+									const filled = await checkOrderFilled(result.orderId);
+									if (!filled) {
+										log.warn("Order not filled within 1s, will cancel at window end", { orderId: result.orderId });
+									}
+								}
+
+								const tradeId = await persistTrade({
+									mode: "live",
+									windowSlug: currentWindow.slug,
+									windowStartMs: currentWindow.startMs,
+									windowEndMs: currentWindow.endMs,
+									side,
+									price: entryPrice,
+									size: config.risk.live.maxTradeSizeUsdc,
+									priceToBeat,
+									entryBtcPrice: priceTick.price,
+									edge: decision.edge,
+									modelProb: modelProbUp,
+									marketProb: marketProbUp,
+									phase,
+									orderId: result.orderId,
+								});
+								getWindowTrades(currentWindow.slug).push({
+									index: 0,
+									side,
+									price: entryPrice,
+									size: config.risk.live.maxTradeSizeUsdc,
+									tradeId,
+								});
+							}
+						}
 					}
 				}
 			}
 
 			currentWindow.state = advanceWindowState(currentWindow, nowMs, false).state;
 
+			if (liveRunning && timeLeft <= 30 && !liveCancelledThisWindow && getWindowTrades(currentWindow.slug).length > 0) {
+				log.info("Window ending soon, cancelling unfilled orders");
+				await cancelAllOrders();
+				liveCancelledThisWindow = true;
+			}
+
 			if (previousWindow && previousWindow.state !== "REDEEMED") {
-				const settled = advanceWindowState(previousWindow, nowMs, true);
-				if (settled.state === "SETTLED" && previousWindow.state !== "SETTLED") {
+				const stateBeforeAdvance = previousWindow.state;
+				// Advance through all intermediate states (ACTIVE → CLOSING → SETTLED) in one tick
+				let advanced = advanceWindowState(previousWindow, nowMs, true);
+				while (advanced.state !== previousWindow.state) {
+					previousWindow.state = advanced.state;
+					advanced = advanceWindowState(previousWindow, nowMs, true);
+				}
+				if (previousWindow.state === "SETTLED" && stateBeforeAdvance !== "SETTLED") {
 					const settlePrice = priceTick.price;
 					const prevPriceToBeat = previousWindow.marketInfo?.priceToBeat || 0;
-					const windowTrades = getWindowTrades(previousWindow.slug);
-					for (const entry of windowTrades) {
-						const won =
-							(entry.side === "UP" && settlePrice >= prevPriceToBeat) ||
-							(entry.side === "DOWN" && settlePrice < prevPriceToBeat);
-						paperAccount.settleTrade(entry.index, won);
-						if (entry.tradeId) {
-							const pnl = won ? entry.size * ((1 - entry.price) / entry.price) : -entry.size;
-							await settleDbTrade({
-								tradeId: entry.tradeId,
-								outcome: won ? "WIN" : "LOSS",
-								settleBtcPrice: settlePrice,
-								pnlUsdc: pnl,
-							});
+					const prevWindowTrades = getWindowTrades(previousWindow.slug);
+
+					for (const entry of prevWindowTrades) {
+						if (paperRunning) {
+							const won =
+								(entry.side === "UP" && settlePrice >= prevPriceToBeat) ||
+								(entry.side === "DOWN" && settlePrice < prevPriceToBeat);
+							paperAccount.settleTrade(entry.index, won);
+							if (entry.tradeId) {
+								const pnl = won ? entry.size * ((1 - entry.price) / entry.price) : -entry.size;
+								await settleDbTrade({
+									tradeId: entry.tradeId,
+									outcome: won ? "WIN" : "LOSS",
+									settleBtcPrice: settlePrice,
+									pnlUsdc: pnl,
+								});
+							}
+						} else if (liveRunning && entry.tradeId && liveBalanceBefore !== null) {
+							await settleLiveWindow(
+								{
+									tradeId: entry.tradeId,
+									entryPrice: entry.price,
+									size: entry.size,
+									side: entry.side,
+									balanceBefore: liveBalanceBefore,
+								},
+								settlePrice,
+								prevPriceToBeat,
+							);
+							liveBalanceBefore = null;
 						}
-						if (liveRunning) await runRedemption();
 					}
-					previousWindow.state = "SETTLED";
 				}
 			}
 
