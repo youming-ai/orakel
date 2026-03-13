@@ -90,7 +90,8 @@ export function createOrderBookAdapter(clobWsUrl: string): PolymarketOrderBookAd
 		try {
 			ws = new WebSocket(clobWsUrl);
 			ws.onopen = () => {
-				ws?.send(
+				if (ws?.readyState !== WebSocket.OPEN) return;
+				ws.send(
 					JSON.stringify({
 						type: "market",
 						assets_ids: tokenIds,
@@ -100,7 +101,7 @@ export function createOrderBookAdapter(clobWsUrl: string): PolymarketOrderBookAd
 				log.info("CLOB WS connected", { tokens: tokenIds.length });
 				if (pingInterval) clearInterval(pingInterval);
 				pingInterval = setInterval(() => {
-					ws?.send("PING");
+					if (ws?.readyState === WebSocket.OPEN) ws.send("PING");
 				}, 50_000);
 			};
 			ws.onmessage = (event) => {

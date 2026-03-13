@@ -124,6 +124,24 @@ export function setLatestTickData(data: LatestTickData): void {
 	_latestTick = data;
 }
 
+export function requestModeSwitch(targetMode: "paper" | "live"): void {
+	if (targetMode === "live") {
+		if (_paperRunning) {
+			_paperRunning = false;
+			log.info("Auto-stopped paper trading for live mode switch");
+		}
+		_paperPendingStart = false;
+		_paperPendingStop = false;
+	} else {
+		if (_liveRunning) {
+			_liveRunning = false;
+			log.info("Auto-stopped live trading for paper mode switch");
+		}
+		_livePendingStart = false;
+		_livePendingStop = false;
+	}
+}
+
 export function resetState(): void {
 	_paperRunning = false;
 	_liveRunning = false;
