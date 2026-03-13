@@ -1,5 +1,11 @@
 import { execCli } from "./executor.ts";
-import type { CliBalanceResponse, CliOrderResponse, CliPositionEntry, CliResult } from "./types.ts";
+import type {
+	CliBalanceResponse,
+	CliOrderResponse,
+	CliPositionEntry,
+	CliResult,
+	CliWalletAddressResponse,
+} from "./types.ts";
 
 export function createOrder(params: {
 	tokenId: string;
@@ -36,8 +42,16 @@ export function getBalance(): Promise<CliResult<CliBalanceResponse>> {
 	return execCli<CliBalanceResponse>(["clob", "balance", "--asset-type", "collateral"]);
 }
 
-export function getPositions(): Promise<CliResult<CliPositionEntry[]>> {
-	return execCli<CliPositionEntry[]>(["positions"]);
+export async function getPositions(): Promise<CliResult<CliPositionEntry[]>> {
+	const wallet = await execCli<CliWalletAddressResponse>(["wallet", "address"]);
+	if (!wallet.ok || !wallet.data?.address) {
+		return {
+			ok: false,
+			error: wallet.error || "Failed to resolve wallet address",
+			durationMs: wallet.durationMs,
+		};
+	}
+	return execCli<CliPositionEntry[]>(["data", "positions", wallet.data.address]);
 }
 
 export function redeemPositions(): Promise<CliResult<unknown>> {
@@ -51,5 +65,5 @@ export function checkCliAvailable(): Promise<boolean> {
 }
 
 export function getOrderStatus(orderId: string): Promise<CliResult<CliOrderResponse>> {
-	return execCli<CliOrderResponse>(["clob", "get-order", "--order-id", orderId]);
+	return execCli<CliOrderResponse>(["clob", "order", orderId]);
 }

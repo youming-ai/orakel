@@ -87,16 +87,14 @@ export function Header({
 	const cfg = statusConfig[status];
 
 	return (
-		<header className="sticky top-3 z-50 mb-0.5 max-w-7xl mx-auto px-3 sm:px-6">
-			<div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2 rounded-xl border bg-card shadow-md w-full overflow-hidden relative">
-				<nav aria-label="Main navigation" className="flex items-center gap-2.5 cursor-default select-none min-w-0">
-					<div className="flex items-center gap-1.5 shrink-0">
-						<div className="flex items-center justify-center p-1 bg-primary/10 text-primary rounded-md border border-primary/20">
-							<Zap className="size-3.5" aria-hidden="true" />
-						</div>
-						<span className="text-sm font-bold tracking-tight text-foreground">Orakel</span>
+		<header className="sticky top-0 sm:top-3 z-50 sm:mb-0.5 max-w-5xl mx-auto px-2 sm:px-6 pt-2 sm:pt-0">
+			<div className="flex items-center justify-between gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl border bg-card shadow-md w-full overflow-hidden relative">
+				<div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+					<div className="flex items-center justify-center p-0.5 sm:p-1 bg-primary/10 text-primary rounded sm:rounded-md border border-primary/20">
+						<Zap className="size-3 sm:size-3.5" aria-hidden="true" />
 					</div>
-				</nav>
+					<span className="hidden sm:inline text-sm font-bold tracking-tight text-foreground">Orakel</span>
+				</div>
 
 				<div className="absolute left-1/2 -translate-x-1/2 flex items-center rounded-md border overflow-hidden min-h-7 bg-muted/50 shrink-0">
 					<button
@@ -104,7 +102,7 @@ export function Header({
 						onClick={() => onViewModeChange("paper")}
 						aria-pressed={viewMode === "paper"}
 						className={cn(
-							"px-2.5 h-7 text-[11px] font-semibold tracking-wide uppercase transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
+							"px-2 sm:px-2.5 h-7 text-[10px] sm:text-[11px] font-semibold tracking-wide uppercase transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							viewMode === "paper"
 								? "bg-amber-500/20 text-amber-500"
 								: "bg-transparent text-muted-foreground hover:text-foreground",
@@ -117,7 +115,7 @@ export function Header({
 						onClick={() => onViewModeChange("live")}
 						aria-pressed={viewMode === "live"}
 						className={cn(
-							"px-2.5 h-7 text-[11px] font-semibold tracking-wide uppercase transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
+							"px-2 sm:px-2.5 h-7 text-[10px] sm:text-[11px] font-semibold tracking-wide uppercase transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							viewMode === "live"
 								? "bg-emerald-500/20 text-emerald-500"
 								: "bg-transparent text-muted-foreground hover:text-foreground",
@@ -127,7 +125,7 @@ export function Header({
 					</button>
 				</div>
 
-				<div className="flex items-center gap-2 shrink-0">
+				<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
 					<span
 						className="hidden sm:inline-block text-[11px] text-muted-foreground/60 font-mono"
 						title={`Bot: ${cfg.label}`}
@@ -141,7 +139,7 @@ export function Header({
 						aria-label={`Bot status: ${cfg.label}. Click to toggle.`}
 						aria-live="polite"
 						className={cn(
-							"flex items-center justify-center size-9 sm:size-7 rounded-md transition-all shrink-0 border outline-none focus-visible:ring-2 focus-visible:ring-ring",
+							"flex items-center justify-center size-8 sm:size-7 rounded-md transition-all shrink-0 border outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							cfg.className,
 							isPending && "animate-pulse",
 							mutationPending && "cursor-not-allowed opacity-60",

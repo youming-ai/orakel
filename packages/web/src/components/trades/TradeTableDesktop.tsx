@@ -1,4 +1,4 @@
-import { ExternalLink } from "lucide-react";
+import { CheckCircle2, ExternalLink, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -75,7 +75,7 @@ export function TradeTableDesktop({ pageTrades, paperMode }: TradeTableDesktopPr
 									</Badge>
 								</TableCell>
 								<TableCell className="font-mono text-xs text-right">{t.amount}</TableCell>
-								<TableCell className="font-mono text-xs text-right">{t.price}</TableCell>
+								<TableCell className="font-mono text-xs text-right">{t.price}¢</TableCell>
 								<TableCell className="font-mono text-xs text-right font-medium">
 									{pnlValue !== null ? (
 										<span className={pnlValue >= 0 ? "text-emerald-400" : "text-red-400"}>
@@ -86,21 +86,15 @@ export function TradeTableDesktop({ pageTrades, paperMode }: TradeTableDesktopPr
 										<span className="text-muted-foreground">-</span>
 									)}
 								</TableCell>
-								<TableCell>
+								<TableCell className="align-middle">
 									{t.won !== null && t.won !== undefined ? (
-										<Badge
-											variant="secondary"
-											className={cn(
-												"text-[11px] px-1.5",
-												t.won ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400",
-											)}
-										>
-											{t.won ? "Won" : "Lost"}
-										</Badge>
+										<span className={cn("inline-flex items-center h-4", t.won ? "text-emerald-400" : "text-red-400")}>
+											{t.won ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
+										</span>
 									) : (
-										<Badge variant="secondary" className="text-[11px] px-1.5">
-											{t.status || "placed"}
-										</Badge>
+										<span className="inline-flex items-center h-4 text-muted-foreground">
+											<span className="size-2 rounded-full bg-amber-400/60" />
+										</span>
 									)}
 								</TableCell>
 								<TableCell>

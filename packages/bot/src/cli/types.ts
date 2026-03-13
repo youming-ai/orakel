@@ -6,17 +6,28 @@ export interface CliResult<T> {
 }
 
 export interface CliOrderResponse {
-	orderID: string;
+	orderID?: string;
+	orderId?: string;
+	id?: string;
 	status: string;
 }
 
 export interface CliBalanceResponse {
-	collateral: string;
+	balance?: string;
+	collateral?: string;
+}
+
+export interface CliWalletAddressResponse {
+	address: string;
 }
 
 export interface CliPositionEntry {
-	asset: string;
+	slug?: string;
+	condition_id?: string;
+	outcome?: string;
 	size: string;
-	avgPrice: string;
-	curPrice: string;
+	avg_price?: string;
+	cur_price?: string;
+	current_value?: string;
+	redeemable?: boolean;
 }

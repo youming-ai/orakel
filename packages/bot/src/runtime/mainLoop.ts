@@ -252,7 +252,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 							required: config.risk.live.maxTradeSizeUsdc,
 						});
 					} else {
-						const posResult = await hasLivePosition(marketInfo.upTokenId, marketInfo.downTokenId);
+						const posResult = await hasLivePosition(currentWindow.slug);
 						if (posResult.ok && posResult.hasPosition) {
 							log.info("Already have live position in this window");
 						} else {

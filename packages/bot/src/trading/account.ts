@@ -10,6 +10,31 @@ interface PendingTrade {
 	timestamp: number;
 }
 
+const ET_TIMEZONE = "America/New_York";
+
+function getEtDayStartMs(timestampMs: number): number {
+	const date = new Date(timestampMs);
+	const etFormatter = new Intl.DateTimeFormat("en-US", {
+		timeZone: ET_TIMEZONE,
+		year: "numeric",
+		month: "numeric",
+		day: "numeric",
+		hour: "numeric",
+		minute: "numeric",
+		second: "numeric",
+		hour12: false,
+	});
+	const parts = etFormatter.formatToParts(date);
+	const getPart = (type: string) => Number.parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+
+	const year = getPart("year");
+	const month = getPart("month");
+	const day = getPart("day");
+
+	const etDateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00-04:00`;
+	return new Date(etDateStr).getTime();
+}
+
 export interface AccountManager {
 	recordTrade(params: { side: Side; size: number; price: number }): number;
 	settleTrade(index: number, won: boolean): void;
@@ -49,9 +74,7 @@ export function createAccountManager(initialBalanceUsdc: number): AccountManager
 			const pending = trades.filter((t) => !t.settled).length;
 			const totalPnl = settled.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
 
-			const todayStart = new Date();
-			todayStart.setHours(0, 0, 0, 0);
-			const todayMs = todayStart.getTime();
+			const todayMs = getEtDayStartMs(Date.now());
 			const todayTrades = settled.filter((t) => t.timestamp >= todayMs);
 			const todayPnl = todayTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
 
@@ -71,9 +94,7 @@ export function createAccountManager(initialBalanceUsdc: number): AccountManager
 		},
 
 		getTodayLossUsdc() {
-			const todayStart = new Date();
-			todayStart.setHours(0, 0, 0, 0);
-			const todayMs = todayStart.getTime();
+			const todayMs = getEtDayStartMs(Date.now());
 			return trades
 				.filter((t) => t.settled && t.timestamp >= todayMs && (t.pnl ?? 0) < 0)
 				.reduce((sum, t) => sum + Math.abs(t.pnl ?? 0), 0);

@@ -31,10 +31,12 @@ export function PnlTimelineChart({ timeline }: PnlTimelineChartProps) {
 	if (timeline.length === 0) {
 		return (
 			<Card className="shadow-sm">
-				<div className="px-6 pb-2 pt-4">
-					<div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Cumulative P&L</div>
+				<div className="px-3 sm:px-6 pb-2 pt-3 sm:pt-4">
+					<div className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+						Cumulative P&L
+					</div>
 				</div>
-				<div className={cn("px-6", CHART_HEIGHT.responsive)}>
+				<div className={cn("px-1 sm:px-6", CHART_HEIGHT.responsive)}>
 					<EmptyPlaceholder />
 				</div>
 			</Card>
@@ -43,13 +45,15 @@ export function PnlTimelineChart({ timeline }: PnlTimelineChartProps) {
 
 	return (
 		<Card className="shadow-sm">
-			<div className="px-6 pb-2 pt-4">
-				<div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Cumulative P&L</div>
+			<div className="px-3 sm:px-6 pb-1 sm:pb-2 pt-3 sm:pt-4">
+				<div className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+					Cumulative P&L
+				</div>
 			</div>
-			<div className={cn("px-6", CHART_HEIGHT.responsive)}>
+			<div className={cn("px-1 sm:px-6 pb-2 sm:pb-4", CHART_HEIGHT.responsive)}>
 				<ChartErrorBoundary>
 					<ResponsiveContainer width="100%" height="100%">
-						<AreaChart data={chartData}>
+						<AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
 							<defs>
 								<linearGradient id="timelineGrad" x1="0" y1="0" x2="0" y2="1">
 									<stop
@@ -65,11 +69,11 @@ export function PnlTimelineChart({ timeline }: PnlTimelineChartProps) {
 								</linearGradient>
 							</defs>
 							<CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-							<XAxis dataKey="time" tick={{ fontSize: 10, fill: CHART_COLORS.axis }} minTickGap={32} />
+							<XAxis dataKey="time" tick={{ fontSize: 9, fill: CHART_COLORS.axis }} minTickGap={24} />
 							<YAxis
-								tick={{ fontSize: 10, fill: CHART_COLORS.axis }}
+								tick={{ fontSize: 9, fill: CHART_COLORS.axis }}
 								tickFormatter={(v: number) => `${v.toFixed(1)}`}
-								width={44}
+								width={36}
 							/>
 							<ReferenceLine y={0} stroke={CHART_COLORS.axis} strokeDasharray="3 3" opacity={0.5} />
 							<Tooltip

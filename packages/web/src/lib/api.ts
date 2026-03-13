@@ -45,8 +45,8 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 	return res.json();
 }
 
-async function fetchTrades(mode: string) {
-	const rows = await get<unknown[]>(`/trades?mode=${mode}`);
+async function fetchTrades(mode: string, limit = 200) {
+	const rows = await get<unknown[]>(`/trades?mode=${mode}&limit=${limit}`);
 	const mapped = rows.map((row) => mapTradeRecordDtoToTradeRecord(row as never));
 	return z.array(TradeRecordSchema).parse(mapped);
 }

@@ -1,3 +1,4 @@
+import { BtcIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { MarketSnapshot } from "@/contracts/http";
@@ -39,86 +40,92 @@ export function SignalCard({ market: m }: SignalCardProps) {
 	return (
 		<Card
 			className={cn(
-				"overflow-hidden shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md",
+				"overflow-hidden shadow-sm transition-all duration-300 sm:hover:-translate-y-0.5 sm:hover:shadow-md",
 				borderTone,
 			)}
 		>
-			<CardContent className="space-y-4 p-4 sm:p-5">
-				<div className="flex items-start justify-between gap-3">
-					<div className="flex min-w-0 items-center gap-2.5">
-						<span className={cn("mt-0.5 size-2.5 shrink-0 rounded-full", signalDotTone)} />
-						<span className="text-sm font-semibold tracking-wide text-foreground">Bitcoin Up or Down — 5 Minutes</span>
-						<span className="truncate font-mono text-xs text-muted-foreground tabular-nums">
+			<CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-5">
+				<div className="flex items-start justify-between gap-2 sm:gap-3">
+					<div className="flex min-w-0 items-center gap-2">
+						<span className={cn("mt-0.5 size-2 sm:size-2.5 shrink-0 rounded-full", signalDotTone)} />
+						<BtcIcon size={18} />
+						<span className="truncate font-mono text-sm sm:text-lg font-bold text-foreground tabular-nums">
 							{fmtPrice(m.id, m.spotPrice)}
 						</span>
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
 						{m.phase && (
-							<Badge variant="secondary" className="px-2 py-0 text-[10px]">
+							<Badge variant="secondary" className="px-1.5 sm:px-2 py-0 text-[9px] sm:text-[10px]">
 								{m.phase}
 							</Badge>
 						)}
-						<span className="font-mono text-xs text-muted-foreground tabular-nums">{fmtMinSec(m.timeLeftMin)}</span>
+						<span className="font-mono text-[10px] sm:text-xs text-muted-foreground tabular-nums">
+							{fmtMinSec(m.timeLeftMin)}
+						</span>
 					</div>
 				</div>
 
-				<div className="py-2 text-center">
-					<p className={cn("text-3xl font-black tracking-tight sm:text-4xl", heroTone)}>
+				<div className="py-1.5 sm:py-2 text-center">
+					<p className={cn("text-2xl sm:text-3xl font-black tracking-tight", heroTone)}>
 						{signalDirection} {signalPct === null ? "--" : `${signalPct.toFixed(0)}%`}
 					</p>
-					<p className="mt-2 font-mono text-xs text-muted-foreground">
+					<p className="mt-1.5 sm:mt-2 font-mono text-[10px] sm:text-xs text-muted-foreground">
 						PTB {fmtPrice(m.id, m.priceToBeat)}
-						<span className="px-2 opacity-40">·</span>
+						<span className="px-1.5 sm:px-2 opacity-40">·</span>
 						<span className={deltaTone}>
 							Δ {deltaPct === null ? "--" : `${deltaPct >= 0 ? "+" : ""}${deltaPct.toFixed(2)}%`}
 						</span>
 					</p>
 				</div>
 
-				<div className="grid grid-cols-4 divide-x divide-border/40 overflow-hidden rounded-lg border border-border/40 bg-muted/20">
-					<div className="space-y-1 px-2 py-2.5 text-center">
-						<p className="text-[10px] uppercase tracking-wide text-muted-foreground">Edge</p>
-						<p className={cn("font-mono text-xs font-semibold", edgeTone)}>
+				<div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border/40 overflow-hidden rounded-lg border border-border/40 bg-muted/20">
+					<div className="space-y-0.5 sm:space-y-1 px-2 py-2 sm:py-2.5 text-center sm:border-0 border-b border-border/30">
+						<p className="text-[9px] sm:text-[10px] uppercase tracking-wide text-muted-foreground">Edge</p>
+						<p className={cn("font-mono text-[11px] sm:text-xs font-semibold", edgeTone)}>
 							{edgePct === null ? "--" : `${edgePct >= 0 ? "+" : ""}${edgePct.toFixed(1)}%`}
 						</p>
 					</div>
-					<div className="space-y-1 px-2 py-2.5 text-center">
-						<p className="text-[10px] uppercase tracking-wide text-muted-foreground">Up price</p>
-						<p className="font-mono text-xs font-semibold text-emerald-300">{fmtCents(m.marketUp)}</p>
+					<div className="space-y-0.5 sm:space-y-1 px-2 py-2 sm:py-2.5 text-center sm:border-0 border-b border-border/30 sm:border-r border-border/30">
+						<p className="text-[9px] sm:text-[10px] uppercase tracking-wide text-muted-foreground">Up</p>
+						<p className="font-mono text-[11px] sm:text-xs font-semibold text-emerald-300">{fmtCents(m.marketUp)}</p>
 					</div>
-					<div className="space-y-1 px-2 py-2.5 text-center">
-						<p className="text-[10px] uppercase tracking-wide text-muted-foreground">Down price</p>
-						<p className="font-mono text-xs font-semibold text-red-300">{fmtCents(m.marketDown)}</p>
+					<div className="space-y-0.5 sm:space-y-1 px-2 py-2 sm:py-2.5 text-center border-r sm:border-r-0 border-border/30">
+						<p className="text-[9px] sm:text-[10px] uppercase tracking-wide text-muted-foreground">Down</p>
+						<p className="font-mono text-[11px] sm:text-xs font-semibold text-red-300">{fmtCents(m.marketDown)}</p>
 					</div>
-					<div className="space-y-1 px-2 py-2.5 text-center">
-						<p className="text-[10px] uppercase tracking-wide text-muted-foreground">Volatility</p>
-						<p className={cn("font-mono text-xs font-semibold", volatilityTone)}>
-							{m.volatility15m === null ? "--" : `${(m.volatility15m * 100).toFixed(2)}%`}
+					<div className="space-y-0.5 sm:space-y-1 px-2 py-2 sm:py-2.5 text-center">
+						<p className="text-[9px] sm:text-[10px] uppercase tracking-wide text-muted-foreground">Vol</p>
+						<p className={cn("font-mono text-[11px] sm:text-xs font-semibold", volatilityTone)}>
+							{m.volatility15m === null ? "--" : `${(m.volatility15m * 100).toFixed(1)}%`}
 						</p>
 					</div>
 				</div>
 
 				<div className="flex items-center gap-2">
-					<span className="w-20 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">Confidence</span>
+					<span className="w-16 sm:w-20 shrink-0 text-[10px] sm:text-[11px] uppercase tracking-wide text-muted-foreground">
+						Conf
+					</span>
 					<div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/30">
 						<div
 							className={cn("h-full rounded-full transition-all duration-500", confidenceTone)}
 							style={{ width: `${confidencePct}%` }}
 						/>
 					</div>
-					<span className="w-10 shrink-0 text-right font-mono text-[11px] text-foreground">{confidencePct}%</span>
+					<span className="w-8 sm:w-10 shrink-0 text-right font-mono text-[10px] sm:text-[11px] text-foreground">
+						{confidencePct}%
+					</span>
 				</div>
 
 				{isEntry ? (
 					<div
 						className={cn(
-							"rounded-md border px-3 py-2 text-center text-xs font-semibold tracking-wide",
+							"rounded-md border px-2.5 sm:px-3 py-1.5 sm:py-2 text-center text-[11px] sm:text-xs font-semibold tracking-wide",
 							isLong
 								? "border-emerald-400/40 bg-emerald-400/12 text-emerald-200"
 								: "border-red-400/40 bg-red-400/12 text-red-200",
 						)}
 					>
-						<span className="flex flex-wrap items-center justify-center gap-2">
+						<span className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
 							<span>BUY {sideLabel}</span>
 							<span className="text-current/40">·</span>
 							<span className="font-mono">
@@ -127,11 +134,13 @@ export function SignalCard({ market: m }: SignalCardProps) {
 						</span>
 					</div>
 				) : (
-					<div className="py-1 text-center text-[11px] uppercase tracking-[0.2em] text-muted-foreground">NO TRADE</div>
+					<div className="py-0.5 sm:py-1 text-center text-[10px] sm:text-[11px] uppercase tracking-[0.15em] sm:tracking-[0.2em] text-muted-foreground">
+						NO TRADE
+					</div>
 				)}
 
 				{!isEntry && m.reason && (
-					<div className="text-center font-mono text-[11px] text-muted-foreground/80">{m.reason}</div>
+					<div className="text-center font-mono text-[10px] sm:text-[11px] text-muted-foreground/80">{m.reason}</div>
 				)}
 			</CardContent>
 		</Card>

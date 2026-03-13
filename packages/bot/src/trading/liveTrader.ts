@@ -39,7 +39,7 @@ export async function executeLiveTrade(params: LiveTradeParams, config: AppConfi
 		return { success: false, orderId: null, error: result.error };
 	}
 
-	const orderId = result.data?.orderID ?? null;
+	const orderId = result.data?.orderID ?? result.data?.orderId ?? result.data?.id ?? null;
 	log.info("Live trade placed", {
 		window: params.windowSlug,
 		side: params.side,
@@ -56,7 +56,7 @@ export async function checkLiveReady(minBalanceUsdc: number): Promise<{ ok: bool
 		return { ok: false, error: `Failed to get balance: ${balanceResult.error}` };
 	}
 
-	const balance = Number(balanceResult.data?.collateral ?? 0);
+	const balance = Number(balanceResult.data?.balance ?? balanceResult.data?.collateral ?? 0);
 	if (balance < minBalanceUsdc) {
 		return { ok: false, error: `Insufficient balance: ${balance.toFixed(2)} USDC (need ${minBalanceUsdc})` };
 	}
@@ -79,19 +79,18 @@ export async function getLiveBalance(): Promise<{ ok: boolean; balance?: number;
 	if (!result.ok) {
 		return { ok: false, error: result.error };
 	}
-	return { ok: true, balance: Number(result.data?.collateral ?? 0) };
+	return { ok: true, balance: Number(result.data?.balance ?? result.data?.collateral ?? 0) };
 }
 
 export async function hasLivePosition(
-	upTokenId: string,
-	downTokenId: string,
+	windowSlug: string,
 ): Promise<{ ok: boolean; hasPosition?: boolean; error?: string }> {
 	const result = await getPositions();
 	if (!result.ok) {
 		return { ok: false, error: result.error };
 	}
 	const positions = result.data ?? [];
-	const found = positions.some((p) => p.asset === upTokenId || p.asset === downTokenId);
+	const found = positions.some((p) => p.slug === windowSlug && Number(p.size ?? 0) > 0);
 	return { ok: true, hasPosition: found };
 }
 

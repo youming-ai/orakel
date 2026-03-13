@@ -1,4 +1,4 @@
-import { ExternalLink } from "lucide-react";
+import { CheckCircle2, ExternalLink, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import type { TradeRecord } from "@/contracts/http";
@@ -15,97 +15,78 @@ interface TradeTableMobileProps {
 
 export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProps) {
 	return (
-		<div className="grid grid-cols-1 gap-2.5 sm:hidden">
+		<div className="grid grid-cols-1 gap-2 sm:hidden">
 			{pageTrades.map((t) => {
 				const { text, isUp } = sideLabel(t.side);
 				const slug = getMarketCycleSlug(t.market, t.timestamp, t.marketSlug);
 				const hasPnl = t.won !== null && t.pnl !== null;
 				const pnlValue = hasPnl ? Number(t.pnl) : null;
 				const isWon = t.won === 1;
+				const displayMode = getDisplayMode(t, paperMode);
 
 				return (
 					<Card
 						key={t.orderId || `trade-${t.timestamp}-${t.market}`}
 						className={cn(
-							"p-3 transition-colors",
+							"p-2.5 transition-colors",
 							hasPnl && (isWon ? "border-l-2 border-l-emerald-500/40" : "border-l-2 border-l-red-500/40"),
 						)}
 					>
-						{/* Header row: Market + Side + Result */}
-						<div className="flex items-center justify-between gap-2">
-							<div className="flex items-center gap-2 min-w-0">
-								<span className="font-mono text-sm font-medium truncate">
-									<a
-										href={slug ? getPolymarketUrl(slug) : undefined}
-										target="_blank"
-										rel="noopener noreferrer"
-										className={cn(
-											"inline-flex items-center gap-1 transition-colors",
-											slug && "text-blue-400 hover:text-blue-300 hover:underline",
-										)}
-									>
-										<MarketWithIcon market={t.market} slug={slug} />
-										{slug && <ExternalLink className="size-3 shrink-0" />}
-									</a>
-								</span>
+						<div className="flex items-center justify-between gap-1.5">
+							<div className="flex items-center gap-1.5 min-w-0">
+								<a
+									href={slug ? getPolymarketUrl(slug) : undefined}
+									target="_blank"
+									rel="noopener noreferrer"
+									className={cn(
+										"inline-flex items-center gap-1 font-mono text-xs font-medium truncate transition-colors",
+										slug && "text-blue-400 hover:text-blue-300",
+									)}
+								>
+									<MarketWithIcon market={t.market} slug={slug} />
+									{slug && <ExternalLink className="size-2.5 shrink-0" />}
+								</a>
 								<Badge
 									variant="secondary"
-									className={cn("text-[10px] px-1 py-0 shrink-0", sideBadge({ side: isUp ? "up" : "down" }))}
+									className={cn("text-[9px] px-1 py-0 shrink-0", sideBadge({ side: isUp ? "up" : "down" }))}
 								>
 									{text}
 								</Badge>
+								{displayMode === "PAPER" && (
+									<Badge
+										variant="secondary"
+										className={cn("text-[9px] px-1 py-0 shrink-0", modeBadge({ mode: "paper" }))}
+									>
+										P
+									</Badge>
+								)}
 							</div>
-							<div className="flex items-center gap-1.5 shrink-0">
+							<div className="flex items-center gap-1 shrink-0">
 								{hasPnl && (
-									<span className={cn("font-mono text-sm font-bold", isWon ? "text-emerald-400" : "text-red-400")}>
+									<span className={cn("font-mono text-xs font-bold", isWon ? "text-emerald-400" : "text-red-400")}>
 										{pnlValue !== null && pnlValue >= 0 ? "+" : ""}
 										{pnlValue?.toFixed(2)}
 									</span>
 								)}
 								{hasPnl ? (
-									<Badge
-										variant="secondary"
-										className={cn(
-											"text-[10px] px-1 py-0",
-											isWon ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400",
-										)}
-									>
-										{isWon ? "W" : "L"}
-									</Badge>
+									<span className={cn("inline-flex items-center h-4", isWon ? "text-emerald-400" : "text-red-400")}>
+										{isWon ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
+									</span>
 								) : (
-									<Badge variant="secondary" className="text-[10px] px-1 py-0">
-										{t.status || "open"}
-									</Badge>
+									<span className="inline-flex items-center h-4 text-muted-foreground">
+										<span className="size-2 rounded-full bg-amber-400/60" />
+									</span>
 								)}
 							</div>
 						</div>
 
-						{/* Details row: timestamp + amount + entry */}
-						<div className="flex items-center justify-between mt-2 text-[11px] text-muted-foreground">
-							<span className="tabular-nums">
+						<div className="flex items-center justify-between mt-1.5 text-[10px] text-muted-foreground font-mono tabular-nums">
+							<span>
 								{fmtDate(t.timestamp)} {fmtTimestamp(t.timestamp)}
 							</span>
-							<div className="flex items-center gap-2 font-mono">
-								<span>
-									{t.amount} @ {t.price}¢
-								</span>
-								{t.currentPriceAtEntry !== null && t.currentPriceAtEntry !== undefined && (
-									<span className="text-muted-foreground/60">Spot ${Number(t.currentPriceAtEntry).toFixed(2)}</span>
-								)}
-							</div>
-						</div>
-
-						{/* Footer: mode */}
-						<div className="flex items-center gap-1.5 mt-1.5">
-							<Badge
-								variant="secondary"
-								className={cn(
-									"text-[10px] px-1 py-0",
-									modeBadge({ mode: getDisplayMode(t, paperMode) === "PAPER" ? "paper" : "live" }),
-								)}
-							>
-								{getDisplayMode(t, paperMode)}
-							</Badge>
+							<span>
+								{t.amount} @ {t.price}¢
+							</span>
 						</div>
 					</Card>
 				);
