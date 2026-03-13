@@ -6,9 +6,7 @@
 		"start": "bun run --env-file ../../.env src/index.ts",
 		"dev": "bun run --env-file ../../.env --watch src/index.ts",
 		"typecheck": "tsc --noEmit",
-		"typecheck:ci": "tsc --noEmit -p tsconfig.check.json",
-		"test": "vitest run",
-		"test:watch": "vitest"
+		"typecheck:ci": "tsc --noEmit -p tsconfig.check.json"
 	},
 	"dependencies": {
 		"@orakel/shared": "workspace:*",

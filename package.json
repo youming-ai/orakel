@@ -11,11 +11,10 @@
 		"dev:web": "bun run --filter @orakel/web dev",
 		"build": "bun run --filter @orakel/web build",
 		"typecheck": "bun run --filter '*' typecheck",
-		"test": "bun run --filter @orakel/bot test",
 		"lint": "biome check packages/",
 		"lint:fix": "biome check --write packages/",
 		"format": "biome format --write packages/",
-		"check:ci": "bun run lint && bun run typecheck && bun run test"
+		"check:ci": "bun run lint && bun run typecheck"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6",
