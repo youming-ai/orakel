@@ -1,5 +1,6 @@
 import { Activity, Loader2, Play, Zap } from "lucide-react";
 
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 
 interface HeaderProps {
@@ -147,6 +148,7 @@ export function Header({
 					>
 						<StatusIcon status={status} />
 					</button>
+					<ThemeToggle />
 				</div>
 			</div>
 		</header>

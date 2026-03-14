@@ -5,21 +5,21 @@
 
 export const CHART_COLORS = {
 	/** Success/positive values (emerald) */
-	positive: "#34d399",
+	positive: "var(--chart-2, #10b981)",
 	/** Danger/negative values (red) */
-	negative: "#f87171",
+	negative: "var(--chart-5, #ef4444)",
 	/** Warning/pending values (amber) */
-	pending: "#fbbf24",
+	pending: "var(--chart-1, #f59e0b)",
 	/** Axis labels and text */
-	axis: "var(--muted-foreground, #71717a)",
+	axis: "var(--muted-foreground)",
 	/** Grid lines */
-	grid: "var(--border, #2f2f3a)",
+	grid: "var(--border)",
 	/** Tooltip background */
-	tipBg: "var(--card, #1a1a2e)",
+	tipBg: "var(--card)",
 	/** Tooltip border */
-	tipBorder: "var(--border, #3f3f46)",
+	tipBorder: "var(--border)",
 	/** Cursor stroke */
-	cursor: "var(--muted-foreground, #52525b)",
+	cursor: "var(--muted-foreground)",
 } as const;
 
 /**

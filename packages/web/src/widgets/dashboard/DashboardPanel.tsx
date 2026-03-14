@@ -40,6 +40,10 @@ export function DashboardPanel() {
 		<AppErrorBoundary>
 			<main className="p-2 sm:p-6 max-w-5xl mx-auto pb-16 sm:pb-6 space-y-3 sm:space-y-6">
 				<section>
+					<TodayPerformanceCard todayStats={todayStats} stats={mergedStats} viewMode={viewMode} />
+				</section>
+
+				<section>
 					{signalMarket ? (
 						<SignalCard market={signalMarket} />
 					) : (
@@ -49,14 +53,6 @@ export function DashboardPanel() {
 							</CardContent>
 						</Card>
 					)}
-				</section>
-
-				<section>
-					<TodayPerformanceCard todayStats={todayStats} stats={mergedStats} viewMode={viewMode} />
-				</section>
-
-				<section>
-					<PnlTimelineChart timeline={pnlTimeline} />
 				</section>
 
 				<section>
@@ -71,6 +67,10 @@ export function DashboardPanel() {
 							<TradeTable trades={trades} paperMode={viewMode === "paper"} />
 						</CardContent>
 					</Card>
+				</section>
+
+				<section>
+					<PnlTimelineChart timeline={pnlTimeline} />
 				</section>
 
 				{state.updatedAt && (

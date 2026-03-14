@@ -40,6 +40,7 @@ interface TradeEntry {
 	price: number;
 	size: number;
 	tradeId?: number;
+	balanceBefore?: number; // For live trades: wallet balance before this trade
 }
 
 export function createMainLoop(deps: MainLoopDeps) {
@@ -50,7 +51,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 	let consecutiveFailures = 0;
 	let safeMode = false;
 	let interval: ReturnType<typeof setInterval> | null = null;
-	let liveBalanceBefore: number | null = null;
+
 	let liveCancelledThisWindow = false;
 
 	function getWindowTrades(slug: string): TradeEntry[] {
@@ -256,7 +257,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 						if (posResult.ok && posResult.hasPosition) {
 							log.info("Already have live position in this window");
 						} else {
-							liveBalanceBefore = balance;
+							const balanceBefore = balance;
 							const result = await executeLiveTrade(
 								{
 									tokenId,
@@ -301,6 +302,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 									price: entryPrice,
 									size: config.risk.live.maxTradeSizeUsdc,
 									tradeId,
+									balanceBefore,
 								});
 							}
 						}
@@ -344,19 +346,18 @@ export function createMainLoop(deps: MainLoopDeps) {
 									pnlUsdc: pnl,
 								});
 							}
-						} else if (liveRunning && entry.tradeId && liveBalanceBefore !== null) {
+						} else if (liveRunning && entry.tradeId && entry.balanceBefore !== undefined) {
 							await settleLiveWindow(
 								{
 									tradeId: entry.tradeId,
 									entryPrice: entry.price,
 									size: entry.size,
 									side: entry.side,
-									balanceBefore: liveBalanceBefore,
+									balanceBefore: entry.balanceBefore,
 								},
 								settlePrice,
 								prevPriceToBeat,
 							);
-							liveBalanceBefore = null;
 						}
 					}
 				}
