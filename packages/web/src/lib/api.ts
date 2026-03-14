@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-	DashboardStateSchema,
-	OkResponseSchema,
-	PaperStatsResponseSchema,
-	TradeRecordSchema,
-} from "../contracts/schemas";
+import { DashboardStateSchema, OkResponseSchema, PaperStatsResponseSchema } from "../contracts/schemas";
 import { mapStatusToDashboard, mapTradeRecordDtoToTradeRecord, mapTradeRecordToPaperTradeEntry } from "./mappers";
 import { TradeRecordSchema as TradeRecordDtoSchema } from "./schemas";
 import { buildMarketFromTrades, buildStatsFromTrades } from "./stats";
@@ -71,7 +66,6 @@ async function fetchTrades(mode: string, limit = 200) {
 	// Validate with Zod
 	const result = z.array(TradeRecordDtoSchema).safeParse(data);
 	if (!result.success) {
-		console.error("Invalid trade data from API:", result.error);
 		throw new ApiError("Invalid trade data received from server");
 	}
 
