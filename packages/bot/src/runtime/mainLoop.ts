@@ -19,7 +19,7 @@ import {
 } from "../trading/liveTrader.ts";
 import { executePaperTrade } from "../trading/paperTrader.ts";
 import { persistSignal, persistTrade, settleDbTrade } from "../trading/persistence.ts";
-import { settleLiveWindow } from "./liveSettlement.ts";
+import { SettlementError, settleLiveWindow } from "./liveSettlement.ts";
 import { advanceWindowState, createWindowState, type WindowTrackerState } from "./windowManager.ts";
 
 const log = createLogger("main-loop");
@@ -410,7 +410,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 								(entry.side === "DOWN" && settlePrice < prevPriceToBeat);
 							liveAccount.settleTrade(entry.index, won);
 							try {
-								await settleLiveWindow(
+								const result = await settleLiveWindow(
 									{
 										tradeId: entry.tradeId,
 										entryPrice: entry.price,
@@ -421,11 +421,29 @@ export function createMainLoop(deps: MainLoopDeps) {
 									settlePrice,
 									prevPriceToBeat,
 								);
+
+								if (result.method === "price_fallback") {
+									log.warn("Settlement used price fallback - manual review recommended", {
+										tradeId: entry.tradeId,
+										pnlUsdc: result.pnlUsdc,
+									});
+								}
 							} catch (err) {
-								log.error("Live settlement failed", {
-									tradeId: entry.tradeId,
-									error: err instanceof Error ? err.message : String(err),
-								});
+								if (err instanceof SettlementError) {
+									log.error("Settlement failed critically", {
+										tradeId: entry.tradeId,
+										code: err.code,
+										error: err.message,
+									});
+
+									// TODO: Add alerting mechanism here (email, webhook, etc.)
+									// For now, continue but mark for manual review
+								} else {
+									log.error("Unexpected settlement error", {
+										tradeId: entry.tradeId,
+										error: err instanceof Error ? err.message : String(err),
+									});
+								}
 							}
 						}
 					}
