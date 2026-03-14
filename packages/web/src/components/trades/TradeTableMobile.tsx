@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, XCircle } from "lucide-react";
+import { ExternalLink, Hourglass, Rocket, Skull } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import type { TradeRecord } from "@/contracts/http";
@@ -70,11 +70,11 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 								)}
 								{hasPnl ? (
 									<span className={cn("inline-flex items-center h-4", isWon ? "text-emerald-400" : "text-red-400")}>
-										{isWon ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
+										{isWon ? <Rocket className="size-4" /> : <Skull className="size-4" />}
 									</span>
 								) : (
-									<span className="inline-flex items-center h-4 text-muted-foreground">
-										<span className="size-2 rounded-full bg-amber-400/60" />
+									<span className="inline-flex items-center h-4 text-amber-400">
+										<Hourglass className="size-4" />
 									</span>
 								)}
 							</div>
@@ -85,7 +85,7 @@ export function TradeTableMobile({ pageTrades, paperMode }: TradeTableMobileProp
 								{fmtDate(t.timestamp)} {fmtTimestamp(t.timestamp)}
 							</span>
 							<span>
-								{t.amount} @ {t.price}¢
+								${t.amount} × {t.price}¢
 							</span>
 						</div>
 					</Card>

@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, XCircle } from "lucide-react";
+import { ExternalLink, Hourglass, Rocket, Skull } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,11 +24,9 @@ export function TradeTableDesktop({ pageTrades, paperMode }: TradeTableDesktopPr
 						<TableHead className="w-20">Time</TableHead>
 						<TableHead className="max-w-[220px]">Market</TableHead>
 						<TableHead className="w-24 text-right">Asset Price</TableHead>
-						<TableHead className="w-24">Side</TableHead>
-						<TableHead className="w-16 text-right">Amount</TableHead>
-						<TableHead className="w-16 text-right">Price</TableHead>
-						<TableHead className="w-20 text-right">P&L</TableHead>
-						<TableHead className="w-20">Result</TableHead>
+						<TableHead className="w-20">Side</TableHead>
+						<TableHead className="w-28 text-right">Position</TableHead>
+						<TableHead className="w-24 text-right">Outcome</TableHead>
 						<TableHead className="w-16">Mode</TableHead>
 					</TableRow>
 				</TableHeader>
@@ -74,27 +72,33 @@ export function TradeTableDesktop({ pageTrades, paperMode }: TradeTableDesktopPr
 										{text}
 									</Badge>
 								</TableCell>
-								<TableCell className="font-mono text-xs text-right">{t.amount}</TableCell>
-								<TableCell className="font-mono text-xs text-right">{t.price}¢</TableCell>
-								<TableCell className="font-mono text-xs text-right font-medium">
-									{pnlValue !== null ? (
-										<span className={pnlValue >= 0 ? "text-emerald-400" : "text-red-400"}>
-											{pnlValue >= 0 ? "+" : ""}
-											{pnlValue.toFixed(2)}
-										</span>
-									) : (
-										<span className="text-muted-foreground">-</span>
-									)}
+								<TableCell className="font-mono text-xs text-right">
+									<span className="text-muted-foreground">$</span>
+									<span>{t.amount}</span>
+									<span className="text-muted-foreground mx-0.5">×</span>
+									<span>{t.price}¢</span>
 								</TableCell>
 								<TableCell className="align-middle">
 									{t.won !== null && t.won !== undefined ? (
-										<span className={cn("inline-flex items-center h-4", t.won ? "text-emerald-400" : "text-red-400")}>
-											{t.won ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
-										</span>
+										<div
+											className={cn(
+												"inline-flex items-center gap-1.5 px-2 py-1 rounded-full",
+												t.won ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400",
+											)}
+										>
+											{t.won ? <Rocket className="size-3.5" /> : <Skull className="size-3.5" />}
+											{pnlValue !== null && (
+												<span className="font-mono text-xs font-medium">
+													{pnlValue >= 0 ? "+" : ""}
+													{pnlValue.toFixed(2)}
+												</span>
+											)}
+										</div>
 									) : (
-										<span className="inline-flex items-center h-4 text-muted-foreground">
-											<span className="size-2 rounded-full bg-amber-400/60" />
-										</span>
+										<div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-400/10 text-amber-400">
+											<Hourglass className="size-3.5" />
+											<span className="text-xs text-muted-foreground">-</span>
+										</div>
 									)}
 								</TableCell>
 								<TableCell>
