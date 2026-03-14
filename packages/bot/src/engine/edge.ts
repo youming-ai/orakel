@@ -1,6 +1,6 @@
 import type { Side } from "../core/types.ts";
 
-export interface EdgeResult {
+interface EdgeResult {
 	edgeUp: number;
 	edgeDown: number;
 	bestSide: Side;

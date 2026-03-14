@@ -67,7 +67,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 	async function discoverWindow(config: ReturnType<typeof getConfig>): Promise<void> {
 		const nowSec = Math.floor(Date.now() / 1000);
 		const { startSec, endSec } = computeWindowBounds(nowSec, config.infra.windowSeconds);
-		const slug = computeSlug(endSec, config.infra.slugPrefix);
+		const slug = computeSlug(startSec, config.infra.slugPrefix);
 
 		if (currentWindow?.slug === slug) return;
 

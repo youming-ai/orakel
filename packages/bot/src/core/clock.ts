@@ -82,9 +82,9 @@ export function computeWindowBounds(nowSec: number, windowSec: number): { startS
 	return { startSec, endSec };
 }
 
-export function computeSlug(endSec: number, slugPrefix: string): string {
+export function computeSlug(epochSec: number, slugPrefix: string): string {
 	const sep = slugPrefix.endsWith("-") ? "" : "-";
-	return `${slugPrefix}${sep}${endSec}`;
+	return `${slugPrefix}${sep}${epochSec}`;
 }
 
 export function computeTimeLeftSeconds(nowMs: number, endMs: number): number {

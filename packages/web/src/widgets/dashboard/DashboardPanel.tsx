@@ -115,7 +115,7 @@ function TodayPerformanceCard({ todayStats, stats, viewMode }: TodayPerformanceC
 	const winRate = resolvedTrades > 0 ? (stats.winRate * 100).toFixed(0) : null;
 	const limitRemaining = todayStats ? Math.max(0, (1 - Math.abs(todayStats.pnl) / todayStats.limit) * 100) : 100;
 
-	const isProfitable = todayStats && todayStats.pnl >= 0;
+	const isProfitable = stats.totalPnl >= 0;
 
 	return (
 		<Card>

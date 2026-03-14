@@ -120,50 +120,6 @@ export const OkResponseSchema = z.object({
 	ok: z.boolean(),
 });
 
-export const StateSnapshotPayloadSchema = z.object({
-	updatedAt: z.string(),
-	paperRunning: z.boolean(),
-	liveRunning: z.boolean(),
-	paperPendingStart: z.boolean(),
-	paperPendingStop: z.boolean(),
-	livePendingStart: z.boolean(),
-	livePendingStop: z.boolean(),
-	currentWindow: z.unknown().nullable(),
-	paperStats: z.unknown().nullable(),
-	liveStats: z.unknown().nullable(),
-});
-
-export const SignalNewPayloadSchema = z.object({
-	windowSlug: z.string(),
-	btcPrice: z.number(),
-	priceToBeat: z.number(),
-	deviation: z.number(),
-	modelProbUp: z.number(),
-	marketProbUp: z.number(),
-	edgeUp: z.number(),
-	edgeDown: z.number(),
-	phase: z.string(),
-	decision: z.string(),
-	reason: z.string().nullable(),
-});
-
-export const TradeExecutedPayloadSchema = z.object({
-	mode: z.enum(["paper", "live"]),
-	windowSlug: z.string(),
-	side: z.enum(["UP", "DOWN"]),
-	price: z.number(),
-	size: z.number(),
-	edge: z.number(),
-	orderId: z.string().nullable(),
-	timestamp: z.string(),
-});
-
-export const BalanceSnapshotPayloadSchema = z
-	.object({
-		balanceUsdc: z.number().optional(),
-	})
-	.passthrough();
-
 export const WsMessageSchema = z.object({
 	type: z.enum(["state:snapshot", "signal:new", "trade:executed", "balance:snapshot"]),
 	data: z.unknown(),

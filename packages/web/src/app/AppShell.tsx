@@ -35,7 +35,7 @@ export function AppShell() {
 			toast({ type: "info", description: "Paper bot start/stop cancelled" });
 			return;
 		}
-		setConfirmAction(state.paperRunning ? "stop" : "start");
+		setConfirmAction(state.paperRunning ? "stop" : "start", "paper");
 	}, [state, paperCancel, setConfirmAction]);
 
 	const handleLiveToggle = useCallback(() => {
@@ -45,7 +45,7 @@ export function AppShell() {
 			toast({ type: "info", description: "Live bot start/stop cancelled" });
 			return;
 		}
-		setConfirmAction(state.liveRunning ? "stop" : "start");
+		setConfirmAction(state.liveRunning ? "stop" : "start", "live");
 	}, [state, liveCancel, setConfirmAction]);
 
 	if (!state) {

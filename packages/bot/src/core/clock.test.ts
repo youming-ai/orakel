@@ -25,30 +25,30 @@ describe("clock", () => {
 
 	describe("computeSlug", () => {
 		it("should generate correct slug", () => {
-			const endSec = 1700000300;
+			const epochSec = 1700000300;
 			const prefix = "BTC-USD";
 
-			const slug = computeSlug(endSec, prefix);
+			const slug = computeSlug(epochSec, prefix);
 
 			expect(slug).toContain(prefix);
-			expect(slug).toContain(endSec.toString());
+			expect(slug).toContain(epochSec.toString());
 		});
 
 		it("should be deterministic for same inputs", () => {
-			const endSec = 1700000300;
+			const epochSec = 1700000300;
 			const prefix = "BTC-USD";
 
-			const slug1 = computeSlug(endSec, prefix);
-			const slug2 = computeSlug(endSec, prefix);
+			const slug1 = computeSlug(epochSec, prefix);
+			const slug2 = computeSlug(epochSec, prefix);
 
 			expect(slug1).toBe(slug2);
 		});
 
 		it("should handle prefix with trailing dash", () => {
-			const endSec = 1700000300;
+			const epochSec = 1700000300;
 			const prefix = "BTC-USD-";
 
-			const slug = computeSlug(endSec, prefix);
+			const slug = computeSlug(epochSec, prefix);
 
 			expect(slug).toBe("BTC-USD-1700000300");
 		});

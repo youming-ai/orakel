@@ -16,16 +16,16 @@ import { toast } from "@/lib/toast";
 
 export function ConfirmToggleDialog() {
 	const confirmAction = useUIStore((s) => s.confirmAction);
+	const confirmBotMode = useUIStore((s) => s.confirmBotMode);
 	const setConfirmAction = useUIStore((s) => s.setConfirmAction);
-	const viewMode = useUIStore((s) => s.viewMode);
 	const { data: state } = useDashboardStateWithWs();
 	const paperToggle = usePaperToggle();
 	const liveToggle = useLiveToggle();
 
 	const handleConfirm = useCallback(() => {
-		if (!state || !confirmAction) return;
+		if (!state || !confirmAction || !confirmBotMode) return;
 		const actionStr = confirmAction === "start" ? "Starting" : "Stopping";
-		if (viewMode === "paper") {
+		if (confirmBotMode === "paper") {
 			paperToggle.mutate(confirmAction === "stop");
 			toast({ title: "Paper Bot", description: `${actionStr} paper trading...`, type: "info" });
 		} else {
@@ -33,7 +33,7 @@ export function ConfirmToggleDialog() {
 			toast({ title: "Live Bot", description: `${actionStr} live trading...`, type: "info" });
 		}
 		setConfirmAction(null);
-	}, [state, confirmAction, viewMode, paperToggle, liveToggle, setConfirmAction]);
+	}, [state, confirmAction, confirmBotMode, paperToggle, liveToggle, setConfirmAction]);
 
 	return (
 		<AlertDialog
@@ -47,8 +47,8 @@ export function ConfirmToggleDialog() {
 					<AlertDialogTitle>{confirmAction === "start" ? "Start Bot" : "Stop Bot"}</AlertDialogTitle>
 					<AlertDialogDescription>
 						{confirmAction === "start"
-							? `Start ${viewMode} trading? The bot will begin at the next 15-minute cycle boundary.`
-							: `Stop ${viewMode} trading? The bot will finish the current cycle and settle before stopping.`}
+							? `Start ${confirmBotMode} trading? The bot will begin at the next cycle boundary.`
+							: `Stop ${confirmBotMode} trading? The bot will finish the current cycle and settle before stopping.`}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>

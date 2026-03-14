@@ -22,7 +22,8 @@ interface UIState {
 	setViewMode: (mode: ViewMode) => void;
 
 	confirmAction: "start" | "stop" | null;
-	setConfirmAction: (action: "start" | "stop" | null) => void;
+	confirmBotMode: "paper" | "live" | null;
+	setConfirmAction: (action: "start" | "stop" | null, botMode?: "paper" | "live") => void;
 
 	theme: Theme;
 	setTheme: (theme: Theme) => void;
@@ -36,7 +37,8 @@ export const useUIStore = create<UIState>()(
 			setViewMode: (mode) => set({ viewMode: mode }),
 
 			confirmAction: null,
-			setConfirmAction: (action) => set({ confirmAction: action }),
+			confirmBotMode: null,
+			setConfirmAction: (action, botMode) => set({ confirmAction: action, confirmBotMode: botMode ?? null }),
 
 			theme: getSystemTheme(),
 			setTheme: (theme) => {

@@ -8,7 +8,7 @@ export function fmtTimestamp(ts: string): string {
 
 export function sideLabel(side: string): { text: string; isUp: boolean } {
 	const up = (side ?? "").includes("UP");
-	return { text: up ? "BUY UP" : "BUY DOWN", isUp: up };
+	return { text: up ? "UP" : "DOWN", isUp: up };
 }
 
 type MarketConfig = {

@@ -6,7 +6,7 @@ import { checkCliAvailable } from "../cli/commands.ts";
 import { loadConfigFromFile } from "../core/config.ts";
 import { loadEnv } from "../core/env.ts";
 import { createLogger } from "../core/logger.ts";
-import { applyPendingStarts, applyPendingStops, requestPaperStart } from "../core/state.ts";
+import { applyPendingStartsSync, applyPendingStopsSync, requestPaperStart } from "../core/state.ts";
 import { createBinanceAdapter } from "../data/binance.ts";
 import { createBybitAdapter } from "../data/bybit.ts";
 import { createOrderBookAdapter } from "../data/polymarket.ts";
@@ -74,8 +74,8 @@ export async function bootstrapApp(): Promise<void> {
 	log.info("API server started", { port: env.PORT });
 
 	setInterval(() => {
-		applyPendingStarts();
-		applyPendingStops();
+		applyPendingStartsSync();
+		applyPendingStopsSync();
 	}, 1000);
 
 	mainLoop.start();

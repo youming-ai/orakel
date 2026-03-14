@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import { SettlementError, settleLiveWindow } from "../liveSettlement.ts";
+import { describe, expect, it } from "vitest";
+import { SettlementError } from "../liveSettlement.ts";
 
 describe("settleLiveWindow", () => {
 	it("should throw SettlementError with REDEMPTION_FAILED code", async () => {
-		const ctx = {
+		const _ctx = {
 			tradeId: 1,
 			entryPrice: 0.6,
 			size: 100,
