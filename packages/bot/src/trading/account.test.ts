@@ -3,7 +3,7 @@ import { createAccountManager } from "./account.ts";
 
 describe("createAccountManager", () => {
 	it("should return correct initial state", () => {
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, 500);
 		const stats = manager.getStats();
 
 		expect(stats.balanceUsdc).toBe(10000);
@@ -18,7 +18,7 @@ describe("createAccountManager", () => {
 	});
 
 	it("should record trade and return sequential index", () => {
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, 500);
 
 		const idx1 = manager.recordTrade({ side: "UP", size: 100, price: 0.5 });
 		const idx2 = manager.recordTrade({ side: "DOWN", size: 50, price: 0.3 });
@@ -29,7 +29,7 @@ describe("createAccountManager", () => {
 	});
 
 	it("should increase pending count on recordTrade", () => {
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, 500);
 
 		expect(manager.getPendingCount()).toBe(0);
 		manager.recordTrade({ side: "UP", size: 100, price: 0.5 });
@@ -39,7 +39,7 @@ describe("createAccountManager", () => {
 	});
 
 	it("should settle winning trade and update balance positively", () => {
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, 500);
 		const idx = manager.recordTrade({ side: "UP", size: 100, price: 0.5 });
 
 		manager.settleTrade(idx, true);
@@ -54,7 +54,7 @@ describe("createAccountManager", () => {
 	});
 
 	it("should settle losing trade and update balance negatively", () => {
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, 500);
 		const idx = manager.recordTrade({ side: "UP", size: 100, price: 0.5 });
 
 		manager.settleTrade(idx, false);
@@ -69,7 +69,7 @@ describe("createAccountManager", () => {
 	});
 
 	it("should track today's losses separately", () => {
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, 500);
 
 		// Record and settle a losing trade
 		const idx1 = manager.recordTrade({ side: "UP", size: 100, price: 0.5 });
@@ -84,7 +84,7 @@ describe("createAccountManager", () => {
 	});
 
 	it("should handle multiple trades with sequential indices", () => {
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, 500);
 
 		const indices: number[] = [];
 		for (let i = 0; i < 5; i++) {
@@ -96,7 +96,7 @@ describe("createAccountManager", () => {
 	});
 
 	it("should be idempotent when settling already settled trade", () => {
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, 500);
 		const idx = manager.recordTrade({ side: "UP", size: 100, price: 0.5 });
 
 		manager.settleTrade(idx, true);
@@ -112,32 +112,29 @@ describe("createAccountManager", () => {
 		expect(statsAfterFirst.wins).toBe(statsAfterSecond.wins);
 	});
 
-	// TODO: un-skip after Phase 2 fixes (BUG-5)
-	it.skip("should return 0 PnL when price is 0", () => {
-		const manager = createAccountManager(10000);
+	it("should return size PnL when price is 0 (guard case)", () => {
+		const manager = createAccountManager(10000, 500);
 		const idx = manager.recordTrade({ side: "UP", size: 100, price: 0 });
 
 		manager.settleTrade(idx, true);
 
 		const stats = manager.getStats();
-		expect(stats.totalPnl).toBe(0);
+		expect(stats.totalPnl).toBe(100);
 	});
 
-	// TODO: un-skip after Phase 2 fixes (BUG-5)
-	it.skip("should return 0 PnL when price is 1", () => {
-		const manager = createAccountManager(10000);
+	it("should return size PnL when price is 1 (guard case)", () => {
+		const manager = createAccountManager(10000, 500);
 		const idx = manager.recordTrade({ side: "UP", size: 100, price: 1 });
 
 		manager.settleTrade(idx, true);
 
 		const stats = manager.getStats();
-		expect(stats.totalPnl).toBe(0);
+		expect(stats.totalPnl).toBe(100);
 	});
 
-	// TODO: un-skip after Phase 2 fixes (Task 2.4)
-	it.skip("should return dailyMaxLoss from constructor param in stats", () => {
+	it("should return dailyMaxLoss from constructor param in stats", () => {
 		const dailyMaxLoss = 500;
-		const manager = createAccountManager(10000);
+		const manager = createAccountManager(10000, dailyMaxLoss);
 
 		const stats = manager.getStats();
 		expect(stats.dailyMaxLoss).toBe(dailyMaxLoss);

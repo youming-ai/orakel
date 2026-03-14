@@ -56,7 +56,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 			const nowMs = 6000; // At or past end
 
@@ -72,7 +71,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 			const nowMs = 5000; // Before end
 
@@ -88,7 +86,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 			const nowMs = 5999; // Just before end
 
@@ -106,7 +103,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 
 			const result = advanceWindowState(state, 7000, true);
@@ -121,7 +117,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 
 			const result = advanceWindowState(state, 7000, false);
@@ -138,7 +133,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 
 			const result = advanceWindowState(state, 8000, false);
@@ -153,7 +147,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 
 			const result = advanceWindowState(state, 8000, true);
@@ -170,7 +163,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 
 			const result = advanceWindowState(state, 9000, false);
@@ -185,7 +177,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 
 			const result = advanceWindowState(state, 9000, true);
@@ -202,7 +193,6 @@ describe("advanceWindowState", () => {
 				startMs: 1000,
 				endMs: 6000,
 				marketInfo: null,
-				traded: false,
 			};
 
 			const result = advanceWindowState(original, 3000, false);
@@ -227,7 +217,6 @@ describe("advanceWindowState", () => {
 					startMs: 1000,
 					endMs: 6000,
 				},
-				traded: true,
 			};
 
 			const result = advanceWindowState(original, 3000, false);
@@ -236,14 +225,12 @@ describe("advanceWindowState", () => {
 			expect(result.startMs).toBe(original.startMs);
 			expect(result.endMs).toBe(original.endMs);
 			expect(result.marketInfo).toBe(original.marketInfo);
-			expect(result.traded).toBe(original.traded);
 		});
 	});
 });
 
 describe("BUG-6: traded field (TDD-Red test)", () => {
-	it.skip("should NOT have a traded property on createWindowState result", () => {
-		// TODO: un-skip after BUG-6 fix
+	it("should NOT have a traded property on createWindowState result", () => {
 		const result = createWindowState("btc-updown-5m-1234", 1000, 6000);
 		expect(result).not.toHaveProperty("traded");
 	});

@@ -1,4 +1,5 @@
 import type { AccountStatsDto, Side } from "@orakel/shared/contracts";
+import { computeBinaryPnl } from "./pnl.ts";
 
 interface PendingTrade {
 	side: Side;
@@ -43,12 +44,12 @@ export interface AccountManager {
 	getPendingCount(): number;
 }
 
-export function createAccountManager(initialBalanceUsdc: number): AccountManager {
+export function createAccountManager(initialBalanceUsdc: number, dailyMaxLossUsdc: number): AccountManager {
 	let balance = initialBalanceUsdc;
 	const trades: PendingTrade[] = [];
 
 	function computePnl(trade: PendingTrade, won: boolean): number {
-		return won ? trade.size * ((1 - trade.price) / trade.price) : -trade.size;
+		return computeBinaryPnl(trade.size, trade.price, won);
 	}
 
 	return {
@@ -88,7 +89,7 @@ export function createAccountManager(initialBalanceUsdc: number): AccountManager
 				totalPnl,
 				todayPnl,
 				todayTrades: todayTrades.length,
-				dailyMaxLoss: 0,
+				dailyMaxLoss: dailyMaxLossUsdc,
 				balanceUsdc: balance,
 			};
 		},

@@ -6,11 +6,10 @@ export interface WindowTrackerState {
 	startMs: number;
 	endMs: number;
 	marketInfo: MarketInfo | null;
-	traded: boolean;
 }
 
 export function createWindowState(slug: string, startMs: number, endMs: number): WindowTrackerState {
-	return { slug, state: "PENDING", startMs, endMs, marketInfo: null, traded: false };
+	return { slug, state: "PENDING", startMs, endMs, marketInfo: null };
 }
 
 export function advanceWindowState(

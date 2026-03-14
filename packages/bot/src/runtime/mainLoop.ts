@@ -386,17 +386,24 @@ export function createMainLoop(deps: MainLoopDeps) {
 								(entry.side === "UP" && settlePrice >= prevPriceToBeat) ||
 								(entry.side === "DOWN" && settlePrice < prevPriceToBeat);
 							liveAccount.settleTrade(entry.index, won);
-							await settleLiveWindow(
-								{
+							try {
+								await settleLiveWindow(
+									{
+										tradeId: entry.tradeId,
+										entryPrice: entry.price,
+										size: entry.size,
+										side: entry.side,
+										balanceBefore: entry.balanceBefore,
+									},
+									settlePrice,
+									prevPriceToBeat,
+								);
+							} catch (err) {
+								log.error("Live settlement failed", {
 									tradeId: entry.tradeId,
-									entryPrice: entry.price,
-									size: entry.size,
-									side: entry.side,
-									balanceBefore: entry.balanceBefore,
-								},
-								settlePrice,
-								prevPriceToBeat,
-							);
+									error: err instanceof Error ? err.message : String(err),
+								});
+							}
 						}
 					}
 					// Clean up trades for this window to prevent memory leak

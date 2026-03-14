@@ -46,8 +46,8 @@ export async function bootstrapApp(): Promise<void> {
 	}
 	log.info("CLI check", { available: cliAvailable });
 
-	const paperAccount = createAccountManager(10000);
-	const liveAccount = createAccountManager(0);
+	const paperAccount = createAccountManager(10000, config.risk.paper.dailyMaxLossUsdc);
+	const liveAccount = createAccountManager(0, config.risk.live.dailyMaxLossUsdc);
 
 	const ws = createWsPublisher();
 	const mainLoop = createMainLoop({ priceAdapter, polymarketWs, paperAccount, liveAccount, ws });

@@ -1,6 +1,7 @@
 import { createLogger } from "../core/logger.ts";
 import { getLiveBalance } from "../trading/liveTrader.ts";
 import { settleDbTrade } from "../trading/persistence.ts";
+import { computeBinaryPnl } from "../trading/pnl.ts";
 import { runRedemption } from "./redeemer.ts";
 
 const log = createLogger("live-settlement");
@@ -25,7 +26,7 @@ export async function settleLiveWindow(
 	const redeemResult = await runRedemption();
 	if (!redeemResult.ok) {
 		log.error("Redemption failed, using price-based fallback", { error: redeemResult.error });
-		const pnlUsdc = won ? ctx.size * ((1 - ctx.entryPrice) / ctx.entryPrice) : -ctx.size;
+		const pnlUsdc = computeBinaryPnl(ctx.size, ctx.entryPrice, won);
 		await settleDbTrade({
 			tradeId: ctx.tradeId,
 			outcome: won ? "WIN" : "LOSS",
@@ -38,7 +39,7 @@ export async function settleLiveWindow(
 	const balanceResult = await getLiveBalance();
 	if (!balanceResult.ok || balanceResult.balance === undefined) {
 		log.error("Failed to get balance after redemption, using price-based fallback", { error: balanceResult.error });
-		const pnlUsdc = won ? ctx.size * ((1 - ctx.entryPrice) / ctx.entryPrice) : -ctx.size;
+		const pnlUsdc = computeBinaryPnl(ctx.size, ctx.entryPrice, won);
 		await settleDbTrade({
 			tradeId: ctx.tradeId,
 			outcome: won ? "WIN" : "LOSS",
