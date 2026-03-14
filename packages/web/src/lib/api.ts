@@ -4,12 +4,24 @@ import {
 	OkResponseSchema,
 	PaperStatsResponseSchema,
 	TradeRecordSchema,
-} from "@/contracts/schemas";
-import { mapStatusToDashboard, mapTradeRecordDtoToTradeRecord, mapTradeRecordToPaperTradeEntry } from "@/lib/mappers";
-import { buildMarketFromTrades, buildStatsFromTrades } from "@/lib/stats";
+} from "../contracts/schemas";
+import { mapStatusToDashboard, mapTradeRecordDtoToTradeRecord, mapTradeRecordToPaperTradeEntry } from "./mappers";
+import { TradeRecordSchema as TradeRecordDtoSchema } from "./schemas";
+import { buildMarketFromTrades, buildStatsFromTrades } from "./stats";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 const API_TOKEN = import.meta.env.VITE_API_TOKEN || "";
+
+export class ApiError extends Error {
+	constructor(
+		message: string,
+		public readonly statusCode?: number,
+		public readonly response?: Response,
+	) {
+		super(message);
+		this.name = "ApiError";
+	}
+}
 
 function authHeaders(): Record<string, string> {
 	if (!API_TOKEN) return {};
@@ -24,7 +36,7 @@ async function get<T>(path: string): Promise<T> {
 	const res = await fetch(`${API_BASE}${path}`, { headers: { ...authHeaders() } });
 	if (!res.ok) {
 		const text = await res.text().catch(() => "");
-		throw new Error(`API ${res.status}: ${text || res.statusText}`);
+		throw new ApiError(`API ${res.status}: ${text || res.statusText}`, res.status, res);
 	}
 	return res.json();
 }
@@ -40,15 +52,30 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 	});
 	if (!res.ok) {
 		const text = await res.text().catch(() => "");
-		throw new Error(`API ${res.status}: ${text || res.statusText}`);
+		throw new ApiError(`API ${res.status}: ${text || res.statusText}`, res.status, res);
 	}
 	return res.json();
 }
 
 async function fetchTrades(mode: string, limit = 200) {
-	const rows = await get<unknown[]>(`/trades?mode=${mode}&limit=${limit}`);
-	const mapped = rows.map((row) => mapTradeRecordDtoToTradeRecord(row as never));
-	return z.array(TradeRecordSchema).parse(mapped);
+	const response = await fetch(`${API_BASE}/trades?mode=${mode}&limit=${limit}`, {
+		headers: { ...authHeaders() },
+	});
+
+	if (!response.ok) {
+		throw new ApiError(`Failed to fetch trades: ${response.statusText}`, response.status, response);
+	}
+
+	const data = await response.json();
+
+	// Validate with Zod
+	const result = z.array(TradeRecordDtoSchema).safeParse(data);
+	if (!result.success) {
+		console.error("Invalid trade data from API:", result.error);
+		throw new ApiError("Invalid trade data received from server");
+	}
+
+	return result.data.map(mapTradeRecordDtoToTradeRecord);
 }
 
 async function fetchStatsResponse(mode: "paper" | "live") {
@@ -71,7 +98,11 @@ async function fetchStatsResponse(mode: "paper" | "live") {
 }
 
 export const api = {
-	getState: () => get<unknown>("/status").then((d) => DashboardStateSchema.parse(mapStatusToDashboard(d as never))),
+	getState: async () => {
+		const data = await get<unknown>("/status");
+		const mapped = mapStatusToDashboard(data as never);
+		return DashboardStateSchema.parse(mapped);
+	},
 	getTrades: (mode: string) => fetchTrades(mode),
 	getPaperStats: () => fetchStatsResponse("paper"),
 	getLiveStats: () => fetchStatsResponse("live"),
