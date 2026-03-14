@@ -14,13 +14,13 @@
   "risk": {
     "paper": {
       "maxTradeSizeUsdc": 5,
-      "dailyMaxLossUsdc": 999999,
+      "dailyMaxLossUsdc": 100,
       "maxOpenPositions": 1,
       "maxTradesPerWindow": 1
     },
     "live": {
       "maxTradeSizeUsdc": 5,
-      "dailyMaxLossUsdc": 999999,
+      "dailyMaxLossUsdc": 100,
       "maxOpenPositions": 1,
       "maxTradesPerWindow": 1
     }
