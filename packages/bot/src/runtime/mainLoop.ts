@@ -5,7 +5,7 @@ import { createLogger } from "../core/logger.ts";
 import { getStateSnapshot, isLiveRunning, isPaperRunning, setLatestTickData } from "../core/state.ts";
 import type { PriceAdapter } from "../core/types.ts";
 import { fetchMarketBySlug, type PolymarketOrderBookAdapter } from "../data/polymarket.ts";
-import { type DecisionInput, makeTradeDecision } from "../engine/decision.ts";
+import { type DecisionInput, type DecisionResult, makeTradeDecision } from "../engine/decision.ts";
 import { computeEdge } from "../engine/edge.ts";
 import { computeVolatility, modelProbability, type SignalParams } from "../engine/signal.ts";
 import { renderDashboard } from "../terminal/dashboard.ts";
@@ -41,6 +41,7 @@ interface TradeEntry {
 	size: number;
 	tradeId?: number;
 	balanceBefore?: number; // For live trades: wallet balance before this trade
+	mode: "paper" | "live";
 }
 
 export function createMainLoop(deps: MainLoopDeps) {
@@ -57,6 +58,10 @@ export function createMainLoop(deps: MainLoopDeps) {
 	function getWindowTrades(slug: string): TradeEntry[] {
 		if (!windowTrades.has(slug)) windowTrades.set(slug, []);
 		return windowTrades.get(slug) ?? [];
+	}
+
+	function getWindowTradesByMode(slug: string, mode: "paper" | "live"): TradeEntry[] {
+		return getWindowTrades(slug).filter((t) => t.mode === mode);
 	}
 
 	async function discoverWindow(config: ReturnType<typeof getConfig>): Promise<void> {
@@ -159,54 +164,37 @@ export function createMainLoop(deps: MainLoopDeps) {
 			const modelProbUp = modelProbability(deviation, timeLeft, volatility, signalParams);
 			const { edgeUp, edgeDown, bestEdge } = computeEdge(modelProbUp, marketProbUp);
 
-			const tradesInWindow = getWindowTrades(currentWindow.slug).length;
-			const hasPosition = tradesInWindow > 0;
+			let displayDecision: DecisionResult = { decision: "SKIP", side: null, edge: bestEdge, reason: null };
 
-			const activeRisk = liveRunning ? config.risk.live : config.risk.paper;
-			const decisionInput: DecisionInput = {
-				modelProbUp,
-				marketProbUp,
-				timeLeftSeconds: timeLeft,
-				phase,
-				strategy: config.strategy,
-				risk: activeRisk,
-				hasPositionInWindow: hasPosition,
-				todayLossUsdc: paperAccount.getTodayLossUsdc(),
-				openPositions: paperAccount.getPendingCount(),
-				tradesInWindow,
-			};
+			// --- Paper pass ---
+			if (paperRunning) {
+				const paperTrades = getWindowTradesByMode(currentWindow.slug, "paper");
+				const paperDecisionInput: DecisionInput = {
+					modelProbUp,
+					marketProbUp,
+					timeLeftSeconds: timeLeft,
+					phase,
+					strategy: config.strategy,
+					risk: config.risk.paper,
+					hasPositionInWindow: paperTrades.length > 0,
+					todayLossUsdc: paperAccount.getTodayLossUsdc(),
+					openPositions: paperAccount.getPendingCount(),
+					tradesInWindow: paperTrades.length,
+				};
+				const paperDecision = makeTradeDecision(paperDecisionInput);
+				displayDecision = paperDecision;
 
-			const decision = makeTradeDecision(decisionInput);
+				if (paperDecision.decision.startsWith("ENTER")) {
+					const side = paperDecision.side as "UP" | "DOWN";
+					const entryPrice = side === "UP" ? upBook.midpoint : downBook.midpoint;
 
-			await persistSignal({
-				windowSlug: currentWindow.slug,
-				btcPrice: priceTick.price,
-				priceToBeat,
-				deviation,
-				modelProbUp,
-				marketProbUp,
-				edgeUp,
-				edgeDown,
-				volatility,
-				timeLeftSeconds: timeLeft,
-				phase,
-				decision: decision.decision,
-				reason: decision.reason,
-			});
-
-			if (decision.decision.startsWith("ENTER")) {
-				const side = decision.side as "UP" | "DOWN";
-				const entryPrice = side === "UP" ? upBook.midpoint : downBook.midpoint;
-				const tokenId = side === "UP" ? marketInfo.upTokenId : marketInfo.downTokenId;
-
-				if (paperRunning && !hasPosition) {
 					const tradeIndex = executePaperTrade(
 						{
 							windowSlug: currentWindow.slug,
 							side,
 							price: entryPrice,
 							size: config.risk.paper.maxTradeSizeUsdc,
-							edge: decision.edge,
+							edge: paperDecision.edge,
 							modelProb: modelProbUp,
 							marketProb: marketProbUp,
 							priceToBeat,
@@ -225,7 +213,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 						size: config.risk.paper.maxTradeSizeUsdc,
 						priceToBeat,
 						entryBtcPrice: priceTick.price,
-						edge: decision.edge,
+						edge: paperDecision.edge,
 						modelProb: modelProbUp,
 						marketProb: marketProbUp,
 						phase,
@@ -237,10 +225,34 @@ export function createMainLoop(deps: MainLoopDeps) {
 						price: entryPrice,
 						size: config.risk.paper.maxTradeSizeUsdc,
 						tradeId,
+						mode: "paper",
 					});
 				}
+			}
 
-				if (liveRunning && !hasPosition) {
+			// --- Live pass ---
+			if (liveRunning) {
+				const liveTrades = getWindowTradesByMode(currentWindow.slug, "live");
+				const liveDecisionInput: DecisionInput = {
+					modelProbUp,
+					marketProbUp,
+					timeLeftSeconds: timeLeft,
+					phase,
+					strategy: config.strategy,
+					risk: config.risk.live,
+					hasPositionInWindow: liveTrades.length > 0,
+					todayLossUsdc: liveAccount.getTodayLossUsdc(),
+					openPositions: liveAccount.getPendingCount(),
+					tradesInWindow: liveTrades.length,
+				};
+				const liveDecision = makeTradeDecision(liveDecisionInput);
+				displayDecision = liveDecision;
+
+				if (liveDecision.decision.startsWith("ENTER")) {
+					const side = liveDecision.side as "UP" | "DOWN";
+					const entryPrice = side === "UP" ? upBook.midpoint : downBook.midpoint;
+					const tokenId = side === "UP" ? marketInfo.upTokenId : marketInfo.downTokenId;
+
 					const balanceResult = await getLiveBalance();
 					const balance = balanceResult.balance;
 					if (!balanceResult.ok) {
@@ -265,11 +277,17 @@ export function createMainLoop(deps: MainLoopDeps) {
 									price: entryPrice,
 									size: config.risk.live.maxTradeSizeUsdc,
 									windowSlug: currentWindow.slug,
-									edge: decision.edge,
+									edge: liveDecision.edge,
 								},
 								config,
 							);
 							if (result.success) {
+								const liveTradeIndex = liveAccount.recordTrade({
+									side,
+									size: config.risk.live.maxTradeSizeUsdc,
+									price: entryPrice,
+								});
+
 								await new Promise((resolve) => setTimeout(resolve, 1000));
 								if (!result.orderId) {
 									log.warn("Live orderId missing after successful execution");
@@ -290,25 +308,42 @@ export function createMainLoop(deps: MainLoopDeps) {
 									size: config.risk.live.maxTradeSizeUsdc,
 									priceToBeat,
 									entryBtcPrice: priceTick.price,
-									edge: decision.edge,
+									edge: liveDecision.edge,
 									modelProb: modelProbUp,
 									marketProb: marketProbUp,
 									phase,
 									orderId: result.orderId,
 								});
 								getWindowTrades(currentWindow.slug).push({
-									index: 0,
+									index: liveTradeIndex,
 									side,
 									price: entryPrice,
 									size: config.risk.live.maxTradeSizeUsdc,
 									tradeId,
 									balanceBefore,
+									mode: "live",
 								});
 							}
 						}
 					}
 				}
 			}
+
+			await persistSignal({
+				windowSlug: currentWindow.slug,
+				btcPrice: priceTick.price,
+				priceToBeat,
+				deviation,
+				modelProbUp,
+				marketProbUp,
+				edgeUp,
+				edgeDown,
+				volatility,
+				timeLeftSeconds: timeLeft,
+				phase,
+				decision: displayDecision.decision,
+				reason: displayDecision.reason,
+			});
 
 			currentWindow.state = advanceWindowState(currentWindow, nowMs, false).state;
 
@@ -347,6 +382,10 @@ export function createMainLoop(deps: MainLoopDeps) {
 								});
 							}
 						} else if (liveRunning && entry.tradeId && entry.balanceBefore !== undefined) {
+							const won =
+								(entry.side === "UP" && settlePrice >= prevPriceToBeat) ||
+								(entry.side === "DOWN" && settlePrice < prevPriceToBeat);
+							liveAccount.settleTrade(entry.index, won);
 							await settleLiveWindow(
 								{
 									tradeId: entry.tradeId,
@@ -360,6 +399,8 @@ export function createMainLoop(deps: MainLoopDeps) {
 							);
 						}
 					}
+					// Clean up trades for this window to prevent memory leak
+					windowTrades.delete(previousWindow.slug);
 				}
 			}
 
@@ -377,7 +418,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 				edgeUp,
 				edgeDown,
 				phase,
-				decision: decision.decision,
+				decision: displayDecision.decision,
 				volatility,
 			};
 
@@ -406,7 +447,7 @@ export function createMainLoop(deps: MainLoopDeps) {
 				deviation,
 				modelProbUp,
 				marketProbUp,
-				edge: bestEdge,
+				edge: displayDecision.edge,
 				phase,
 				paperPnl: paperAccount.getStats().totalPnl,
 			});
