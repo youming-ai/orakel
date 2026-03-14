@@ -12,7 +12,7 @@ export interface StrategyConfig {
 }
 
 export interface ExecutionConfig {
-	orderType: string;
+	orderType: "GTC" | "GTD" | "FOK" | "MARKET";
 	limitDiscount: number;
 	minOrderPrice: number;
 	maxOrderPrice: number;

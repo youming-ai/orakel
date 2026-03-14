@@ -5,6 +5,16 @@ import { signals, trades } from "../db/schema.ts";
 
 const log = createLogger("persistence");
 
+export class PersistenceError extends Error {
+	constructor(
+		message: string,
+		public readonly cause?: unknown,
+	) {
+		super(message);
+		this.name = "PersistenceError";
+	}
+}
+
 export async function persistSignal(data: {
 	windowSlug: string;
 	btcPrice: number;
@@ -79,10 +89,17 @@ export async function persistTrade(data: {
 				orderId: data.orderId,
 			})
 			.returning({ id: trades.id });
-		return result[0]?.id ?? 0;
+
+		const tradeId = result[0]?.id;
+		if (!tradeId) {
+			throw new PersistenceError("Failed to get trade ID after insert");
+		}
+
+		log.info("Trade persisted", { tradeId, mode: data.mode, windowSlug: data.windowSlug });
+		return tradeId;
 	} catch (err) {
-		log.warn("Failed to persist trade", { error: err instanceof Error ? err.message : String(err) });
-		return 0;
+		log.error("Failed to persist trade", { error: err instanceof Error ? err.message : String(err), data });
+		throw new PersistenceError("Trade persistence failed", err);
 	}
 }
 

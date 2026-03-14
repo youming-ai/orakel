@@ -298,31 +298,54 @@ export function createMainLoop(deps: MainLoopDeps) {
 									}
 								}
 
-								const tradeId = await persistTrade({
-									mode: "live",
-									windowSlug: currentWindow.slug,
-									windowStartMs: currentWindow.startMs,
-									windowEndMs: currentWindow.endMs,
-									side,
-									price: entryPrice,
-									size: config.risk.live.maxTradeSizeUsdc,
-									priceToBeat,
-									entryBtcPrice: priceTick.price,
-									edge: liveDecision.edge,
-									modelProb: modelProbUp,
-									marketProb: marketProbUp,
-									phase,
-									orderId: result.orderId,
-								});
-								getWindowTrades(currentWindow.slug).push({
-									index: liveTradeIndex,
-									side,
-									price: entryPrice,
-									size: config.risk.live.maxTradeSizeUsdc,
-									tradeId,
-									balanceBefore,
-									mode: "live",
-								});
+								try {
+									const tradeId = await persistTrade({
+										mode: "live",
+										windowSlug: currentWindow.slug,
+										windowStartMs: currentWindow.startMs,
+										windowEndMs: currentWindow.endMs,
+										side,
+										price: entryPrice,
+										size: config.risk.live.maxTradeSizeUsdc,
+										priceToBeat,
+										entryBtcPrice: priceTick.price,
+										edge: liveDecision.edge,
+										modelProb: modelProbUp,
+										marketProb: marketProbUp,
+										phase,
+										orderId: result.orderId,
+									});
+									getWindowTrades(currentWindow.slug).push({
+										index: liveTradeIndex,
+										side,
+										price: entryPrice,
+										size: config.risk.live.maxTradeSizeUsdc,
+										tradeId,
+										balanceBefore,
+										mode: "live",
+									});
+									log.info("Live trade recorded", { tradeId, windowSlug: currentWindow.slug });
+								} catch (err) {
+									log.error("Live trade persistence failed, attempting cancel", {
+										orderId: result.orderId,
+										error: err instanceof Error ? err.message : String(err),
+									});
+
+									if (result.orderId) {
+										try {
+											await cancelAllOrders();
+											log.info("Cancelled orders after persistence failure", { orderId: result.orderId });
+										} catch (cancelErr) {
+											log.error("Failed to cancel orders after persistence failure", {
+												orderId: result.orderId,
+												error: cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
+											});
+										}
+									}
+
+									liveAccount.settleTrade(liveTradeIndex, false);
+									throw err;
+								}
 							}
 						}
 					}
