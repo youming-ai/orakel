@@ -145,8 +145,8 @@ function TodayPerformanceCard({ todayStats, stats, viewMode }: TodayPerformanceC
 						)}
 					>
 						<div className="flex items-center gap-1.5 mb-1">
-							<Wallet className="size-3 text-muted-foreground" />
-							<span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Today P&L</span>
+							<LineChart className="size-3 text-muted-foreground" />
+							<span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Total P&L</span>
 						</div>
 						<span
 							className={cn(
@@ -154,7 +154,7 @@ function TodayPerformanceCard({ todayStats, stats, viewMode }: TodayPerformanceC
 								isProfitable ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400",
 							)}
 						>
-							{todayStats ? `${todayStats.pnl >= 0 ? "+" : ""}${todayStats.pnl.toFixed(2)}` : "--"}
+							{resolvedTrades > 0 ? `${stats.totalPnl >= 0 ? "+" : ""}${stats.totalPnl.toFixed(2)}` : "--"}
 						</span>
 						<span className="text-[10px] text-muted-foreground mt-0.5">USDC</span>
 					</div>
@@ -187,16 +187,18 @@ function TodayPerformanceCard({ todayStats, stats, viewMode }: TodayPerformanceC
 
 					<div className="flex flex-col justify-center p-3 rounded-lg bg-muted/50">
 						<div className="flex items-center gap-1.5 mb-1.5">
-							<LineChart className="size-3 text-muted-foreground" />
-							<span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Total P&L</span>
+							<Wallet className="size-3 text-muted-foreground" />
+							<span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Today P&L</span>
 						</div>
 						<span
 							className={cn(
 								"font-mono text-xl font-bold",
-								stats.totalPnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400",
+								todayStats && todayStats.pnl >= 0
+									? "text-emerald-600 dark:text-emerald-400"
+									: "text-red-600 dark:text-red-400",
 							)}
 						>
-							{resolvedTrades > 0 ? `${stats.totalPnl >= 0 ? "+" : ""}${stats.totalPnl.toFixed(2)}` : "--"}
+							{todayStats ? `${todayStats.pnl >= 0 ? "+" : ""}${todayStats.pnl.toFixed(2)}` : "--"}
 						</span>
 					</div>
 
