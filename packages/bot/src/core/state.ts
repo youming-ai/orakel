@@ -35,22 +35,6 @@ export function isLiveRunning(): boolean {
 	return _liveRunning;
 }
 
-export function isPaperPendingStart(): boolean {
-	return _paperPendingStart;
-}
-
-export function isPaperPendingStop(): boolean {
-	return _paperPendingStop;
-}
-
-export function isLivePendingStart(): boolean {
-	return _livePendingStart;
-}
-
-export function isLivePendingStop(): boolean {
-	return _livePendingStop;
-}
-
 export function requestPaperStart(): void {
 	_paperPendingStart = true;
 	log.info("Paper start requested");
@@ -140,20 +124,4 @@ export function requestModeSwitch(targetMode: "paper" | "live"): void {
 		_livePendingStart = false;
 		_livePendingStop = false;
 	}
-}
-
-export function resetState(): void {
-	_paperRunning = false;
-	_liveRunning = false;
-	_paperPendingStart = false;
-	_paperPendingStop = false;
-	_livePendingStart = false;
-	_livePendingStop = false;
-	_latestTick = {
-		currentWindow: null,
-		btcPrice: null,
-		btcPriceAgeMs: null,
-		paperStats: null,
-		liveStats: null,
-	};
 }

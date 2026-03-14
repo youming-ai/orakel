@@ -30,10 +30,6 @@ export function createOrder(params: {
 	]);
 }
 
-export function cancelOrder(orderId: string): Promise<CliResult<void>> {
-	return execCli<void>(["clob", "cancel", "--order-id", orderId], { parseJson: false });
-}
-
 export function cancelAll(): Promise<CliResult<void>> {
 	return execCli<void>(["clob", "cancel-all"], { parseJson: false });
 }

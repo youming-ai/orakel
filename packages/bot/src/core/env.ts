@@ -23,8 +23,3 @@ export function loadEnv(): Env {
 	_env = result.data;
 	return _env;
 }
-
-export function getEnv(): Env {
-	if (!_env) throw new Error("Environment not loaded. Call loadEnv() first.");
-	return _env;
-}

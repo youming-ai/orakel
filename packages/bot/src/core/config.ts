@@ -44,7 +44,3 @@ export function getConfig(): AppConfig {
 	if (!_config) throw new Error("Config not loaded. Call loadConfigFromFile() first.");
 	return _config;
 }
-
-export function setConfig(config: AppConfig): void {
-	_config = config;
-}
