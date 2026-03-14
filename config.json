@@ -1,8 +1,8 @@
 {
   "strategy": {
-    "edgeThresholdEarly": 0.04,
+    "edgeThresholdEarly": 0.08,
     "edgeThresholdMid": 0.06,
-    "edgeThresholdLate": 0.08,
+    "edgeThresholdLate": 0.04,
     "phaseEarlySeconds": 180,
     "phaseLateSeconds": 60,
     "sigmoidScale": 2,
@@ -26,7 +26,7 @@
     }
   },
   "execution": {
-    "orderType": "limit",
+    "orderType": "GTC",
     "limitDiscount": 0.02,
     "minOrderPrice": 0.05,
     "maxOrderPrice": 0.95
