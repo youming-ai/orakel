@@ -94,7 +94,14 @@ export function createMainLoop(deps: MainLoopDeps) {
 		}
 	}
 
+	let tickInProgress = false;
+
 	async function processTick(): Promise<void> {
+		if (tickInProgress) {
+			log.warn("Tick still in progress, skipping");
+			return;
+		}
+		tickInProgress = true;
 		try {
 			const config = getConfig();
 			const nowMs = Date.now();
@@ -515,6 +522,8 @@ export function createMainLoop(deps: MainLoopDeps) {
 				safeMode = true;
 				log.warn("Entering safe mode - trading paused");
 			}
+		} finally {
+			tickInProgress = false;
 		}
 	}
 
